@@ -1,0 +1,69 @@
+{
+  "nodes": {
+    "libnet": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1777185794,
+        "narHash": "sha256-DUBTzspP83civeOVWuVvS9E+DfyM/QFeDsuOCISNVbs=",
+        "owner": "petohorvath",
+        "repo": "nix-libnet",
+        "rev": "ade900e152c6edd5d96bc976ed474dbfd4b604d6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "petohorvath",
+        "repo": "nix-libnet",
+        "type": "github"
+      }
+    },
+    "nftypes": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1777386898,
+        "narHash": "sha256-SOkSXjY+LUrzxESHWQfmSiu3h0Td09AnGmxTmXKsI+w=",
+        "owner": "petohorvath",
+        "repo": "nix-nftypes",
+        "rev": "3aac71401d94b1157e52fb9e48e2d173a818d5f8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "petohorvath",
+        "repo": "nix-nftypes",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1776877367,
+        "narHash": "sha256-EHq1/OX139R1RvBzOJ0aMRT3xnWyqtHBRUBuO1gFzjI=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "0726a0ecb6d4e08f6adced58726b95db924cef57",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "libnet": "libnet",
+        "nftypes": "nftypes",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

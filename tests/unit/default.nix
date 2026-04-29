@@ -1,0 +1,18 @@
+# Unit-test definitions. Each `testFoo` attr is `{ expr; expected; }` and
+# is consumed by `tests/runner.nix` via `lib.runTests`. Per-module test
+# files under subdirectories (mirroring `lib/`) are merged in here.
+args@{
+  pkgs,
+  nftzones,
+  nftypes,
+}:
+{
+  testVersion = {
+    expr = nftzones.version;
+    expected = "0.1.0";
+  };
+}
+// import ./internal/zone.nix args
+// import ./internal/zone-pair.nix args
+// import ./internal/filter.nix args
+// import ./internal/priority.nix args

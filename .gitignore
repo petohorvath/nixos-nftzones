@@ -1,0 +1,8 @@
+# nix build output symlinks
+result
+result-*
+
+# editor autosave/backup files
+*~
+\#*\#
+.\#*
