@@ -7,9 +7,9 @@
                         into a flat list of single-pair attrsets.
 
   Used by the filter, snat, dnat, and policy compile pipelines —
-  every kind that's keyed by a `(from, to)` zone pair. The function
+  every group that's keyed by a `(from, to)` zone pair. The function
   is purely structural: it doesn't interpret any field beyond `from`
-  and `to`, so it doesn't need to know which kind of rule it's
+  and `to`, so it doesn't need to know which group's rule it's
   expanding.
 
   Wired into the surface from `lib/default.nix`.

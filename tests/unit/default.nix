@@ -16,3 +16,6 @@ args@{
 // import ./internal/zone-pair.nix args
 // import ./internal/filter.nix args
 // import ./internal/priority.nix args
+// import ./internal/node.nix args
+// import ./internal/wildcard.nix args
+// import ./internal/normalize.nix args

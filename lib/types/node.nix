@@ -7,6 +7,7 @@
     - `nodeAddress` — submodule with `ipv4` and/or `ipv6` (at least
                       one required, type-level enforced via
                       `addCheck`)
+    - `nodeComment` — optional free-form comment
 
   A node is a single-host shortcut: a machine with a name, a
   parent zone, and one or two bare IP addresses. Nodes share the
@@ -14,11 +15,21 @@
   / policy can reference a node by name in `from` / `to`, the same
   way they reference a zone.
 
-  Compile lowering: each node becomes a zone with
-    parent     = node.zone;
-    cidrs      = optional ipv4 "${ipv4}/32" ++ optional ipv6 "${ipv6}/128";
-    interfaces = [ ];
-  Merged into the effective zones namespace before chain dispatch.
+  Compile lowering: `internal.node.toZone` produces a fully-shaped
+  zone value mirroring the `nftzones.types.zone` submodule's
+  evaluated form:
+    name          = node.name;
+    parent        = node.zone;
+    interfaces    = [ ];
+    cidrs         = optional ipv4 "${ipv4}/32"
+                 ++ optional ipv6 "${ipv6}/128";
+    match         = computed via `internal.zone.genMatch`;
+    matchOverride = { ingress = null; egress = null; };
+    comment       = node.comment;
+  The lowered values merge directly with declared zones (also
+  submodule-evaluated) under one uniform shape — no re-evaluation
+  needed downstream. Phase 1 of the compile pipeline performs the
+  merge in `convertNodesToZones`.
 
   At the type layer:
     - `zone` (parent reference) is required.
@@ -72,6 +83,8 @@ let
   inherit (zone) zoneName;
 
   nodeName = primitives.identifier;
+
+  nodeComment = primitives.comment;
 
   /*
     Submodule with optional `ipv4` / `ipv6` fields. The constraint
@@ -146,6 +159,18 @@ let
             message naming the offending node).
           '';
         };
+
+        comment = lib.mkOption {
+          type = nodeComment;
+          default = null;
+          example = "primary web server";
+          description = ''
+            Free-form comment, attached to the node for
+            documentation. Propagates to the lowered zone (and
+            from there to the generated nftables comment). `null`
+            (the default) emits no comment downstream.
+          '';
+        };
       };
     }
   );
@@ -154,6 +179,7 @@ in
   inherit
     nodeName
     nodeAddress
+    nodeComment
     node
     ;
 }

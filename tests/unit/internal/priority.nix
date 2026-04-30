@@ -7,61 +7,74 @@
   nftypes,
 }:
 let
-  inherit (nftzones.internal.priority) rulePrioritySymbols;
+  inherit (nftzones.internal.priority) resolvePrioritySymbol;
 in
 {
-  # ===== rulePrioritySymbols — full mapping =====
+  # ===== resolvePrioritySymbol — every symbol resolves to its int =====
 
-  testRulePrioritySymbolMapping = {
-    expr = rulePrioritySymbols;
-    expected = {
-      first = 1;
-      preDispatch = 50;
-      postDispatch = 100;
-      default = 500;
-      last = 999;
-    };
+  testResolveFirst = {
+    expr = resolvePrioritySymbol "first";
+    expected = 1;
   };
 
-  # ===== rulePrioritySymbols — keys =====
+  testResolvePreDispatch = {
+    expr = resolvePrioritySymbol "preDispatch";
+    expected = 50;
+  };
 
-  testRulePrioritySymbolKeys = {
-    expr = builtins.attrNames rulePrioritySymbols;
-    expected = [
-      "default"
-      "first"
-      "last"
-      "postDispatch"
-      "preDispatch"
-    ];
+  testResolvePostDispatch = {
+    expr = resolvePrioritySymbol "postDispatch";
+    expected = 100;
+  };
+
+  testResolveDefault = {
+    expr = resolvePrioritySymbol "default";
+    expected = 500;
+  };
+
+  testResolveLast = {
+    expr = resolvePrioritySymbol "last";
+    expected = 999;
+  };
+
+  # ===== resolvePrioritySymbol — int values pass through =====
+
+  testResolveIntPassThrough = {
+    expr = resolvePrioritySymbol 250;
+    expected = 250;
+  };
+
+  testResolveIntZero = {
+    expr = resolvePrioritySymbol 0;
+    expected = 0;
   };
 
   # ===== pre-dispatch cutoff — symbols below 100 emit before per-zone jumps =====
 
   testFirstIsPreDispatch = {
-    expr = rulePrioritySymbols.first < 100;
+    expr = resolvePrioritySymbol "first" < 100;
     expected = true;
   };
 
   testPreDispatchIsPreDispatch = {
-    expr = rulePrioritySymbols.preDispatch < 100;
+    expr = resolvePrioritySymbol "preDispatch" < 100;
     expected = true;
   };
 
   # ===== post-dispatch cutoff — symbols >= 100 emit after per-zone jumps =====
 
   testPostDispatchIsPostDispatch = {
-    expr = rulePrioritySymbols.postDispatch >= 100;
+    expr = resolvePrioritySymbol "postDispatch" >= 100;
     expected = true;
   };
 
   testDefaultIsPostDispatch = {
-    expr = rulePrioritySymbols.default >= 100;
+    expr = resolvePrioritySymbol "default" >= 100;
     expected = true;
   };
 
   testLastIsPostDispatch = {
-    expr = rulePrioritySymbols.last >= 100;
+    expr = resolvePrioritySymbol "last" >= 100;
     expected = true;
   };
 
@@ -69,10 +82,10 @@ in
 
   testSymbolsAreOrdered = {
     expr =
-      rulePrioritySymbols.first < rulePrioritySymbols.preDispatch
-      && rulePrioritySymbols.preDispatch < rulePrioritySymbols.postDispatch
-      && rulePrioritySymbols.postDispatch < rulePrioritySymbols.default
-      && rulePrioritySymbols.default < rulePrioritySymbols.last;
+      resolvePrioritySymbol "first" < resolvePrioritySymbol "preDispatch"
+      && resolvePrioritySymbol "preDispatch" < resolvePrioritySymbol "postDispatch"
+      && resolvePrioritySymbol "postDispatch" < resolvePrioritySymbol "default"
+      && resolvePrioritySymbol "default" < resolvePrioritySymbol "last";
     expected = true;
   };
 }

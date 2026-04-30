@@ -1,17 +1,23 @@
 /*
-  internal/priority — exposes the rule-priority symbol table under
+  internal/priority — exposes priority-resolution helpers under
   `nftzones.internal.priority`.
 
   Exported:
-    - `rulePrioritySymbols` — symbol → int mapping for ordering
-                              rules within a chain.
+    - `resolvePrioritySymbol` — resolve a rule priority value
+                                (`either int symbol`) to an int.
 
   Used by the compile pipeline to resolve `rulePriority` values
-  (which are `either symbol int`) into pure integers before
-  sorting cells. Chain priority resolution is a separate concern
-  and is delegated to `nftypes.resolvePriority` (family-aware).
+  into pure integers before sorting cells. Chain priority
+  resolution is a separate concern and is delegated to
+  `nftypes.resolvePriority` (family-aware).
 
-  ===== rulePrioritySymbols =====
+  ===== resolvePrioritySymbol =====
+
+  Input:  a priority value — either an int or one of the symbol
+          strings below.
+  Output: the corresponding int. Ints pass through unchanged.
+
+  Symbol → int mapping:
 
   | symbol         | int |
   |----------------|-----|
@@ -33,7 +39,9 @@ let
     default = 500;
     last = 999;
   };
+
+  resolvePrioritySymbol = p: if builtins.isInt p then p else rulePrioritySymbols.${p};
 in
 {
-  inherit rulePrioritySymbols;
+  inherit resolvePrioritySymbol;
 }

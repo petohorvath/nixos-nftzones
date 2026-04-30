@@ -15,6 +15,22 @@
                            chainPolicy / localZone / wildcardZone)
     - `tableChainPolicy` — `accept` / `drop` (reuses
                            `nftypes.types.policy`)
+    - `tableZones`       — collection of zone declarations
+                           (`attrsOf nftzones.types.zone`)
+    - `tableNodes`       — collection of node declarations
+                           (`attrsOf nftzones.types.node`)
+    - `tableFilters`     — collection of filter rules
+                           (`attrsOf nftzones.types.filter`)
+    - `tablePolicies`    — collection of per-pair policies
+                           (`attrsOf nftzones.types.policy`)
+    - `tableSnats`       — collection of snat rules
+                           (`attrsOf nftzones.types.snat`)
+    - `tableDnats`       — collection of dnat rules
+                           (`attrsOf nftzones.types.dnat`)
+    - `tableSroutes`     — collection of sroute rules
+                           (`attrsOf nftzones.types.sroute`)
+    - `tableDroutes`     — collection of droute rules
+                           (`attrsOf nftzones.types.droute`)
     - `tableObjects`     — submodule for user-defined named
                            nftables objects (counters, ct helpers,
                            sets, maps, …); reuses nftypes'
@@ -103,6 +119,28 @@ let
   tableComment = primitives.comment;
 
   tableChainPolicy = nftypes.types.policy;
+
+  /*
+    Zone-firewall content collections — one `attrsOf <kind-submodule>`
+    per content kind. Named so that consumers (tests, modules, future
+    refactors) can reference the type directly instead of inlining
+    `lib.types.attrsOf foo.foo` at every use site.
+  */
+  tableZones = lib.types.attrsOf zone.zone;
+
+  tableNodes = lib.types.attrsOf node.node;
+
+  tableFilters = lib.types.attrsOf filter.filter;
+
+  tablePolicies = lib.types.attrsOf policy.policy;
+
+  tableSnats = lib.types.attrsOf snat.snat;
+
+  tableDnats = lib.types.attrsOf dnat.dnat;
+
+  tableSroutes = lib.types.attrsOf sroute.sroute;
+
+  tableDroutes = lib.types.attrsOf droute.droute;
 
   /*
     Helper: take an nftypes `<kind>ObjectBody` submodule and
@@ -350,7 +388,7 @@ let
         # ── Zone-firewall content ─────────────────────────────────────────
 
         zones = lib.mkOption {
-          type = lib.types.attrsOf zone.zone;
+          type = tableZones;
           default = { };
           description = ''
             Zone declarations — named groupings of interfaces and
@@ -359,7 +397,7 @@ let
         };
 
         nodes = lib.mkOption {
-          type = lib.types.attrsOf node.node;
+          type = tableNodes;
           default = { };
           description = ''
             Node declarations — single-host shortcuts that lower
@@ -368,7 +406,7 @@ let
         };
 
         filters = lib.mkOption {
-          type = lib.types.attrsOf filter.filter;
+          type = tableFilters;
           default = { };
           description = ''
             Filter rules — verdict-based zone-pair rules
@@ -378,7 +416,7 @@ let
         };
 
         policies = lib.mkOption {
-          type = lib.types.attrsOf policy.policy;
+          type = tablePolicies;
           default = { };
           description = ''
             Per-pair default verdicts. Compiled as tail rules in
@@ -387,7 +425,7 @@ let
         };
 
         snats = lib.mkOption {
-          type = lib.types.attrsOf snat.snat;
+          type = tableSnats;
           default = { };
           description = ''
             SNAT rules (postrouting NAT). See `nftzones.types.snat`.
@@ -395,7 +433,7 @@ let
         };
 
         dnats = lib.mkOption {
-          type = lib.types.attrsOf dnat.dnat;
+          type = tableDnats;
           default = { };
           description = ''
             DNAT rules (prerouting NAT). See `nftzones.types.dnat`.
@@ -403,7 +441,7 @@ let
         };
 
         sroutes = lib.mkOption {
-          type = lib.types.attrsOf sroute.sroute;
+          type = tableSroutes;
           default = { };
           description = ''
             Source-zone-keyed route mangling (prerouting `type
@@ -412,7 +450,7 @@ let
         };
 
         droutes = lib.mkOption {
-          type = lib.types.attrsOf droute.droute;
+          type = tableDroutes;
           default = { };
           description = ''
             Destination-zone-keyed route mangling (output `type
@@ -463,6 +501,14 @@ in
     tableComment
     tableSettings
     tableChainPolicy
+    tableZones
+    tableNodes
+    tableFilters
+    tablePolicies
+    tableSnats
+    tableDnats
+    tableSroutes
+    tableDroutes
     tableObjects
     table
     ;

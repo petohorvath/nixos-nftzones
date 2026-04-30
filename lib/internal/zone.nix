@@ -14,10 +14,11 @@
   Inputs:
     interfaces  — list of ifnames; default [ ].
     cidrs       — list of CIDR strings (mixed v4/v6); default [ ].
-    override    — { ingress?, egress? }; each side is either omitted /
-                  null (compute it from interfaces+cidrs) or a
-                  family-keyed override that replaces the computed side
-                  wholesale. Same shape as the returned values.
+    override    — { ingress?, egress? }; each direction is either
+                  omitted / null (compute it from interfaces+cidrs)
+                  or a family-keyed override that replaces the
+                  computed direction wholesale. Same shape as the
+                  returned values.
 
   Output:
     {
