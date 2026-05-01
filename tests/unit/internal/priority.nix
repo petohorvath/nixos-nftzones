@@ -7,74 +7,74 @@
   nftypes,
 }:
 let
-  inherit (nftzones.internal.priority) resolvePrioritySymbol;
+  inherit (nftzones.internal.priority) resolvePriority;
 in
 {
-  # ===== resolvePrioritySymbol — every symbol resolves to its int =====
+  # ===== resolvePriority — every symbol resolves to its int =====
 
   testResolveFirst = {
-    expr = resolvePrioritySymbol "first";
+    expr = resolvePriority "first";
     expected = 1;
   };
 
   testResolvePreDispatch = {
-    expr = resolvePrioritySymbol "preDispatch";
+    expr = resolvePriority "preDispatch";
     expected = 50;
   };
 
   testResolvePostDispatch = {
-    expr = resolvePrioritySymbol "postDispatch";
+    expr = resolvePriority "postDispatch";
     expected = 100;
   };
 
   testResolveDefault = {
-    expr = resolvePrioritySymbol "default";
+    expr = resolvePriority "default";
     expected = 500;
   };
 
   testResolveLast = {
-    expr = resolvePrioritySymbol "last";
+    expr = resolvePriority "last";
     expected = 999;
   };
 
-  # ===== resolvePrioritySymbol — int values pass through =====
+  # ===== resolvePriority — int values pass through =====
 
   testResolveIntPassThrough = {
-    expr = resolvePrioritySymbol 250;
+    expr = resolvePriority 250;
     expected = 250;
   };
 
   testResolveIntZero = {
-    expr = resolvePrioritySymbol 0;
+    expr = resolvePriority 0;
     expected = 0;
   };
 
   # ===== pre-dispatch cutoff — symbols below 100 emit before per-zone jumps =====
 
   testFirstIsPreDispatch = {
-    expr = resolvePrioritySymbol "first" < 100;
+    expr = resolvePriority "first" < 100;
     expected = true;
   };
 
   testPreDispatchIsPreDispatch = {
-    expr = resolvePrioritySymbol "preDispatch" < 100;
+    expr = resolvePriority "preDispatch" < 100;
     expected = true;
   };
 
   # ===== post-dispatch cutoff — symbols >= 100 emit after per-zone jumps =====
 
   testPostDispatchIsPostDispatch = {
-    expr = resolvePrioritySymbol "postDispatch" >= 100;
+    expr = resolvePriority "postDispatch" >= 100;
     expected = true;
   };
 
   testDefaultIsPostDispatch = {
-    expr = resolvePrioritySymbol "default" >= 100;
+    expr = resolvePriority "default" >= 100;
     expected = true;
   };
 
   testLastIsPostDispatch = {
-    expr = resolvePrioritySymbol "last" >= 100;
+    expr = resolvePriority "last" >= 100;
     expected = true;
   };
 
@@ -82,10 +82,10 @@ in
 
   testSymbolsAreOrdered = {
     expr =
-      resolvePrioritySymbol "first" < resolvePrioritySymbol "preDispatch"
-      && resolvePrioritySymbol "preDispatch" < resolvePrioritySymbol "postDispatch"
-      && resolvePrioritySymbol "postDispatch" < resolvePrioritySymbol "default"
-      && resolvePrioritySymbol "default" < resolvePrioritySymbol "last";
+      resolvePriority "first" < resolvePriority "preDispatch"
+      && resolvePriority "preDispatch" < resolvePriority "postDispatch"
+      && resolvePriority "postDispatch" < resolvePriority "default"
+      && resolvePriority "default" < resolvePriority "last";
     expected = true;
   };
 }

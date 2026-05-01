@@ -88,7 +88,8 @@
   Writes: ctx.expandedGroups
 
   Produces the wildcard-expanded `from` / `to` per
-  (group, entry, direction).
+  (group, entry, direction). Substitution + dedup is inlined as a
+  local helper since this is the only consumer.
 
   Output shape:
     expandedGroups = {
@@ -106,7 +107,7 @@
   Writes: ctx.resolvedPriorities
 
   Resolves each entry's `priority` (which is `either int symbol`)
-  to a plain int via `internal.priority.resolvePrioritySymbol`.
+  to a plain int via `internal.priority.resolvePriority`.
   Stored per-group, per-entry. Consumed by Phase 3 (dispatch + sort)
   so sorting compares ints, not mixed values. Policies skip this
   phase because they don't carry a `priority` field — they are
@@ -172,7 +173,19 @@
 let
   inherit (inputs) lib;
   inherit (internal.node) toZone;
-  inherit (internal.wildcard) expandWildcard;
+
+  /*
+    Build the pipeline's initial `{ table; ctx }` from a fresh
+    table value. The `ctx` is seeded with an empty `errors` list
+    so validating phases can append unconditionally without
+    `or [ ]` defensiveness.
+  */
+  mkInitialState = table: {
+    inherit table;
+    ctx = {
+      errors = [ ];
+    };
+  };
 
   collectAllZoneNames =
     { table, ctx }:
@@ -201,7 +214,11 @@ let
       inherit (table.settings) wildcardZone;
       inherit (ctx) allZoneNames;
 
-      expandDirection = direction: entry: expandWildcard wildcardZone allZoneNames entry.${direction};
+      expandWildcard =
+        zones:
+        lib.unique (lib.concatMap (z: if z == wildcardZone then allZoneNames else [ z ]) zones);
+
+      expandDirection = direction: entry: expandWildcard entry.${direction};
 
       expandEntry =
         directions: entry: lib.genAttrs directions (direction: expandDirection direction entry);
@@ -227,9 +244,9 @@ let
   resolvePriorities =
     { table, ctx }:
     let
-      inherit (internal.priority) resolvePrioritySymbol;
+      inherit (internal.priority) resolvePriority;
 
-      resolveGroup = lib.mapAttrs (_: entry: resolvePrioritySymbol entry.priority);
+      resolveGroup = lib.mapAttrs (_: entry: resolvePriority entry.priority);
 
       resolvedPriorities = {
         filters = resolveGroup table.filters;
@@ -371,24 +388,16 @@ let
   normalizeTable =
     table:
     let
-      final =
-        lib.pipe
-          {
-            inherit table;
-            ctx = {
-              errors = [ ];
-            };
-          }
-          [
-            convertNodesToZones
-            collectAllZoneNames
-            expandWildcardZones
-            resolvePriorities
-            collectZoneRefs
-            checkNameCollisions
-            checkSettings
-            checkZoneRefs
-          ];
+      final = lib.pipe (mkInitialState table) [
+        convertNodesToZones
+        collectAllZoneNames
+        expandWildcardZones
+        resolvePriorities
+        collectZoneRefs
+        checkNameCollisions
+        checkSettings
+        checkZoneRefs
+      ];
     in
     if final.ctx.errors == [ ] then
       final

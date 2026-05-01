@@ -3,7 +3,7 @@
   `nftzones.internal.priority`.
 
   Exported:
-    - `resolvePrioritySymbol` — resolve a rule priority value
+    - `resolvePriority` — resolve a rule priority value
                                 (`either int symbol`) to an int.
 
   Used by the compile pipeline to resolve `rulePriority` values
@@ -11,7 +11,7 @@
   resolution is a separate concern and is delegated to
   `nftypes.resolvePriority` (family-aware).
 
-  ===== resolvePrioritySymbol =====
+  ===== resolvePriority =====
 
   Input:  a priority value — either an int or one of the symbol
           strings below.
@@ -40,8 +40,8 @@ let
     last = 999;
   };
 
-  resolvePrioritySymbol = p: if builtins.isInt p then p else rulePrioritySymbols.${p};
+  resolvePriority = p: if builtins.isInt p then p else rulePrioritySymbols.${p};
 in
 {
-  inherit resolvePrioritySymbol;
+  inherit resolvePriority;
 }

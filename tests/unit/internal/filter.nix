@@ -1,5 +1,5 @@
 # Unit tests for `lib/internal/filter.nix` (exposed as
-# `nftzones.internal.filter.groupExpansionsByChain`). Same
+# `nftzones.internal.filter.groupCellsByChain`). Same
 # `testFoo = { expr; expected; }` shape as every other unit test;
 # aggregated by `tests/unit/default.nix`.
 {
@@ -8,9 +8,9 @@
   nftypes,
 }:
 let
-  inherit (nftzones.internal.filter) groupExpansionsByChain;
+  inherit (nftzones.internal.filter) groupCellsByChain;
 
-  bareExpansionOf = from: to: { inherit from to; };
+  bareCellOf = from: to: { inherit from to; };
 
   emptyChains = {
     input = [ ];
@@ -19,100 +19,100 @@ let
   };
 in
 {
-  # ===== groupExpansionsByChain — empty input =====
+  # ===== groupCellsByChain — empty input =====
 
   testChainsEmpty = {
-    expr = groupExpansionsByChain {
+    expr = groupCellsByChain {
       localZone = "host";
-      expansions = [ ];
+      cells = [ ];
     };
     expected = emptyChains;
   };
 
-  # ===== groupExpansionsByChain — to == localZone → input =====
+  # ===== groupCellsByChain — to == localZone → input =====
 
   testChainsInputDispatch = {
-    expr = groupExpansionsByChain {
+    expr = groupCellsByChain {
       localZone = "host";
-      expansions = [ (bareExpansionOf "wan" "host") ];
+      cells = [ (bareCellOf "wan" "host") ];
     };
     expected = emptyChains // {
-      input = [ (bareExpansionOf "wan" "host") ];
+      input = [ (bareCellOf "wan" "host") ];
     };
   };
 
-  # ===== groupExpansionsByChain — from == localZone → output =====
+  # ===== groupCellsByChain — from == localZone → output =====
 
   testChainsOutputDispatch = {
-    expr = groupExpansionsByChain {
+    expr = groupCellsByChain {
       localZone = "host";
-      expansions = [ (bareExpansionOf "host" "wan") ];
+      cells = [ (bareCellOf "host" "wan") ];
     };
     expected = emptyChains // {
-      output = [ (bareExpansionOf "host" "wan") ];
+      output = [ (bareCellOf "host" "wan") ];
     };
   };
 
-  # ===== groupExpansionsByChain — neither side is localZone → forward =====
+  # ===== groupCellsByChain — neither side is localZone → forward =====
 
   testChainsForwardDispatch = {
-    expr = groupExpansionsByChain {
+    expr = groupCellsByChain {
       localZone = "host";
-      expansions = [ (bareExpansionOf "lan" "wan") ];
+      cells = [ (bareCellOf "lan" "wan") ];
     };
     expected = emptyChains // {
-      forward = [ (bareExpansionOf "lan" "wan") ];
+      forward = [ (bareCellOf "lan" "wan") ];
     };
   };
 
-  # ===== groupExpansionsByChain — both endpoints localZone → input (to-side wins) =====
+  # ===== groupCellsByChain — both endpoints localZone → input (to-side wins) =====
 
   testChainsHostToHostInput = {
-    expr = groupExpansionsByChain {
+    expr = groupCellsByChain {
       localZone = "host";
-      expansions = [ (bareExpansionOf "host" "host") ];
+      cells = [ (bareCellOf "host" "host") ];
     };
     expected = emptyChains // {
-      input = [ (bareExpansionOf "host" "host") ];
+      input = [ (bareCellOf "host" "host") ];
     };
   };
 
-  # ===== groupExpansionsByChain — localZone parameter is honoured =====
+  # ===== groupCellsByChain — localZone parameter is honoured =====
 
   testChainsCustomLocalZone = {
     # `host` is just a string here; `self` is the actual local zone
-    expr = groupExpansionsByChain {
+    expr = groupCellsByChain {
       localZone = "self";
-      expansions = [
-        (bareExpansionOf "wan" "self")
-        (bareExpansionOf "lan" "host")
+      cells = [
+        (bareCellOf "wan" "self")
+        (bareCellOf "lan" "host")
       ];
     };
     expected = emptyChains // {
-      input = [ (bareExpansionOf "wan" "self") ];
-      forward = [ (bareExpansionOf "lan" "host") ];
+      input = [ (bareCellOf "wan" "self") ];
+      forward = [ (bareCellOf "lan" "host") ];
     };
   };
 
-  # ===== groupExpansionsByChain — mixed dispatch, preserves order within bucket =====
+  # ===== groupCellsByChain — mixed dispatch, preserves order within bucket =====
 
   testChainsMixedBuckets = {
-    expr = groupExpansionsByChain {
+    expr = groupCellsByChain {
       localZone = "host";
-      expansions = [
-        (bareExpansionOf "wan" "host")
-        (bareExpansionOf "lan" "wan")
-        (bareExpansionOf "host" "wan")
-        (bareExpansionOf "lan" "host")
+      cells = [
+        (bareCellOf "wan" "host")
+        (bareCellOf "lan" "wan")
+        (bareCellOf "host" "wan")
+        (bareCellOf "lan" "host")
       ];
     };
     expected = {
       input = [
-        (bareExpansionOf "wan" "host")
-        (bareExpansionOf "lan" "host")
+        (bareCellOf "wan" "host")
+        (bareCellOf "lan" "host")
       ];
-      output = [ (bareExpansionOf "host" "wan") ];
-      forward = [ (bareExpansionOf "lan" "wan") ];
+      output = [ (bareCellOf "host" "wan") ];
+      forward = [ (bareCellOf "lan" "wan") ];
     };
   };
 }

@@ -15,6 +15,7 @@ The pipeline (and the surrounding code) names the data-model levels consistently
 - **Group** — one of the rule-bearing collections on a table: `filters`, `policies`, `snats`, `dnats`, `sroutes`, `droutes`. Each group is `attrsOf <kind-submodule>`. *Not* used for `zones` and `nodes` — those are zone-level declarations and have their own terminology ("zone declaration", "node declaration").
 - **Entry** — one item inside a group, keyed by name. `table.filters.allow-ssh` is an entry; the body field on it (`entry.rule`, the list of nftypes statements) is unambiguous because the wrapper is an *entry*, not a *rule*.
 - **Direction** — `from` or `to`, the zone-name fields on an entry. Some groups are bidirectional (filters, policies, snats — both `from` and `to`); others are single-direction (`dnats`, `sroutes` have only `from`; `droutes` only `to`).
+- **Cell** — a concrete `(from, to)` instance of an entry produced by Phase 2's cartesian product. Same shape as the entry but with the listed directions as scalars instead of lists. An entry with `from = [ "lan" "guest" ]; to = [ "wan" "vpn" ]` produces four cells. For single-direction groups, a cell has only the relevant scalar (e.g., a `dnat` cell has `from = "wan"` and no `to`).
 
 The trio shows up directly in `internal/normalize.nix`'s helpers:
 
@@ -42,7 +43,7 @@ Four phases, each a pure transformation:
 table
   ↓ Phase 1: normalize       lower nodes, resolve wildcards, validate
 normalizedTable
-  ↓ Phase 2: expand          cartesian product per rule (zone-pair.genExpansions)
+  ↓ Phase 2: expand          cartesian product per entry (entry.toCells)
 expandedTable
   ↓ Phase 3: dispatch+sort   chain bucketing, priority sort
 chainBuckets
@@ -73,7 +74,7 @@ Lowered zones merge into `table.zones`; `table.nodes` is cleared. After this ste
 
 ### 1.2 Wildcard resolution
 
-`internal.wildcard.expandWildcard` substitutes the wildcard zone (default `"all"`) in every rule's `from` / `to` list with the full set of in-scope zones (declared zones plus `settings.localZone`):
+Phase 1 substitutes the wildcard zone (default `"all"`) in every rule's `from` / `to` list with the full set of in-scope zones (declared zones plus `settings.localZone`). The substitution + dedup is inlined inside `internal.normalize.expandWildcardZones` since it has no other consumer:
 
 ```
 wildcard = "all"
@@ -99,14 +100,14 @@ Validations deferred to later phases:
 
 ## Phase 2: expand
 
-`internal.zonePair.genExpansions` does the cartesian product of `from × to` per rule. The orchestrator maps over each rule group's collection:
+`internal.entry.toCells` does the cartesian product across an entry's directions. Directions present on the entry (`from` and / or `to`) are auto-detected, so the same call works for bidirectional and single-direction groups uniformly. The orchestrator maps over each rule group's collection:
 
 ```
 filters.web-out = {
   from = [ "lan" "guest" ]; to = [ "wan" "vpn" ];
   rule = …; priority = "default"; …;
 };
-↓ genExpansions
+↓ toCells
 [
   { from = "lan";   to = "wan"; rule = …; priority = "default"; … }
   { from = "lan";   to = "vpn"; rule = …; priority = "default"; … }
@@ -115,7 +116,7 @@ filters.web-out = {
 ]
 ```
 
-Each cell preserves the original rule's body (`rule`, `priority`, `comment`, etc.) but with singular `from` / `to`. Output is a flat list per rule group: `{ filter, snat, dnat, sroute, droute, policy } = [ cells … ]`.
+Each cell preserves the original entry's body (`rule`, `priority`, `comment`, etc.) but with singular direction values. Single-direction entries (`dnats` / `sroutes` carry only `from`; `droutes` only `to`) produce one cell per scalar value of the direction they have. Output is a flat list per rule group: `{ filter, snat, dnat, sroute, droute, policy } = [ cells … ]`.
 
 ## Phase 3: dispatch + sort
 
@@ -125,7 +126,7 @@ Each cell goes to a chain based on its group:
 
 | Group    | Chain dispatch                                                                          |
 |----------|-----------------------------------------------------------------------------------------|
-| `filter` | `internal.filter.groupExpansionsByChain` — input/forward/output via host-position rule. |
+| `filter` | `internal.filter.groupCellsByChain` — input/forward/output via host-position rule. |
 | `policy` | Same as filter — policies become tail rules in the same per-pair sub-chains.            |
 | `snat`   | Always postrouting (`type nat hook postrouting priority srcnat`).                        |
 | `dnat`   | Always prerouting (`type nat hook prerouting priority dstnat`).                          |
@@ -138,7 +139,7 @@ Output is a 2D buckets attrset: `{ <chainKey> = [ <cells>... ]; ... }`.
 
 ### 3.2 Sort
 
-`internal.priority.resolvePrioritySymbol` resolves rule priority symbols (`first` / `preDispatch` / `postDispatch` / `default` / `last`) to ints (Phase 1 runs this for every entry; the pre-resolved values land in `ctx.resolvedPriorities`). Each chain bucket sorts by `(priority asc, name asc)`. Name is the attrset key from the original collection; it acts as a stable tiebreaker.
+`internal.priority.resolvePriority` resolves rule priority symbols (`first` / `preDispatch` / `postDispatch` / `default` / `last`) to ints (Phase 1 runs this for every entry; the pre-resolved values land in `ctx.resolvedPriorities`). Each chain bucket sorts by `(priority asc, name asc)`. Name is the attrset key from the original collection; it acts as a stable tiebreaker.
 
 The cutoff at `100` (between `preDispatch=50` and `postDispatch=100`) splits cells into pre-dispatch (emit before the per-pair dispatch jump) and post-dispatch (emit after) — see Phase 4.
 
@@ -204,14 +205,20 @@ lib/
   internal/
     # Phase 1 helpers (implemented)
     node.nix                 — toZone (node → zone lowering)
-    wildcard.nix             — expandWildcard
-    validate.nix             — checkNameCollisions, checkZoneRefs
+    normalize.nix            — phase orchestrator + all Phase 1 phases
+                               (convertNodesToZones, collectAllZoneNames,
+                               expandWildcardZones, resolvePriorities,
+                               collectZoneRefs, checkNameCollisions,
+                               checkSettings, checkZoneRefs)
+
+    # Phase 2 helpers (implemented)
+    expand.nix               — expandTable (entry → cells per group)
 
     # Existing helpers used by Phases 2/3/4 (implemented)
     zone.nix                 — genMatch (per-zone match expressions)
-    zone-pair.nix            — genExpansions (cartesian product)
-    filter.nix               — groupExpansionsByChain (host-position dispatch)
-    priority.nix             — resolvePrioritySymbol (symbol → int)
+    entry.nix                — toCells (entry → list of cells)
+    filter.nix               — groupCellsByChain (host-position dispatch)
+    priority.nix             — resolvePriority (symbol → int)
 
     # Phase 4 helpers (TBD)
     emit-sets.nix            — per-zone interface / CIDR sets
@@ -244,12 +251,28 @@ Each new internal module gets a unit-test file. Orchestrator and emit modules al
 
 ## Status
 
-Phase 1 helpers (`node`, `wildcard`, `validate`) are implemented and unit-tested. The orchestrator and Phases 2-4 emission helpers are not yet written.
+Phase 1 (normalize) and Phase 2 (expand) are implemented and unit-tested. Phase 3 (dispatch + sort) and Phase 4 (emit) are not yet written.
+
+The pipeline today, end-to-end through what's built:
+
+```nix
+final = lib.pipe (mkInitialState table) [
+  # Phase 1 — normalize
+  convertNodesToZones collectAllZoneNames expandWildcardZones
+  resolvePriorities  collectZoneRefs
+  checkNameCollisions checkSettings checkZoneRefs
+  # Phase 2 — expand
+  expandTable
+];
+# final.ctx.cells.{filters, policies, snats, dnats, sroutes, droutes}
+```
 
 Next concrete milestones:
 
-1. Orchestrator skeleton that calls Phase 1 helpers and produces a normalized intermediate value.
-2. Phase 4 minimum-viable emit — empty base chains with settings boilerplate, no rules. Verifies the output shape via `nft -c -j`.
-3. Rule emission for filter and policy.
-4. NAT and route emission.
-5. Named-object passthrough and reference validation.
+1. Phase 3 dispatch: bucket cells by chain via `internal.filter.groupCellsByChain` for filter/policy and fixed chains for snat/dnat/sroute/droute. Output `ctx.chainBuckets`.
+2. Phase 3 sort: sort each bucket by `(priority, name)`. Pre/post-dispatch split at priority 100.
+3. Phase 4 minimum-viable emit — empty base chains with settings boilerplate, no rules. Verifies the output shape via `nft -c -j`.
+4. Rule emission for filter and policy.
+5. NAT and route emission.
+6. Named-object passthrough and reference validation (open question 3).
+7. Top-level `compile.nix` orchestrator + public `mkTable` / `mkRuleset` API.

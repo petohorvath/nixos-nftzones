@@ -1,11 +1,10 @@
 { inputs }:
 let
   zone = import ./zone.nix { inherit inputs; };
-  zonePair = import ./zone-pair.nix { inherit inputs; };
+  entry = import ./entry.nix { inherit inputs; };
   filter = import ./filter.nix { inherit inputs; };
   priority = import ./priority.nix { inherit inputs; };
   node = import ./node.nix { inherit inputs zone; };
-  wildcard = import ./wildcard.nix { inherit inputs; };
 
   /*
     Phase-0 modules — leaf helpers. Higher-level modules
@@ -15,11 +14,10 @@ let
   base = {
     inherit
       zone
-      zonePair
+      entry
       filter
       priority
       node
-      wildcard
       ;
   };
 
@@ -27,5 +25,10 @@ let
     inherit inputs;
     internal = base;
   };
+
+  expand = import ./expand.nix {
+    inherit inputs;
+    internal = base;
+  };
 in
-base // { inherit normalize; }
+base // { inherit normalize expand; }

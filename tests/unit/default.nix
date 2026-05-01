@@ -13,9 +13,9 @@ args@{
   };
 }
 // import ./internal/zone.nix args
-// import ./internal/zone-pair.nix args
+// import ./internal/entry.nix args
 // import ./internal/filter.nix args
 // import ./internal/priority.nix args
 // import ./internal/node.nix args
-// import ./internal/wildcard.nix args
 // import ./internal/normalize.nix args
+// import ./internal/expand.nix args
