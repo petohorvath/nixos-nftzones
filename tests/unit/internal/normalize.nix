@@ -10,6 +10,7 @@ let
   inherit (nftzones.internal.normalize)
     convertNodesToZones
     checkNameCollisions
+    checkPolicyUniqueness
     checkSettings
     collectAllZoneNames
     expandWildcardZones
@@ -457,6 +458,166 @@ in
       {
         name = "settingsConflict";
         value = "settings.localZone 'local' collides with a declared zone or node";
+      }
+    ];
+  };
+
+  # ===== checkPolicyUniqueness — no policies =====
+
+  testCheckPolicyUniquenessNoPolicies = {
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+          expandWildcardZones
+          checkPolicyUniqueness
+        ]
+        emptyTable
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkPolicyUniqueness — single policy =====
+
+  testCheckPolicyUniquenessSingle = {
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+          expandWildcardZones
+          checkPolicyUniqueness
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              lan = { };
+              wan = { };
+            };
+            policies.lan-to-wan = {
+              from = [ "lan" ];
+              to = [ "wan" ];
+            };
+          }
+        )
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkPolicyUniqueness — distinct (from, to) pairs =====
+
+  testCheckPolicyUniquenessDistinct = {
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+          expandWildcardZones
+          checkPolicyUniqueness
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              lan = { };
+              wan = { };
+              dmz = { };
+            };
+            policies = {
+              a = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+              };
+              b = {
+                from = [ "lan" ];
+                to = [ "dmz" ];
+              };
+            };
+          }
+        )
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkPolicyUniqueness — direct duplicate (from, to) =====
+
+  testCheckPolicyUniquenessDirectDuplicate = {
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+          expandWildcardZones
+          checkPolicyUniqueness
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              lan = { };
+              wan = { };
+            };
+            policies = {
+              allow = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+              };
+              deny = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+              };
+            };
+          }
+        )
+      ).errors;
+    expected = [
+      {
+        name = "policyConflict";
+        value = "duplicate policy for (lan → wan): allow, deny";
+      }
+    ];
+  };
+
+  # ===== checkPolicyUniqueness — wildcard expansion produces conflict =====
+
+  testCheckPolicyUniquenessWildcardConflict = {
+    # `broad` fans out to a cell per in-scope source zone for `to = wan`;
+    # `specific` produces only the (lan, wan) cell. The two collide on
+    # (lan → wan).
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+          expandWildcardZones
+          checkPolicyUniqueness
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              lan = { };
+              wan = { };
+            };
+            policies = {
+              broad = {
+                from = [ "all" ];
+                to = [ "wan" ];
+              };
+              specific = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+              };
+            };
+          }
+        )
+      ).errors;
+    expected = [
+      {
+        name = "policyConflict";
+        value = "duplicate policy for (lan → wan): broad, specific";
       }
     ];
   };

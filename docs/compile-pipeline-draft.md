@@ -95,7 +95,6 @@ Each returns `[ String ]` of error messages. The orchestrator aggregates and thr
 
 Validations deferred to later phases:
 
-- **Policy uniqueness** — at most one policy per `(from-cell, to-cell)` pair after expansion. Needs Phase 2's output.
 - **Named-object refs** — `counter name "X"`, `set @X`, `ct helper "X"` references in rule bodies must match `objects.<kind>` keys. Implementation will be a special-case extractor pattern-matching on the variants that can carry named refs (counter, limit, quota, ct helper, ct timeout, ct expectation, secmark, synproxy, tunnel, plus set/map lookups inside match expressions). See open question 3 for the design discussion.
 
 ## Phase 2: expand

@@ -25,6 +25,7 @@
         ↓ checkNameCollisions    ctx.errors  (appends)
         ↓ checkSettings          ctx.errors  (appends)
         ↓ checkZoneRefs          ctx.errors  (appends)
+        ↓ checkPolicyUniqueness  ctx.errors  (appends)
       { table;
         ctx = {
           mergedZones; allZoneNames; expandedGroups;
@@ -152,6 +153,25 @@
   Verifies every collected zone reference resolves to a known
   zone (declared zone, lowered node, or `settings.localZone`).
   Each error is `lib.nameValuePair "invalidZoneRef" <message>`.
+
+  ===== checkPolicyUniqueness =====
+
+  Reads:  ctx.expandedGroups.policies
+  Writes: ctx.errors (appends)
+
+  At most one policy may apply per `(from, to)` cell after
+  expansion. A policy entry like `from = [ "all" ]; to = [ "wan" ]`
+  fans out to a cell per in-scope source zone; if a second, more
+  specific policy targets one of those same `(from, to)` pairs,
+  the resulting nftables ruleset's tail rule for that pair would
+  have an undefined winner. This validator catches the conflict
+  at compile time by enumerating `(entryName, from, to)` triples
+  from `ctx.expandedGroups.policies` and flagging any `(from, to)`
+  pair claimed by more than one entry.
+
+  Each error is `lib.nameValuePair "policyConflict" <message>`,
+  with the message naming the `(from, to)` pair and every entry
+  whose expansion produced a cell for it.
 
   ===== normalizeTable =====
 
@@ -367,6 +387,41 @@ let
       };
     };
 
+  checkPolicyUniqueness =
+    { table, ctx }:
+    let
+      /*
+        Enumerate (entryName, from, to) triples from each policy
+        entry's expanded directions. A policy with `from = [a b]`
+        and `to = [x y]` contributes four triples — one per
+        cartesian-product cell.
+      */
+      triples = lib.concatLists (
+        lib.mapAttrsToList (
+          entryName: dirs:
+          lib.concatMap (
+            from: map (to: { inherit entryName from to; }) dirs.to
+          ) dirs.from
+        ) ctx.expandedGroups.policies
+      );
+
+      keyOf = t: "(${t.from} → ${t.to})";
+      grouped = lib.groupBy keyOf triples;
+      duplicates = lib.filterAttrs (_: ts: builtins.length ts > 1) grouped;
+
+      newErrors = lib.mapAttrsToList (
+        key: ts:
+        lib.nameValuePair "policyConflict"
+          "duplicate policy for ${key}: ${lib.concatStringsSep ", " (map (t: t.entryName) ts)}"
+      ) duplicates;
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
   checkZoneRefs =
     { table, ctx }:
     let
@@ -397,6 +452,7 @@ let
         checkNameCollisions
         checkSettings
         checkZoneRefs
+        checkPolicyUniqueness
       ];
     in
     if final.ctx.errors == [ ] then
@@ -411,6 +467,7 @@ in
   inherit
     convertNodesToZones
     checkNameCollisions
+    checkPolicyUniqueness
     checkSettings
     collectAllZoneNames
     expandWildcardZones
