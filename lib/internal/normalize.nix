@@ -25,11 +25,12 @@
         ↓ checkNameCollisions    ctx.errors  (appends)
         ↓ checkSettings          ctx.errors  (appends)
         ↓ checkZoneRefs          ctx.errors  (appends)
+        ↓ checkZoneMatchable     ctx.errors  (appends)
         ↓ checkPolicyUniqueness  ctx.errors  (appends)
       { table;
         ctx = {
           mergedZones; allZoneNames; expandedGroups;
-          zoneRefs; errors;
+          resolvedPriorities; zoneRefs; errors;
         };
       }
 
@@ -128,10 +129,18 @@
   Reads:  table.{filters,...,droutes,nodes,settings.wildcardZone}
   Writes: ctx.zoneRefs
 
-  Walks the *original* table and emits one `{ zone; path; }`
-  record per zone-name reference, skipping wildcard placeholders
-  (those are not unresolved references — they're a directive).
-  Paths use user-input slot indices.
+  Walks the *original* table and emits one record per zone-name
+  reference, skipping wildcard placeholders (those are not
+  unresolved references — they're a directive). Paths use
+  user-input slot indices.
+
+  Record shapes:
+    - Group-side ref:  `{ zone; path; direction; }`
+                       (`direction` ∈ `{ "from" "to" }`)
+    - Node parent ref: `{ zone; path; }` (no `direction`)
+
+  `direction` lets `checkZoneMatchable` know which side of the
+  zone's `match` field to validate against.
 
   ===== checkSettings =====
 
@@ -153,6 +162,32 @@
   Verifies every collected zone reference resolves to a known
   zone (declared zone, lowered node, or `settings.localZone`).
   Each error is `lib.nameValuePair "invalidZoneRef" <message>`.
+
+  ===== checkZoneMatchable =====
+
+  Reads:  ctx.zoneRefs, ctx.mergedZones, table.settings.localZone
+  Writes: ctx.errors (appends)
+
+  Verifies that every group-side zone reference (`from` / `to` on
+  filter / policy / snat / dnat / sroute / droute entries) hits a
+  zone whose computed `match` is non-empty *on the side actually
+  used*: `from` → `match.ingress`, `to` → `match.egress`.
+
+  Without this check, a zone declared as `zones.foo = { };` (empty
+  interfaces, empty CIDRs, no `matchOverride`) — or one with an
+  asymmetric `matchOverride` that populates only one side — would
+  silently produce unconditional jumps in Phase 4, almost certainly
+  not what the user wanted.
+
+  Skipped:
+    - Refs without `direction` (node parent refs — naming, not
+      matching).
+    - Refs to `settings.localZone` (sentinel, no `mergedZones`
+      entry by design — Phase 4 skips that side's match too).
+    - Refs to unknown zones (already flagged by `checkZoneRefs`,
+      no need to double-error).
+
+  Each error is `lib.nameValuePair "zoneNotMatchable" <message>`.
 
   ===== checkPolicyUniqueness =====
 
@@ -300,7 +335,7 @@ let
             else
               [
                 {
-                  inherit zone;
+                  inherit zone direction;
                   path = "${prefix}[${toString i}]";
                 }
               ]
@@ -437,6 +472,49 @@ let
       };
     };
 
+  checkZoneMatchable =
+    { table, ctx }:
+    let
+      inherit (table.settings) localZone;
+      inherit (ctx) zoneRefs mergedZones;
+
+      # `from` matches inbound packets → zone's `ingress` direction.
+      # `to`   matches outbound packets → zone's `egress`  direction.
+      directionToMatchSide = {
+        from = "ingress";
+        to = "egress";
+      };
+
+      # Skip refs that aren't side-bound (node parent refs), refs to
+      # the localZone sentinel (no `mergedZones` entry by design),
+      # and refs to unknown zones (already flagged by checkZoneRefs).
+      sideBoundRefs = builtins.filter (
+        r: r ? direction && r.zone != localZone && mergedZones ? ${r.zone}
+      ) zoneRefs;
+
+      unmatchableRefs = builtins.filter (
+        r:
+        let
+          side = directionToMatchSide.${r.direction};
+        in
+        mergedZones.${r.zone}.match.${side} == [ ]
+      ) sideBoundRefs;
+
+      newErrors = map (
+        r:
+        let
+          side = directionToMatchSide.${r.direction};
+        in
+        lib.nameValuePair "zoneNotMatchable" "${r.path} references zone '${r.zone}' which has no ${side} match (no interfaces, no ${side}-side CIDRs, no matchOverride.${side})"
+      ) unmatchableRefs;
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
   normalizeTable =
     table:
     let
@@ -449,6 +527,7 @@ let
         checkNameCollisions
         checkSettings
         checkZoneRefs
+        checkZoneMatchable
         checkPolicyUniqueness
       ];
     in
@@ -471,6 +550,7 @@ in
     resolvePriorities
     collectZoneRefs
     checkZoneRefs
+    checkZoneMatchable
     normalizeTable
     ;
 }

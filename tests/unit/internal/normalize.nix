@@ -17,6 +17,7 @@ let
     resolvePriorities
     collectZoneRefs
     checkZoneRefs
+    checkZoneMatchable
     normalizeTable
     ;
 
@@ -90,6 +91,13 @@ let
       inherit table;
       ctx = emptyCtx;
     } phases).ctx;
+
+  /*
+    Same as `runPipeline` but accepts a `body` and runs it through
+    the table submodule first (via `evalTable`). Use when phases
+    read submodule-computed fields like `zone.match`.
+  */
+  runEvalPipeline = phases: body: runPipeline phases (evalTable body);
 in
 {
   # ===== convertNodesToZones — empty input =====
@@ -291,7 +299,9 @@ in
       (runPhase checkNameCollisions (
         emptyTable
         // {
-          zones.lan = { };
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
           nodes.web = {
             zone = "lan";
             address.ipv4 = "1.1.1.1";
@@ -371,7 +381,9 @@ in
         (
           emptyTable
           // {
-            zones.lan = { };
+            zones.lan = {
+              interfaces = [ "lan0" ];
+            };
             nodes.web = {
               zone = "lan";
               address.ipv4 = "1.1.1.1";
@@ -490,8 +502,12 @@ in
           emptyTable
           // {
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             policies.lan-to-wan = {
               from = [ "lan" ];
@@ -518,9 +534,15 @@ in
           emptyTable
           // {
             zones = {
-              lan = { };
-              wan = { };
-              dmz = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
+              dmz = {
+                interfaces = [ "dmz0" ];
+              };
             };
             policies = {
               a = {
@@ -553,8 +575,12 @@ in
           emptyTable
           // {
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             policies = {
               allow = {
@@ -595,8 +621,12 @@ in
           emptyTable
           // {
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             policies = {
               broad = {
@@ -633,8 +663,12 @@ in
           emptyTable
           // {
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             filters.f = {
               from = [ "lan" ];
@@ -663,8 +697,12 @@ in
           emptyTable
           // {
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             filters.f = {
               from = [
@@ -752,7 +790,9 @@ in
     expr =
       let
         input = emptyTable // {
-          zones.lan = { };
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
           filters.f = {
             from = [ "all" ];
             to = [ "lan" ];
@@ -906,14 +946,17 @@ in
     expected = [
       {
         zone = "lan";
+        direction = "from";
         path = "filters.web-out.from[0]";
       }
       {
         zone = "guest";
+        direction = "from";
         path = "filters.web-out.from[1]";
       }
       {
         zone = "wan";
+        direction = "to";
         path = "filters.web-out.to[0]";
       }
     ];
@@ -940,14 +983,17 @@ in
     expected = [
       {
         zone = "wan";
+        direction = "from";
         path = "dnats.d.from[0]";
       }
       {
         zone = "guest";
+        direction = "from";
         path = "sroutes.s.from[0]";
       }
       {
         zone = "vpn";
+        direction = "to";
         path = "droutes.dr.to[0]";
       }
     ];
@@ -1056,10 +1102,12 @@ in
     expected = [
       {
         zone = "lan";
+        direction = "from";
         path = "filters.f.from[0]";
       }
       {
         zone = "wan";
+        direction = "from";
         path = "filters.f.from[2]";
       }
     ];
@@ -1081,8 +1129,12 @@ in
           emptyTable
           // {
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             filters.f = {
               from = [ "lan" ];
@@ -1109,7 +1161,9 @@ in
         (
           emptyTable
           // {
-            zones.lan = { };
+            zones.lan = {
+              interfaces = [ "lan0" ];
+            };
             filters.f = {
               from = [ "lan" ];
               to = [ "missing" ];
@@ -1123,6 +1177,277 @@ in
         value = "filters.f.to[0] references unknown zone 'missing' (known: lan, local)";
       }
     ];
+  };
+
+  # ===== checkZoneMatchable — interfaces alone make a zone matchable =====
+
+  testCheckZoneMatchableInterfacesOnly = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          collectZoneRefs
+          checkZoneMatchable
+        ]
+        {
+          name = "fw";
+          zones = {
+            lan = {
+              interfaces = [ "lan0" ];
+            };
+            wan = {
+              interfaces = [ "wan0" ];
+            };
+          };
+          filters.f = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkZoneMatchable — cidrs alone make a zone matchable =====
+
+  testCheckZoneMatchableCidrsOnly = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          collectZoneRefs
+          checkZoneMatchable
+        ]
+        {
+          name = "fw";
+          zones = {
+            lan = {
+              cidrs = [ "10.0.0.0/24" ];
+            };
+            wan = {
+              cidrs = [ "0.0.0.0/0" ];
+            };
+          };
+          filters.f = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkZoneMatchable — matchOverride on both sides is matchable =====
+
+  testCheckZoneMatchableOverrideBoth = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          collectZoneRefs
+          checkZoneMatchable
+        ]
+        {
+          name = "fw";
+          zones.custom = {
+            matchOverride = {
+              ingress = [ [ ] ];
+              egress = [ [ ] ];
+            };
+          };
+          filters.f = {
+            from = [ "custom" ];
+            to = [ "custom" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkZoneMatchable — empty zone used as `from` flags ingress =====
+
+  testCheckZoneMatchableEmptyAsFrom = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          collectZoneRefs
+          checkZoneMatchable
+        ]
+        {
+          name = "fw";
+          zones = {
+            empty = { };
+            wan = {
+              interfaces = [ "wan0" ];
+            };
+          };
+          filters.f = {
+            from = [ "empty" ];
+            to = [ "wan" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [
+      {
+        name = "zoneNotMatchable";
+        value = "filters.f.from[0] references zone 'empty' which has no ingress match (no interfaces, no ingress-side CIDRs, no matchOverride.ingress)";
+      }
+    ];
+  };
+
+  # ===== checkZoneMatchable — empty zone used as `to` flags egress =====
+
+  testCheckZoneMatchableEmptyAsTo = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          collectZoneRefs
+          checkZoneMatchable
+        ]
+        {
+          name = "fw";
+          zones = {
+            lan = {
+              interfaces = [ "lan0" ];
+            };
+            empty = { };
+          };
+          filters.f = {
+            from = [ "lan" ];
+            to = [ "empty" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [
+      {
+        name = "zoneNotMatchable";
+        value = "filters.f.to[0] references zone 'empty' which has no egress match (no interfaces, no egress-side CIDRs, no matchOverride.egress)";
+      }
+    ];
+  };
+
+  # ===== checkZoneMatchable — asymmetric override flags only the missing side =====
+
+  testCheckZoneMatchableAsymmetricOverride = {
+    # Zone has only `ingress` populated. Used as `from` (ingress) → no
+    # error. Used as `to` (egress) → flagged.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          collectZoneRefs
+          checkZoneMatchable
+        ]
+        {
+          name = "fw";
+          zones.partial = {
+            matchOverride.ingress = [ [ ] ];
+          };
+          filters.fromOk = {
+            from = [ "partial" ];
+            to = [ "partial" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [
+      {
+        name = "zoneNotMatchable";
+        value = "filters.fromOk.to[0] references zone 'partial' which has no egress match (no interfaces, no egress-side CIDRs, no matchOverride.egress)";
+      }
+    ];
+  };
+
+  # ===== checkZoneMatchable — localZone references are skipped =====
+
+  testCheckZoneMatchableSkipsLocalZone = {
+    # `local` is the default localZone sentinel — never declared as a
+    # zone, never has a `mergedZones` entry. Phase 4 skips that
+    # side's match emission, so this validator must skip it too.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          collectZoneRefs
+          checkZoneMatchable
+        ]
+        {
+          name = "fw";
+          zones.wan = {
+            interfaces = [ "wan0" ];
+          };
+          filters.in-rule = {
+            from = [ "wan" ];
+            to = [ "local" ];
+            rule = [ ];
+          };
+          filters.out-rule = {
+            from = [ "local" ];
+            to = [ "wan" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkZoneMatchable — unknown zones are left to checkZoneRefs =====
+
+  testCheckZoneMatchableSkipsUnknownZone = {
+    # An unknown zone name is checkZoneRefs's problem; this validator
+    # should not double-report.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          collectZoneRefs
+          checkZoneMatchable
+        ]
+        {
+          name = "fw";
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
+          filters.f = {
+            from = [ "lan" ];
+            to = [ "missing" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkZoneMatchable — node parent refs are not direction-bound =====
+
+  testCheckZoneMatchableSkipsParentRefs = {
+    # `nodes.<x>.zone` is a parent reference — names a zone for
+    # inheritance, doesn't match traffic. No `direction` field on the
+    # ref; checkZoneMatchable filters it out.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          collectZoneRefs
+          checkZoneMatchable
+        ]
+        {
+          name = "fw";
+          zones.empty = { };
+          nodes.api = {
+            zone = "empty";
+            address.ipv4 = "10.0.0.5";
+          };
+        }
+      ).errors;
+    expected = [ ];
   };
 
   # ===== normalizeTable — empty table =====
@@ -1185,8 +1510,12 @@ in
         out = normalizeTable (evalTable {
           name = "fw";
           zones = {
-            lan = { };
-            wan = { };
+            lan = {
+              interfaces = [ "lan0" ];
+            };
+            wan = {
+              interfaces = [ "wan0" ];
+            };
           };
           nodes.web = {
             zone = "lan";
@@ -1216,7 +1545,9 @@ in
         out = normalizeTable (evalTable {
           name = "fw";
           settings.localZone = "host";
-          zones.lan = { };
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
           filters.f = {
             from = [ "all" ];
             to = [ "host" ];
@@ -1238,7 +1569,9 @@ in
       let
         out = normalizeTable (evalTable {
           name = "fw";
-          zones.lan = { };
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
           nodes.web = {
             zone = "lan";
             address.ipv4 = "10.0.0.5";
@@ -1288,7 +1621,9 @@ in
         attempt = builtins.tryEval (
           normalizeTable (evalTable {
             name = "fw";
-            zones.lan = { };
+            zones.lan = {
+              interfaces = [ "lan0" ];
+            };
             filters.f = {
               from = [ "lan" ];
               to = [ "missing" ];

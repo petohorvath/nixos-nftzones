@@ -56,10 +56,18 @@ in
       (runExpand {
         name = "fw";
         zones = {
-          lan = { };
-          guest = { };
-          wan = { };
-          vpn = { };
+          lan = {
+            interfaces = [ "lan0" ];
+          };
+          guest = {
+            interfaces = [ "guest0" ];
+          };
+          wan = {
+            interfaces = [ "wan0" ];
+          };
+          vpn = {
+            interfaces = [ "vpn0" ];
+          };
         };
         filters.web-out = {
           from = [
@@ -108,8 +116,12 @@ in
         (runExpand {
           name = "fw";
           zones = {
-            lan = { };
-            wan = { };
+            lan = {
+              interfaces = [ "lan0" ];
+            };
+            wan = {
+              interfaces = [ "wan0" ];
+            };
           };
           filters.f = {
             from = [ "all" ];
@@ -134,8 +146,12 @@ in
         out = runExpand {
           name = "fw";
           zones = {
-            wan = { };
-            lan = { };
+            wan = {
+              interfaces = [ "wan0" ];
+            };
+            lan = {
+              interfaces = [ "lan0" ];
+            };
           };
           dnats.fwd = {
             from = [
@@ -191,8 +207,12 @@ in
             (runExpand {
               name = "fw";
               zones = {
-                lan = { };
-                wan = { };
+                lan = {
+                  interfaces = [ "lan0" ];
+                };
+                wan = {
+                  interfaces = [ "wan0" ];
+                };
               };
               filters.f = {
                 from = [ "lan" ];
@@ -225,8 +245,12 @@ in
             (runExpand {
               name = "fw";
               zones = {
-                lan = { };
-                wan = { };
+                lan = {
+                  interfaces = [ "lan0" ];
+                };
+                wan = {
+                  interfaces = [ "wan0" ];
+                };
               };
               policies.lan-to-wan = {
                 from = [ "lan" ];
@@ -254,8 +278,12 @@ in
           normalizeTable (evalTable {
             name = "fw";
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             filters.f = {
               from = [ "all" ];

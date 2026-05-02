@@ -58,7 +58,9 @@ in
         bucket =
           (runDispatch {
             name = "fw";
-            zones.wan = { };
+            zones.wan = {
+              interfaces = [ "wan0" ];
+            };
             filters.allow-ssh = {
               from = [ "wan" ];
               to = [ "local" ];
@@ -85,7 +87,9 @@ in
         bucket =
           (runDispatch {
             name = "fw";
-            zones.wan = { };
+            zones.wan = {
+              interfaces = [ "wan0" ];
+            };
             filters.outbound = {
               from = [ "local" ];
               to = [ "wan" ];
@@ -113,8 +117,12 @@ in
           (runDispatch {
             name = "fw";
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             filters.web-out = {
               from = [ "lan" ];
@@ -143,8 +151,12 @@ in
           (runDispatch {
             name = "fw";
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             snats.lan-out = {
               from = [ "lan" ];
@@ -175,7 +187,9 @@ in
         bucket =
           (runDispatch {
             name = "fw";
-            zones.wan = { };
+            zones.wan = {
+              interfaces = [ "wan0" ];
+            };
             dnats.web-fwd = {
               from = [ "wan" ];
               rule = {
@@ -218,7 +232,9 @@ in
         bucket =
           (runDispatch {
             name = "fw";
-            zones.vpn = { };
+            zones.vpn = {
+              interfaces = [ "vpn0" ];
+            };
             droutes.mark-vpn = {
               to = [ "vpn" ];
               rule = [ ];
@@ -251,7 +267,9 @@ in
         bucket =
           (runDispatch {
             name = "fw";
-            zones.wan = { };
+            zones.wan = {
+              interfaces = [ "wan0" ];
+            };
             filters.rpfilter = {
               from = [ "wan" ];
               to = [ "local" ];
@@ -284,8 +302,12 @@ in
           (runDispatch {
             name = "fw";
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             filters.early = {
               from = [ "lan" ];
@@ -318,8 +340,12 @@ in
           (runDispatch {
             name = "fw";
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             filters.late = {
               from = [ "lan" ];
@@ -353,8 +379,12 @@ in
           (runDispatch {
             name = "fw";
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             filters.regular = {
               from = [ "lan" ];
@@ -382,8 +412,12 @@ in
       (runDispatch {
         name = "fw";
         zones = {
-          lan = { };
-          wan = { };
+          lan = {
+            interfaces = [ "lan0" ];
+          };
+          wan = {
+            interfaces = [ "wan0" ];
+          };
         };
         filters = {
           # All same (from, to) → same sub-chain. Different
@@ -424,8 +458,12 @@ in
       (runDispatch {
         name = "fw";
         zones = {
-          lan = { };
-          wan = { };
+          lan = {
+            interfaces = [ "lan0" ];
+          };
+          wan = {
+            interfaces = [ "wan0" ];
+          };
         };
         filters.allow-https = {
           from = [ "lan" ];
@@ -456,8 +494,12 @@ in
         out = runDispatch {
           name = "fw";
           zones = {
-            lan = { };
-            wan = { };
+            lan = {
+              interfaces = [ "lan0" ];
+            };
+            wan = {
+              interfaces = [ "wan0" ];
+            };
           };
           filters.web = {
             from = [ "lan" ];
@@ -501,8 +543,12 @@ in
           (runDispatch {
             name = "fw";
             zones = {
-              lan = { };
-              wan = { };
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                interfaces = [ "wan0" ];
+              };
             };
             filters.f = {
               from = [ "lan" ];
