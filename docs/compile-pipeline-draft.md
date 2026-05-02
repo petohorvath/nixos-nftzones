@@ -214,11 +214,23 @@ lib/
     # Phase 2 helpers (implemented)
     expand.nix               — expandTable (entry → cells per group)
 
-    # Existing helpers used by Phases 2/3/4 (implemented)
+    # Phase 3 helpers (implemented)
+    dispatch.nix             — phase orchestrator (dispatchAndSort)
+                               + groupCellsByChain, buildChainBuckets
+                               (cells → chainBuckets keyed by
+                               `<hook>-at-<priority>`, slotted into
+                               preDispatch / subChains / postDispatch)
+
+    # Existing helpers used by Phases 2/4 (implemented)
     zone.nix                 — genMatch (per-zone match expressions)
     entry.nix                — toCells (entry → list of cells)
-    filter.nix               — groupCellsByChain (host-position dispatch)
-    priority.nix             — resolvePriority (symbol → int)
+    priority.nix             — resolvePriority (symbol → int),
+                               entryPriorities (canonical symbol → int
+                               table consumed by Phase 3)
+    filter.nix               — groupCellsByChain (host-position
+                               dispatch) — ORPHAN: superseded by
+                               Phase 3's inline `filterChainHook`;
+                               candidate for removal.
 
     # Phase 4 helpers (TBD)
     emit-sets.nix            — per-zone interface / CIDR sets
@@ -251,7 +263,7 @@ Each new internal module gets a unit-test file. Orchestrator and emit modules al
 
 ## Status
 
-Phase 1 (normalize) and Phase 2 (expand) are implemented and unit-tested. Phase 3 (dispatch + sort) and Phase 4 (emit) are not yet written.
+Phases 1 (normalize), 2 (expand), and 3 (dispatch + sort) are implemented and unit-tested. Phase 4 (emit) is not yet written.
 
 The pipeline today, end-to-end through what's built:
 
@@ -260,19 +272,22 @@ final = lib.pipe (mkInitialState table) [
   # Phase 1 — normalize
   convertNodesToZones collectAllZoneNames expandWildcardZones
   resolvePriorities  collectZoneRefs
-  checkNameCollisions checkSettings checkZoneRefs
+  checkNameCollisions checkSettings checkZoneRefs checkPolicyUniqueness
   # Phase 2 — expand
   expandTable
+  # Phase 3 — dispatch + sort
+  dispatchAndSort  # = groupCellsByChain |> buildChainBuckets
 ];
-# final.ctx.cells.{filters, policies, snats, dnats, sroutes, droutes}
+# final.ctx.chainBuckets."<hook>-at-<priority>" = {
+#   hook; priority; preDispatch; subChains; postDispatch;
+# }
 ```
 
 Next concrete milestones:
 
-1. Phase 3 dispatch: bucket cells by chain via `internal.filter.groupCellsByChain` for filter/policy and fixed chains for snat/dnat/sroute/droute. Output `ctx.chainBuckets`.
-2. Phase 3 sort: sort each bucket by `(priority, name)`. Pre/post-dispatch split at priority 100.
-3. Phase 4 minimum-viable emit — empty base chains with settings boilerplate, no rules. Verifies the output shape via `nft -c -j`.
-4. Rule emission for filter and policy.
-5. NAT and route emission.
-6. Named-object passthrough and reference validation (open question 3).
-7. Top-level `compile.nix` orchestrator + public `mkTable` / `mkRuleset` API.
+1. Phase 4 minimum-viable emit — empty base chains with settings boilerplate, no rules. Verifies the output shape via `nft -c -j`.
+2. Rule emission for filter and policy.
+3. NAT and route emission.
+4. Named-object passthrough and reference validation (open question 3).
+5. Top-level `compile.nix` orchestrator + public `mkTable` / `mkRuleset` API.
+6. Remove orphan `internal/filter.nix` (superseded by Phase 3's inline `filterChainHook`).
