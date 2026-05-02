@@ -103,23 +103,22 @@ in
   testExpandWildcard = {
     # `from = [ "all" ]` resolves to declared zones + localZone, so
     # 3 from-values × 1 to-value = 3 cells.
-    expr =
-      pkgs.lib.sort (a: b: a < b) (
-        map (c: c.from) (
-          (runExpand {
-            name = "fw";
-            zones = {
-              lan = { };
-              wan = { };
-            };
-            filters.f = {
-              from = [ "all" ];
-              to = [ "wan" ];
-              rule = [ ];
-            };
-          }).cells.filters
-        )
-      );
+    expr = pkgs.lib.sort (a: b: a < b) (
+      map (c: c.from) (
+        (runExpand {
+          name = "fw";
+          zones = {
+            lan = { };
+            wan = { };
+          };
+          filters.f = {
+            from = [ "all" ];
+            to = [ "wan" ];
+            rule = [ ];
+          };
+        }).cells.filters
+      )
+    );
     expected = [
       "lan"
       "local"
@@ -187,20 +186,22 @@ in
   testExpandBodyPreserved = {
     expr =
       let
-        cell = builtins.head (runExpand {
-          name = "fw";
-          zones = {
-            lan = { };
-            wan = { };
-          };
-          filters.f = {
-            from = [ "lan" ];
-            to = [ "wan" ];
-            rule = [ ];
-            comment = "preserved";
-            priority = "first";
-          };
-        }).cells.filters;
+        cell =
+          builtins.head
+            (runExpand {
+              name = "fw";
+              zones = {
+                lan = { };
+                wan = { };
+              };
+              filters.f = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+                rule = [ ];
+                comment = "preserved";
+                priority = "first";
+              };
+            }).cells.filters;
       in
       {
         inherit (cell) name comment priority;
@@ -219,18 +220,20 @@ in
   testExpandPoliciesNoPriority = {
     expr =
       let
-        cell = builtins.head (runExpand {
-          name = "fw";
-          zones = {
-            lan = { };
-            wan = { };
-          };
-          policies.lan-to-wan = {
-            from = [ "lan" ];
-            to = [ "wan" ];
-            verdict = "accept";
-          };
-        }).cells.policies;
+        cell =
+          builtins.head
+            (runExpand {
+              name = "fw";
+              zones = {
+                lan = { };
+                wan = { };
+              };
+              policies.lan-to-wan = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+                verdict = "accept";
+              };
+            }).cells.policies;
       in
       {
         hasPriority = cell ? priority;
@@ -247,18 +250,20 @@ in
   testExpandTableUntouched = {
     expr =
       let
-        out = expandTable (normalizeTable (evalTable {
-          name = "fw";
-          zones = {
-            lan = { };
-            wan = { };
-          };
-          filters.f = {
-            from = [ "all" ];
-            to = [ "wan" ];
-            rule = [ ];
-          };
-        }));
+        out = expandTable (
+          normalizeTable (evalTable {
+            name = "fw";
+            zones = {
+              lan = { };
+              wan = { };
+            };
+            filters.f = {
+              from = [ "all" ];
+              to = [ "wan" ];
+              rule = [ ];
+            };
+          })
+        );
       in
       {
         # Original from is the wildcard "all", not the expanded list

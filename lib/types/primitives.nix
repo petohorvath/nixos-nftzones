@@ -17,9 +17,10 @@
     - `rule`          — list of nftypes statements forming one rule
                         body. Shared shape for `filterRule` and the
                         inner list of `zoneMatchVariants`.
-    - `rulePriority`  — symbol-or-int sort key for ordering rules
-                        within a chain (nftzones-internal; not the
-                        nftables chain priority).
+    - `entryPriority` — symbol-or-int sort key for ordering an
+                        entry's emitted rules within its chain
+                        (nftzones-internal; not the nftables chain
+                        priority).
     - `chainPriority` — symbol-or-int for the nftables chain
                         priority (the netfilter `priority` attribute
                         on a base chain).
@@ -41,9 +42,10 @@ let
   rule = lib.types.listOf nftypes.types.statement;
 
   /*
-    Rule priority — nftzones-internal sort key for ordering rules
-    within a chain. NOT the nftables chain priority (that's
-    `chainPriority`). Symbols and their resolved int values:
+    Entry priority — nftzones-internal sort key for ordering an
+    entry's emitted rules within its chain. NOT the nftables
+    chain priority (that's `chainPriority`). Symbols and their
+    resolved int values:
 
       first        → 1    earliest
       preDispatch  → 50   before per-zone dispatch jumps
@@ -59,7 +61,7 @@ let
     Symbol → int resolution lives in `internal.priority`;
     consumers don't need to do it themselves at type-check time.
   */
-  rulePriority = lib.types.either (lib.types.enum [
+  entryPriority = lib.types.either (lib.types.enum [
     "first"
     "preDispatch"
     "postDispatch"
@@ -92,7 +94,7 @@ in
     identifier
     comment
     rule
-    rulePriority
+    entryPriority
     chainPriority
     ;
 }

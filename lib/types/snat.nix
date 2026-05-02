@@ -40,7 +40,7 @@
 
   `snatPriority` is the rule sort key — symbol or int, default
   `"default"` (= 500). NOT the nftables chain priority (that's
-  `snatChain.priority`). See `primitives.rulePriority` for the
+  `snatChain.priority`). See `primitives.entryPriority` for the
   symbol → int mapping.
 
   `snatChain` is an optional override for chain placement.
@@ -105,7 +105,7 @@ let
     };
   };
 
-  snatPriority = primitives.rulePriority;
+  snatPriority = primitives.entryPriority;
 
   /*
     Chain-placement override — `null` means default postrouting

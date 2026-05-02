@@ -19,3 +19,4 @@ args@{
 // import ./internal/node.nix args
 // import ./internal/normalize.nix args
 // import ./internal/expand.nix args
+// import ./internal/dispatch.nix args

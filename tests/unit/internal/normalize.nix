@@ -466,15 +466,12 @@ in
 
   testCheckPolicyUniquenessNoPolicies = {
     expr =
-      (runPipeline
-        [
-          convertNodesToZones
-          collectAllZoneNames
-          expandWildcardZones
-          checkPolicyUniqueness
-        ]
-        emptyTable
-      ).errors;
+      (runPipeline [
+        convertNodesToZones
+        collectAllZoneNames
+        expandWildcardZones
+        checkPolicyUniqueness
+      ] emptyTable).errors;
     expected = [ ];
   };
 

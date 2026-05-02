@@ -102,7 +102,7 @@ let
 
   filterRule = primitives.rule;
 
-  filterPriority = primitives.rulePriority;
+  filterPriority = primitives.entryPriority;
 
   /*
     Chain-placement override — `null` means dispatch via `chainOf`
@@ -199,7 +199,7 @@ let
             Either a symbol (`first` / `preDispatch` /
             `postDispatch` / `default` / `last`) or any int.
             Cells are emitted in `(priority asc, name asc)` order.
-            See `primitives.rulePriority` for symbol → int
+            See `primitives.entryPriority` for symbol → int
             mapping. NOT the nftables chain priority — that's
             `hook.priority`.
           '';

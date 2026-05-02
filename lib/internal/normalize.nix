@@ -235,8 +235,7 @@ let
       inherit (ctx) allZoneNames;
 
       expandWildcard =
-        zones:
-        lib.unique (lib.concatMap (z: if z == wildcardZone then allZoneNames else [ z ]) zones);
+        zones: lib.unique (lib.concatMap (z: if z == wildcardZone then allZoneNames else [ z ]) zones);
 
       expandDirection = direction: entry: expandWildcard entry.${direction};
 
@@ -398,10 +397,7 @@ let
       */
       triples = lib.concatLists (
         lib.mapAttrsToList (
-          entryName: dirs:
-          lib.concatMap (
-            from: map (to: { inherit entryName from to; }) dirs.to
-          ) dirs.from
+          entryName: dirs: lib.concatMap (from: map (to: { inherit entryName from to; }) dirs.to) dirs.from
         ) ctx.expandedGroups.policies
       );
 
@@ -411,8 +407,9 @@ let
 
       newErrors = lib.mapAttrsToList (
         key: ts:
-        lib.nameValuePair "policyConflict"
-          "duplicate policy for ${key}: ${lib.concatStringsSep ", " (map (t: t.entryName) ts)}"
+        lib.nameValuePair "policyConflict" "duplicate policy for ${key}: ${
+          lib.concatStringsSep ", " (map (t: t.entryName) ts)
+        }"
       ) duplicates;
     in
     {

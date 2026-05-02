@@ -71,7 +71,7 @@ let
 
   srouteRule = primitives.rule;
 
-  sroutePriority = primitives.rulePriority;
+  sroutePriority = primitives.entryPriority;
 
   sroute = lib.types.submodule (
     { name, ... }:

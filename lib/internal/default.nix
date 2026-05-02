@@ -30,5 +30,10 @@ let
     inherit inputs;
     internal = base;
   };
+
+  dispatch = import ./dispatch.nix {
+    inherit inputs;
+    internal = base;
+  };
 in
-base // { inherit normalize expand; }
+base // { inherit normalize expand dispatch; }

@@ -54,7 +54,7 @@
 
   `dnatPriority` is the rule sort key — symbol or int, default
   `"default"` (= 500). NOT the nftables chain priority (that's
-  `dnatChain.priority`). See `primitives.rulePriority` for the
+  `dnatChain.priority`). See `primitives.entryPriority` for the
   symbol → int mapping.
 
   `dnatChain` is an optional override for chain placement. `null`
@@ -151,7 +151,7 @@ let
     };
   };
 
-  dnatPriority = primitives.rulePriority;
+  dnatPriority = primitives.entryPriority;
 
   /*
     Chain-placement override — `null` means default prerouting

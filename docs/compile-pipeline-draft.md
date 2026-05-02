@@ -16,6 +16,7 @@ The pipeline (and the surrounding code) names the data-model levels consistently
 - **Entry** — one item inside a group, keyed by name. `table.filters.allow-ssh` is an entry; the body field on it (`entry.rule`, the list of nftypes statements) is unambiguous because the wrapper is an *entry*, not a *rule*.
 - **Direction** — `from` or `to`, the zone-name fields on an entry. Some groups are bidirectional (filters, policies, snats — both `from` and `to`); others are single-direction (`dnats`, `sroutes` have only `from`; `droutes` only `to`).
 - **Cell** — a concrete `(from, to)` instance of an entry produced by Phase 2's cartesian product. Same shape as the entry but with the listed directions as scalars instead of lists. An entry with `from = [ "lan" "guest" ]; to = [ "wan" "vpn" ]` produces four cells. For single-direction groups, a cell has only the relevant scalar (e.g., a `dnat` cell has `from = "wan"` and no `to`).
+- **Slot** — one of three positions a cell occupies within its chain bucket, decided by the cell's resolved priority: `preDispatch` (emit in the base chain *before* the per-pair dispatch jumps), `subChains` (emit inside a per-`(from, to)` sub-chain — the default), or `postDispatch` (emit in the base chain *after* the dispatch jumps). Phase 3 buckets cells by `(chain, slot)`; Phase 4 emits each slot in order.
 
 The trio shows up directly in `internal/normalize.nix`'s helpers:
 
@@ -138,7 +139,7 @@ Output is a 2D buckets attrset: `{ <chainKey> = [ <cells>... ]; ... }`.
 
 ### 3.2 Sort
 
-`internal.priority.resolvePriority` resolves rule priority symbols (`first` / `preDispatch` / `postDispatch` / `default` / `last`) to ints (Phase 1 runs this for every entry; the pre-resolved values land in `ctx.resolvedPriorities`). Each chain bucket sorts by `(priority asc, name asc)`. Name is the attrset key from the original collection; it acts as a stable tiebreaker.
+`internal.priority.resolvePriority` resolves entry priority symbols (`first` / `preDispatch` / `postDispatch` / `default` / `last`) to ints (Phase 1 runs this for every entry; the pre-resolved values land in `ctx.resolvedPriorities`). Each chain bucket sorts by `(priority asc, name asc)`. Name is the attrset key from the original collection; it acts as a stable tiebreaker.
 
 The cutoff at `100` (between `preDispatch=50` and `postDispatch=100`) splits cells into pre-dispatch (emit before the per-pair dispatch jump) and post-dispatch (emit after) — see Phase 4.
 
