@@ -17,16 +17,17 @@
   Phase pipeline:
 
       { table; ctx = { errors = [ ]; }; }
-        ↓ convertNodesToZones    ctx.mergedZones
-        ↓ collectAllZoneNames    ctx.allZoneNames
-        ↓ expandWildcardZones    ctx.expandedGroups
-        ↓ resolvePriorities      ctx.resolvedPriorities
-        ↓ collectZoneRefs        ctx.zoneRefs
-        ↓ checkNameCollisions    ctx.errors  (appends)
-        ↓ checkSettings          ctx.errors  (appends)
-        ↓ checkZoneRefs          ctx.errors  (appends)
-        ↓ checkZoneMatchable     ctx.errors  (appends)
-        ↓ checkPolicyUniqueness  ctx.errors  (appends)
+        ↓ convertNodesToZones           ctx.mergedZones
+        ↓ collectAllZoneNames           ctx.allZoneNames
+        ↓ expandWildcardZones           ctx.expandedGroups
+        ↓ resolvePriorities             ctx.resolvedPriorities
+        ↓ collectZoneRefs               ctx.zoneRefs
+        ↓ checkNameCollisions           ctx.errors  (appends)
+        ↓ checkSettings                 ctx.errors  (appends)
+        ↓ checkZoneRefs                 ctx.errors  (appends)
+        ↓ checkZoneMatchable            ctx.errors  (appends)
+        ↓ checkChainOverridePlacement   ctx.errors  (appends)
+        ↓ checkPolicyUniqueness         ctx.errors  (appends)
       { table;
         ctx = {
           mergedZones; allZoneNames; expandedGroups;
@@ -189,6 +190,37 @@
 
   Each error is `lib.nameValuePair "zoneNotMatchable" <message>`.
 
+  ===== checkChainOverridePlacement =====
+
+  Reads:  ctx.expandedGroups, ctx.mergedZones,
+          table.{filters, snats, dnats, settings.localZone}
+  Writes: ctx.errors (appends)
+
+  Verifies that filter / snat / dnat entries with a `chain`
+  override land at a hook where their `from` / `to` zones can
+  actually be matched. Without this check, a rule overridden to
+  e.g. `(prerouting, raw)` with a `to` zone that's interface-only
+  would silently emit a jump *without* any to-side constraint
+  (oifname is unavailable in prerouting), broadening the rule's
+  scope far beyond what the user wrote.
+
+  A zone direction is reachable at hook H if any of:
+    - the zone is `localZone` (always wildcard);
+    - `zone.cidrs` is non-empty (addr matching always works);
+    - `zone.matchOverride.<ingress|egress>` is non-null (user
+      provided custom expressions; trusted as-is);
+    - `zone.interfaces` is non-empty AND the relevant interface
+      field (`iifname` for `from`, `oifname` for `to`) is valid
+      at H. `oifname` validity uses
+      `nftypes.compatibility.hooksWithOifname`; `iifname` is
+      valid at every hook except `output`.
+
+  Operates on `ctx.expandedGroups` so wildcard expansions like
+  `from = [ "all" ]` are checked per resolved zone.
+
+  Each error is `lib.nameValuePair "chainOverrideUnreachable"
+  <message>`.
+
   ===== checkPolicyUniqueness =====
 
   Reads:  ctx.expandedGroups.policies
@@ -226,7 +258,7 @@
 */
 { inputs, internal }:
 let
-  inherit (inputs) lib;
+  inherit (inputs) lib nftypes;
   inherit (internal.node) toZone;
 
   /*
@@ -472,6 +504,123 @@ let
       };
     };
 
+  checkChainOverridePlacement =
+    { table, ctx }:
+    let
+      inherit (table.settings) localZone;
+      inherit (ctx) mergedZones expandedGroups;
+
+      iifAvailableAtHook =
+        hook:
+        builtins.elem hook [
+          "prerouting"
+          "input"
+          "forward"
+          "postrouting"
+        ];
+      oifAvailableAtHook = hook: builtins.elem hook nftypes.compatibility.hooksWithOifname;
+
+      directionToOverrideField = {
+        from = "ingress";
+        to = "egress";
+      };
+
+      ifFieldName = direction: if direction == "from" then "iifname" else "oifname";
+
+      addrFieldName = direction: if direction == "from" then "saddr" else "daddr";
+
+      /*
+        For one (zone reference, hook, direction), is the zone
+        matchable at that placement? `localZone` and unknown zones
+        are skipped (handled by other validators / wildcard
+        sentinel).
+      */
+      reachable =
+        zoneName: hook: direction:
+        if zoneName == localZone || !(mergedZones ? ${zoneName}) then
+          true
+        else
+          let
+            zone = mergedZones.${zoneName};
+            overrideField = directionToOverrideField.${direction};
+            ifAvailable = if direction == "from" then iifAvailableAtHook hook else oifAvailableAtHook hook;
+          in
+          zone.cidrs != [ ]
+          || zone.matchOverride.${overrideField} != null
+          || (zone.interfaces != [ ] && ifAvailable);
+
+      /*
+        Per-group iteration. Only filter / snat / dnat carry a
+        `chain` override field; sroute / droute / policy don't.
+      */
+      groupDirections = {
+        filters = [
+          "from"
+          "to"
+        ];
+        snats = [
+          "from"
+          "to"
+        ];
+        dnats = [ "from" ];
+      };
+
+      /*
+        Walk one entry and emit a flat record per (direction,
+        zoneName) the validator must check. Entries without a
+        `chain` override are skipped.
+      */
+      enumerateEntry =
+        groupName: directions: entryName: entry:
+        if (entry.chain or null) == null then
+          [ ]
+        else
+          let
+            inherit (entry.chain) hook priority;
+            expandedDirs = expandedGroups.${groupName}.${entryName};
+          in
+          lib.concatMap (
+            direction:
+            map (zoneName: {
+              inherit
+                groupName
+                entryName
+                hook
+                priority
+                direction
+                zoneName
+                ;
+            }) expandedDirs.${direction}
+          ) directions;
+
+      enumerateGroup =
+        groupName: directions:
+        lib.concatLists (
+          lib.mapAttrsToList (entryName: enumerateEntry groupName directions entryName) table.${groupName}
+        );
+
+      mkError =
+        r:
+        lib.nameValuePair "chainOverrideUnreachable" "${r.groupName}.${r.entryName}.${r.direction} references zone '${r.zoneName}' which has no ${
+          directionToOverrideField.${r.direction}
+        } match expressible at chain (hook=${r.hook}, priority=${toString r.priority}) — zone has no ${addrFieldName r.direction} CIDRs / matchOverride.${
+          directionToOverrideField.${r.direction}
+        } and ${ifFieldName r.direction} is unavailable in ${r.hook}";
+
+      newErrors = lib.pipe groupDirections [
+        (lib.mapAttrsToList enumerateGroup)
+        lib.concatLists
+        (builtins.filter (r: !(reachable r.zoneName r.hook r.direction)))
+        (map mkError)
+      ];
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
   checkZoneMatchable =
     { table, ctx }:
     let
@@ -528,6 +677,7 @@ let
         checkSettings
         checkZoneRefs
         checkZoneMatchable
+        checkChainOverridePlacement
         checkPolicyUniqueness
       ];
     in
@@ -551,6 +701,7 @@ in
     collectZoneRefs
     checkZoneRefs
     checkZoneMatchable
+    checkChainOverridePlacement
     normalizeTable
     ;
 }

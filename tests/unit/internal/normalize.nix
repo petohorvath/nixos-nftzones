@@ -18,6 +18,7 @@ let
     collectZoneRefs
     checkZoneRefs
     checkZoneMatchable
+    checkChainOverridePlacement
     normalizeTable
     ;
 
@@ -1448,6 +1449,263 @@ in
         }
       ).errors;
     expected = [ ];
+  };
+
+  # ===== checkChainOverridePlacement — default placement (no override) =====
+
+  testCheckChainOverridePlacementNoOverride = {
+    # No `chain` field set → validator skips the entry.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          expandWildcardZones
+          checkChainOverridePlacement
+        ]
+        {
+          name = "fw";
+          zones = {
+            lan = {
+              interfaces = [ "lan0" ];
+            };
+            wan = {
+              interfaces = [ "wan0" ];
+            };
+          };
+          filters.f = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkChainOverridePlacement — override at default placement =====
+
+  testCheckChainOverridePlacementValidOverride = {
+    # User sets `chain = { hook = "forward"; priority = "filter"; }`
+    # explicitly. Both directions reachable at hook=forward, no error.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          expandWildcardZones
+          checkChainOverridePlacement
+        ]
+        {
+          name = "fw";
+          zones = {
+            lan = {
+              interfaces = [ "lan0" ];
+            };
+            wan = {
+              interfaces = [ "wan0" ];
+            };
+          };
+          filters.f = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule = [ ];
+            chain = {
+              hook = "forward";
+              priority = "filter";
+            };
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkChainOverridePlacement — addr-matchable at restrictive hook =====
+
+  testCheckChainOverridePlacementAddrReachable = {
+    # `wan` has CIDRs → `daddr` works at any hook, including
+    # prerouting where `oifname` is unavailable. No error.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          expandWildcardZones
+          checkChainOverridePlacement
+        ]
+        {
+          name = "fw";
+          zones = {
+            lan = {
+              interfaces = [ "lan0" ];
+            };
+            wan = {
+              cidrs = [ "203.0.113.0/24" ];
+            };
+          };
+          filters.f = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule = [ ];
+            chain = {
+              hook = "prerouting";
+              priority = "raw";
+            };
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkChainOverridePlacement — interface-only zone unreachable at restrictive hook =====
+
+  testCheckChainOverridePlacementUnreachable = {
+    # `host` is interface-only; at hook=prerouting, `oifname` is
+    # unavailable → `to = host` cannot be matched. Flag.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          expandWildcardZones
+          checkChainOverridePlacement
+        ]
+        {
+          name = "fw";
+          zones = {
+            wan = {
+              interfaces = [ "wan0" ];
+            };
+            host = {
+              interfaces = [ "lo" ];
+            };
+          };
+          filters.early-drop = {
+            from = [ "wan" ];
+            to = [ "host" ];
+            rule = [ ];
+            chain = {
+              hook = "prerouting";
+              priority = "raw";
+            };
+          };
+        }
+      ).errors;
+    expected = [
+      {
+        name = "chainOverrideUnreachable";
+        value = "filters.early-drop.to references zone 'host' which has no egress match expressible at chain (hook=prerouting, priority=raw) — zone has no daddr CIDRs / matchOverride.egress and oifname is unavailable in prerouting";
+      }
+    ];
+  };
+
+  # ===== checkChainOverridePlacement — localZone is always reachable =====
+
+  testCheckChainOverridePlacementSkipsLocalZone = {
+    # `to = local` would naively look unreachable (sentinel has no
+    # mergedZones entry), but it's a wildcard. No error.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          expandWildcardZones
+          checkChainOverridePlacement
+        ]
+        {
+          name = "fw";
+          zones.wan = {
+            interfaces = [ "wan0" ];
+          };
+          filters.f = {
+            from = [ "wan" ];
+            to = [ "local" ];
+            rule = [ ];
+            chain = {
+              hook = "prerouting";
+              priority = "raw";
+            };
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkChainOverridePlacement — matchOverride trusted as-is =====
+
+  testCheckChainOverridePlacementMatchOverrideTrusted = {
+    # `host` has `matchOverride.egress` non-null → trusted; the
+    # validator doesn't introspect what's inside. No error even
+    # at restrictive hook.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          expandWildcardZones
+          checkChainOverridePlacement
+        ]
+        {
+          name = "fw";
+          zones = {
+            wan = {
+              interfaces = [ "wan0" ];
+            };
+            host = {
+              interfaces = [ "lo" ];
+              matchOverride.egress = [ [ ] ];
+            };
+          };
+          filters.f = {
+            from = [ "wan" ];
+            to = [ "host" ];
+            rule = [ ];
+            chain = {
+              hook = "prerouting";
+              priority = "raw";
+            };
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkChainOverridePlacement — wildcard expansion checks each resolved zone =====
+
+  testCheckChainOverridePlacementWildcardExpansion = {
+    # `to = [ "all" ]` expands to declared zones + localZone.
+    # `host` (iif-only) fails at prerouting; `wan` (with CIDRs)
+    # passes; `local` (sentinel) skipped. Expect ONE error for host.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+          expandWildcardZones
+          checkChainOverridePlacement
+        ]
+        {
+          name = "fw";
+          zones = {
+            wan = {
+              interfaces = [ "wan0" ];
+              cidrs = [ "203.0.113.0/24" ];
+            };
+            host = {
+              interfaces = [ "lo" ];
+            };
+          };
+          filters.f = {
+            from = [ "wan" ];
+            to = [ "all" ];
+            rule = [ ];
+            chain = {
+              hook = "prerouting";
+              priority = "raw";
+            };
+          };
+        }
+      ).errors;
+    expected = [
+      {
+        name = "chainOverrideUnreachable";
+        value = "filters.f.to references zone 'host' which has no egress match expressible at chain (hook=prerouting, priority=raw) — zone has no daddr CIDRs / matchOverride.egress and oifname is unavailable in prerouting";
+      }
+    ];
   };
 
   # ===== normalizeTable — empty table =====
