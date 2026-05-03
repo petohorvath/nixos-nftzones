@@ -20,11 +20,11 @@
   optional comment. Consumers wire it as `lib.mkOption {
   type = lib.types.attrsOf nftzones.types.snat; }`.
 
-  `snatZones` and the wildcard / reserved-name behaviour are
-  identical to filter — see `types/filter.nix` for the full
-  discussion. Cross-cutting checks (resolves to a declared zone or
-  reserved name) belong in module assertions on the enclosing
-  `snats` attrset.
+  `snatZones` and the wildcard / localZone behaviour are identical
+  to filter — see `types/filter.nix` for the full discussion.
+  Cross-cutting checks (resolves to a declared zone,
+  `settings.localZone`, or `settings.wildcardZone`) belong in
+  module assertions on the enclosing `snats` attrset.
 
   `snatRule` is an `attrTag` of two nftypes-derived submodules:
     - `snat`       — full address translation; fields `addr`,
@@ -158,10 +158,10 @@ let
           example = [ "lan" ];
           description = ''
             Source zones for the snat — non-empty. Each entry is
-            either a declared zone name or one of the reserved
-            names (`host`, `local`, `self`, `firewall`, `all`,
-            `any`); resolution is enforced at module level, not by
-            the type.
+            either a declared zone name, the configured
+            `settings.localZone` (default `"local"`), or
+            `settings.wildcardZone` (default `"all"`); resolution
+            is enforced at module level, not by the type.
           '';
         };
 

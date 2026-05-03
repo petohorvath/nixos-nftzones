@@ -1,10 +1,12 @@
-# Unit tests for `lib/internal/refs.nix` (exposed as
-# `nftzones.internal.refs`). Same `testFoo = { expr; expected; }`
-# shape as every other unit test; aggregated by `tests/unit/default.nix`.
-#
-# All test fixtures use `nftypes.dsl.*` builders — no hand-rolled
-# libnftables-json shapes. The walker recognizes whatever the DSL
-# emits; if the DSL changes shape, these tests catch it.
+/*
+  Unit tests for `lib/internal/refs.nix` (exposed as
+  `nftzones.internal.refs`). Same `testFoo = { expr; expected; }`
+  shape as every other unit test; aggregated by `tests/unit/default.nix`.
+
+  All test fixtures use `nftypes.dsl.*` builders — no hand-rolled
+  libnftables-json shapes. The walker recognizes whatever the DSL
+  emits; if the DSL changes shape, these tests catch it.
+*/
 {
   pkgs,
   nftzones,

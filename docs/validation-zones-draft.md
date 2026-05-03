@@ -1,4 +1,6 @@
-# Cross-Zone Validation (Draft)
+# Cross-Zone Validation (Draft — Superseded)
+
+> **Status**: this draft is preserved for historical context. The actual validation work landed inline in `lib/internal/normalize.nix` as a sequence of Phase 1 validators (`checkNameCollisions`, `checkSettings`, `checkZoneRefs`, `checkZoneMatchable`, `checkChainOverridePlacement`, `checkPolicyUniqueness`, `checkSetNameCollisions`, `checkObjectRefs`) — see `docs/compile-pipeline-draft.md` §1.3 for the current shape. The "Where the validation lives" / "Open questions" sections below reflect choices that were made differently in implementation.
 
 This document captures the design discussion around validating zone configurations across the whole `zones` attrset, beyond what per-zone NixOS option types can express.
 

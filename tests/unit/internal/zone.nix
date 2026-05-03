@@ -1,6 +1,9 @@
-# Unit tests for `lib/internal/zone.nix` (exposed as
-# `nftzones.internal.zone.genMatch`). Same `testFoo = { expr; expected; }`
-# shape as every other unit test; aggregated by `tests/unit/default.nix`.
+/*
+  Unit tests for `lib/internal/zone.nix` (exposed as
+  `nftzones.internal.zone.genMatch` / `genSets`). Same
+  `testFoo = { expr; expected; }` shape as every other unit test;
+  aggregated by `tests/unit/default.nix`.
+*/
 {
   pkgs,
   nftzones,

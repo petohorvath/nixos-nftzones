@@ -22,9 +22,9 @@
 
   `zoneName` only validates string shape; cross-cutting concerns —
   that a `parent` reference resolves to an existing zone, or that
-  names do not collide with reserved zones (`host`, `all`, `any`,
-  `local`, `self`, `firewall`) — belong in module assertions on the
-  enclosing `zones` attrset.
+  names do not collide with `settings.localZone` /
+  `settings.wildcardZone` — are enforced by Phase 1's
+  `checkNameCollisions` and `checkSettings` validators.
 
   Example:
     options.zones = lib.mkOption {

@@ -1,6 +1,8 @@
-# Unit tests for `lib/internal/normalize.nix` (exposed as
-# `nftzones.internal.normalize`). Same `testFoo = { expr; expected; }`
-# shape as every other unit test; aggregated by `tests/unit/default.nix`.
+/*
+  Unit tests for `lib/internal/normalize.nix` (exposed as
+  `nftzones.internal.normalize`). Same `testFoo = { expr; expected; }`
+  shape as every other unit test; aggregated by `tests/unit/default.nix`.
+*/
 {
   pkgs,
   nftzones,
@@ -1340,7 +1342,7 @@ in
           zones.partial = {
             matchOverride.ingress = [ [ ] ];
           };
-          filters.fromOk = {
+          filters.from-ok = {
             from = [ "partial" ];
             to = [ "partial" ];
             rule = [ ];
@@ -1351,7 +1353,7 @@ in
       {
         name = "zoneNotMatchable";
         value =
-          "filters.fromOk.to[0] references zone 'partial' which has no egress match"
+          "filters.from-ok.to[0] references zone 'partial' which has no egress match"
           + " (no interfaces, no egress CIDRs, no matchOverride.egress)";
       }
     ];

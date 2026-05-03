@@ -1,6 +1,8 @@
-# Unit-test definitions. Each `testFoo` attr is `{ expr; expected; }` and
-# is consumed by `tests/runner.nix` via `lib.runTests`. Per-module test
-# files under subdirectories (mirroring `lib/`) are merged in here.
+/*
+  Unit-test definitions. Each `testFoo` attr is `{ expr; expected; }` and
+  is consumed by `tests/runner.nix` via `lib.runTests`. Per-module test
+  files under subdirectories (mirroring `lib/`) are merged in here.
+*/
 args@{
   pkgs,
   nftzones,

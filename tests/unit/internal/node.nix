@@ -1,6 +1,8 @@
-# Unit tests for `lib/internal/node.nix` (exposed as
-# `nftzones.internal.node.toZone`). Same `testFoo = { expr; expected; }`
-# shape as every other unit test; aggregated by `tests/unit/default.nix`.
+/*
+  Unit tests for `lib/internal/node.nix` (exposed as
+  `nftzones.internal.node.toZone`). Same `testFoo = { expr; expected; }`
+  shape as every other unit test; aggregated by `tests/unit/default.nix`.
+*/
 {
   pkgs,
   nftzones,

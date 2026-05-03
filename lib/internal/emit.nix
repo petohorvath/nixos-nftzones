@@ -26,11 +26,6 @@
   `checkObjectRefs`) and Phase 4 emit (jump construction +
   `assembleOutput`'s final body), avoiding redundant evaluation.
 
-  Phase 4 itself is now feature-complete; the remaining work is
-  the `compile.nix` orchestrator + public `mkTable` / `mkRuleset`
-  API (step 6) which lives outside this module. See
-  `docs/compile-pipeline-draft.md` §4.6.
-
   ===== assembleTable =====
 
   Input:  `{ family; name; body; }`
@@ -202,9 +197,9 @@
   stripped `family` / `name` / `table` / `handle`; the nftypes
   renderer fills them back in from the parent table.
 
-  Identity for now — placeholder for future kind-aware transforms
-  (e.g., named-object reference validation per design doc open
-  question 3).
+  Identity for now — placeholder for future kind-aware transforms.
+  Named-object reference validation lives upstream in Phase 1's
+  `internal.normalize.checkObjectRefs`.
 
   ===== emitUserObjects =====
 

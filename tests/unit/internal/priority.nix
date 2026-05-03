@@ -1,6 +1,8 @@
-# Unit tests for `lib/internal/priority.nix` (exposed as
-# `nftzones.internal.priority`). Same `testFoo = { expr; expected; }`
-# shape as every other unit test; aggregated by `tests/unit/default.nix`.
+/*
+  Unit tests for `lib/internal/priority.nix` (exposed as
+  `nftzones.internal.priority`). Same `testFoo = { expr; expected; }`
+  shape as every other unit test; aggregated by `tests/unit/default.nix`.
+*/
 {
   pkgs,
   nftzones,

@@ -87,7 +87,9 @@ let
     and let `nftypes.resolvePriority` pick the right table at compile
     time. Or pass any int directly.
   */
-  chainPriority = lib.types.either (lib.types.enum (builtins.attrNames nftypes.compatibility.priorityIntsDefault)) lib.types.int;
+  chainPriority = lib.types.either
+    (lib.types.enum (builtins.attrNames nftypes.compatibility.priorityIntsDefault))
+    lib.types.int;
 in
 {
   inherit

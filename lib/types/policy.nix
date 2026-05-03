@@ -36,13 +36,14 @@
     policies for the same pair is a configuration error; the
     check is enforced at module level (not by the type itself).
 
-    Wildcard policies (`policies.catchall = { from = [ "any" ];
-    to = [ "any" ]; verdict = "drop"; }`) rely on upstream
-    wildcard resolution: `any` / `all` expand to all declared
-    zones (plus `host`) before per-pair compilation, with
-    explicit policies winning over wildcard fills.
+    Wildcard policies (`policies.catchall = { from = [ "all" ];
+    to = [ "all" ]; verdict = "drop"; }`) rely on upstream
+    wildcard resolution: `settings.wildcardZone` (default `"all"`)
+    expands to all declared zones plus `settings.localZone` before
+    per-pair compilation, with explicit policies winning over
+    wildcard fills.
 
-  `policyZones` and the wildcard / reserved-name behaviour are
+  `policyZones` and the wildcard / localZone behaviour are
   identical to filter / snat / dnat — see `types/filter.nix` for
   the full discussion.
 
@@ -121,10 +122,10 @@ let
           example = [ "lan" ];
           description = ''
             Source zones for the policy — non-empty. Each entry
-            is either a declared zone name or one of the reserved
-            names (`host`, `local`, `self`, `firewall`, `all`,
-            `any`); resolution is enforced at module level, not
-            by the type.
+            is either a declared zone name, the configured
+            `settings.localZone` (default `"local"`), or
+            `settings.wildcardZone` (default `"all"`); resolution
+            is enforced at module level, not by the type.
           '';
         };
 

@@ -15,7 +15,7 @@
                       consumed by Phase 1 validators (names only)
                       and Phase 4 emit (full bodies).
 
-  Wired into the surface from `lib/default.nix`.
+  Wired into the surface from `lib/internal/default.nix`.
 
   ===== genMatch =====
 

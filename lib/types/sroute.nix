@@ -8,7 +8,7 @@
                          shape of `from`)
     - `srouteRule`     — list of nftypes statements (mangle / match
                          body)
-    - `sroutePriority` — integer ordering key (lower runs first)
+    - `sroutePriority` — symbol-or-int entry sort key (lower runs first)
     - `srouteComment`  — optional free-form comment
 
   An sroute is a source-zone-keyed route-mangling rule that applies
@@ -23,7 +23,7 @@
   destination zone (which depends on routing) isn't determined
   when the entry's emitted rules fire. Same structural reason dnat omits `to`.
 
-  `srouteZones` and the wildcard / reserved-name behaviour are
+  `srouteZones` and the wildcard / localZone behaviour are
   identical to filter / snat / dnat — see `types/filter.nix` for
   the full discussion.
 
@@ -94,10 +94,10 @@ let
           example = [ "guest" ];
           description = ''
             Source zones for the sroute — non-empty. Each entry
-            is either a declared zone name or one of the reserved
-            names (`host`, `local`, `self`, `firewall`, `all`,
-            `any`); resolution is enforced at module level, not
-            by the type.
+            is either a declared zone name, the configured
+            `settings.localZone` (default `"local"`), or
+            `settings.wildcardZone` (default `"all"`); resolution
+            is enforced at module level, not by the type.
           '';
         };
 

@@ -73,14 +73,13 @@
     };
 
     config.fw = {
-      name = "zonefw";
       settings.rpfilter = true;     # opt in; rest of settings stays default
       zones = {
         lan = { interfaces = [ "eth1" ]; cidrs = [ "10.0.0.0/24" ]; };
         wan = { interfaces = [ "eth0" ]; };
       };
       filters.allow-ssh = {
-        from = [ "wan" ]; to = [ "host" ];
+        from = [ "wan" ]; to = [ "local" ];
         rule = [ (eq tcp.dport 22) accept ];
       };
       policies.lan-to-wan = {

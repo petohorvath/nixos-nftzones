@@ -1,5 +1,7 @@
-# Unit-test runner. Wraps `lib.runTests` in a derivation so failures show up
-# as a failed `nix flake check`.
+/*
+  Unit-test runner. Wraps `lib.runTests` in a derivation so failures show up
+  as a failed `nix flake check`.
+*/
 { pkgs }:
 let
   inherit (pkgs) lib;

@@ -7,7 +7,7 @@
     - `filterZones`    — non-empty list of zone references (the shape
                          of `from` and `to`)
     - `filterRule`     — list of nftypes DSL statements (rule body)
-    - `filterPriority` — integer ordering key (lower runs first)
+    - `filterPriority` — symbol-or-int entry sort key (lower runs first)
     - `filterChain`    — optional chain-placement override
                          (submodule with `hook` + `priority`)
     - `filterComment`  — optional free-form comment
@@ -21,10 +21,10 @@
   `filterZones` is a non-empty list of `zoneName` strings; it lets a
   single entry fan out across multiple zones on either side (e.g.
   `from = [ "lan" "guest" ]`). Each entry's shape is validated
-  against `zoneName`; whether it resolves to a declared zone or
-  one of the reserved names (`host`, `local`, `self`, `firewall`,
-  `all`, `any`) is a cross-cutting check that belongs in module
-  assertions on the enclosing `filters` attrset.
+  against `zoneName`; whether it resolves to a declared zone, the
+  configured `settings.localZone`, or `settings.wildcardZone` is a
+  cross-cutting check that belongs in module assertions on the
+  enclosing `filters` attrset.
 
   `filterRule` entries pass through nftypes' attrTag validation, so
   consumers cannot smuggle hand-rolled libnftables-json shapes. The
@@ -42,9 +42,9 @@
 
   `filterChain` is an optional override for chain placement. By
   default (`chain = null`), the entry is dispatched to `input`,
-  `forward`, or `output` via the host-position rule:
-    - `to` is a host-alias → `input`
-    - `from` is a host-alias → `output`
+  `forward`, or `output` based on `settings.localZone`:
+    - `to` references `settings.localZone` → `input`
+    - `from` references `settings.localZone` → `output`
     - neither → `forward`
   Setting `chain` pins the entry to a specific base chain via a
   submodule with `hook` (the nftables hook to attach to) and
@@ -64,7 +64,7 @@
 
     config.filters.allow-ssh = {
       from = [ "wan" ];
-      to = [ "host" ];
+      to = [ "local" ];
       rule = [
         (eq tcp.dport 22)
         accept
@@ -105,11 +105,11 @@ let
   filterPriority = primitives.entryPriority;
 
   /*
-    Chain-placement override — `null` means dispatch via `chainOf`
-    (host position → input/forward/output). A submodule pins the
-    rule to a specific base chain at the given priority. `hook`
-    and `priority` are the two attributes that uniquely identify
-    a base chain at compile time.
+    Chain-placement override — `null` means dispatch via the
+    localZone-position rule (input/forward/output). A submodule
+    pins the entry to a specific base chain at the given priority.
+    `hook` and `priority` are the two attributes that uniquely
+    identify a base chain at compile time.
   */
   filterChain = lib.types.nullOr (
     lib.types.submodule {
@@ -155,10 +155,10 @@ let
           example = [ "wan" ];
           description = ''
             Source zones for the filter — non-empty. Each entry is
-            either a declared zone name or one of the reserved
-            names (`host`, `local`, `self`, `firewall`, `all`,
-            `any`); resolution is enforced at module level, not by
-            the type.
+            either a declared zone name, the configured
+            `settings.localZone` (default `"local"`), or
+            `settings.wildcardZone` (default `"all"`); resolution
+            is enforced at module level, not by the type.
           '';
         };
 
@@ -214,10 +214,10 @@ let
           };
           description = ''
             Override the chain placement. `null` (the default)
-            dispatches to `input` / `forward` / `output` via the
-            host-position rule based on `from` / `to`. A submodule
-            pins the entry to a specific base chain — useful for
-            placements like rpfilter
+            dispatches to `input` / `forward` / `output` based on
+            whether `from` / `to` reference `settings.localZone`.
+            A submodule pins the entry to a specific base chain —
+            useful for placements like rpfilter
             (`chain = { hook = "prerouting"; priority = "raw"; }`).
             At non-default hooks, `to` / `from` may lose their
             usual match meaning (notably `to` in `prerouting`);

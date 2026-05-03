@@ -8,7 +8,7 @@
                          shape of `to`)
     - `drouteRule`     — list of nftypes statements (mangle / match
                          body)
-    - `droutePriority` — integer ordering key (lower runs first)
+    - `droutePriority` — symbol-or-int entry sort key (lower runs first)
     - `drouteComment`  — optional free-form comment
 
   A droute is a destination-zone-keyed route-mangling rule that
@@ -21,11 +21,11 @@
   nftzones.types.droute; }`.
 
   Why no `from`: output-hook chains fire only on locally-generated
-  packets, so the source zone is always `host`. Including
-  `from = [ "host" ]` as boilerplate would add noise without
-  informing dispatch.
+  packets, so the source zone is always `settings.localZone`.
+  Including `from = [ <localZone> ]` as boilerplate would add
+  noise without informing dispatch.
 
-  `drouteZones` and the wildcard / reserved-name behaviour are
+  `drouteZones` and the wildcard / localZone behaviour are
   identical to filter / snat / dnat / sroute — see
   `types/filter.nix` for the full discussion.
 
@@ -96,10 +96,10 @@ let
           example = [ "lan-remote" ];
           description = ''
             Destination zones for the droute — non-empty. Each
-            entry is either a declared zone name or one of the
-            reserved names (`host`, `local`, `self`, `firewall`,
-            `all`, `any`); resolution is enforced at module
-            level, not by the type.
+            entry is either a declared zone name, the configured
+            `settings.localZone` (default `"local"`), or
+            `settings.wildcardZone` (default `"all"`); resolution
+            is enforced at module level, not by the type.
           '';
         };
 

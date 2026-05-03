@@ -35,8 +35,8 @@ These are nftables's own concepts; we adopt the same terms verbatim:
 
 The same string travels from Phase 3 (as an attrset key) through to Phase 4 (as the actual nftables chain name):
 
-- **`baseChainName`** = `"<hook>-at-<priority>"` (e.g. `"forward-at-filter"`). Computed by `internal.dispatch.baseChainNameOf`. Used as the bucket key in `chainBuckets` *and* as the base chain's name in the emitted nftables output.
-- **`subChainKey`** — local key within `bucket.subChains` (e.g. `"lan-to-wan"` / `"wan"` / `"lan"`). Computed by `internal.dispatch.subChainKeyOf` from a cell's `from` / `to`.
+- **`baseChainName`** = `"<hook>-at-<priority>"` (e.g. `"forward-at-filter"`). Computed internally by `internal.dispatch`. Used as the bucket key in `chainBuckets` *and* as the base chain's name in the emitted nftables output.
+- **`subChainKey`** — local key within `bucket.subChains` (e.g. `"lan-to-wan"` / `"wan"` / `"lan"`). Computed internally by `internal.dispatch` from a cell's `from` / `to`.
 - **`subChainName`** — full sub-chain name in the nftables output, `"<baseChainName>__<subChainKey>"` (e.g. `"forward-at-filter__lan-to-wan"`). Computed by `internal.emit.subChainNameOf`.
 
 ### Two framings of `(hook, priority)`
@@ -61,10 +61,10 @@ expandWildcardZones          # table -> table
 
 Two functions, both pure:
 
-- `mkTable :: nftzones.types.table -> nftypes-table-value` — produces a composable single-table value (insertable into a larger user-defined ruleset).
-- `mkRuleset :: nftzones.types.table -> nftypes-ruleset-value` — wraps `mkTable`'s output in the canonical `{ nftables = [ … ]; }` envelope ready for `nft -f -j`.
+- `mkTable :: String -> body -> nftypes-table-value` — produces a composable single-table value (insertable into a larger user-defined ruleset). The `String` arg is the nftables table name; `body` is a raw `nftzones.types.table` body (evaluated internally via `evalModules`).
+- `mkRuleset :: String -> body -> nftypes-ruleset-value` — wraps `mkTable`'s output in the canonical `{ nftables = [ … ]; }` envelope ready for `nft -f -j`.
 
-Both consume one table at a time. Multi-table consumers compose externally — e.g. `nftypes.dsl.ruleset { tables = [ (mkTable x) (mkTable y) ]; }`.
+Both consume one table at a time. Multi-table consumers compose externally — e.g. `nftypes.dsl.ruleset [ (mkTable "fw-a" body-a) (mkTable "fw-b" body-b) ]`.
 
 ## Pipeline phases
 
@@ -117,16 +117,16 @@ allZones = [ "lan" "wan" "dmz" "local" ]
 
 ### 1.3 Validation
 
-Cross-reference checks before expansion:
+Eight validators run after the compute phases, all in `internal/normalize.nix`. Each appends `lib.nameValuePair "<errorTag>" <message>` records to `ctx.errors`; the orchestrator aggregates them and throws a single message listing every error, so users see all problems in one pass.
 
-- **`internal.validate.checkNameCollisions`** — node names must not collide with zone names (lowering would silently overwrite).
-- **`internal.validate.checkZoneRefs`** — every zone reference (in `from`, `to`, `node.zone`) must resolve to a known zone.
-
-Each returns `[ String ]` of error messages. The orchestrator aggregates and throws if any error appears, surfacing all problems in one pass.
-
-Validations deferred to later phases:
-
-- **Named-object refs** — `counter name "X"`, `set @X`, `ct helper "X"` references in rule bodies must match `objects.<kind>` keys. Implementation will be a special-case extractor pattern-matching on the variants that can carry named refs (counter, limit, quota, ct helper, ct timeout, ct expectation, secmark, synproxy, tunnel, plus set/map lookups inside match expressions). See open question 3 for the design discussion.
+- **`checkNameCollisions`** — node names must not collide with zone names (lowering would silently overwrite).
+- **`checkSettings`** — `settings.localZone` and `settings.wildcardZone` must differ from each other and from any declared zone / node name.
+- **`checkZoneRefs`** — every zone reference (in `from`, `to`, `node.zone`) must resolve to a known zone or `settings.localZone`.
+- **`checkZoneMatchable`** — every direction-bound zone ref (`from` → ingress, `to` → egress) must point at a zone whose computed `match` is non-empty on the relevant side.
+- **`checkChainOverridePlacement`** — entries with a `chain` override must land at a hook where their `from` / `to` zones are actually matchable (interface fields aren't valid at every hook).
+- **`checkPolicyUniqueness`** — at most one policy applies per `(from, to)` cell after wildcard expansion.
+- **`checkSetNameCollisions`** — user `objects.sets.<name>` must not collide with auto-generated zone-derived set names (`<zone>_iifs|v4|v6`).
+- **`checkObjectRefs`** — every named-object reference in entry rule bodies, zone matchOverride content, and object bodies must resolve to a key in `table.objects.<kind>` (or — for `kind == "sets"` — a zone-derived set name). The walker lives in `internal/refs.nix`.
 
 ## Phase 2: expand
 
@@ -156,7 +156,7 @@ Each cell goes to a chain based on its group:
 
 | Group | Chain dispatch |
 |---|---|
-| `filters` | `internal.dispatch.filterChainHook` — input / forward / output via host-position rule. |
+| `filters` | Computed internally by `internal.dispatch` — input / forward / output based on whether `from` / `to` reference `settings.localZone`. |
 | `policies` | Same as `filters` — policies become tail rules in the same per-pair sub-chains. |
 | `snats` | Always postrouting (`type nat hook postrouting priority srcnat`). |
 | `dnats` | Always prerouting (`type nat hook prerouting priority dstnat`). |
@@ -247,7 +247,7 @@ Verbose but unambiguous: each name is a literal concat of `chainBuckets` keys, s
 - **filter / sroute / droute** — `cell.rule` is `list-of-statements`; splice as one rule.
 - **snat** — `cell.rule.snat = { addr; port?; ... }` or `cell.rule.masquerade = { ... }` → single statement.
 - **dnat** — `cell.rule.match = [...]; cell.rule.action.{dnat|redirect} = { ... }` → match conditions ++ action statement.
-- **policy** — `cell.verdict = "accept" | "drop" | ...` → single verdict statement (always the tail rule).
+- **policy** — `cell.verdict = "accept" | "drop"` → single verdict statement (always the tail rule).
 
 ### 4.4 Jumps
 
@@ -315,50 +315,68 @@ mkJumpRules = { hook, baseChainName, subChains, zoneSets, localZone }:
 - `counters`, `quotas`, `limits`, `ctHelpers`, … from `table.objects`.
 - `comment` — from `table.comment`.
 
-## File structure (proposed)
+## File structure
 
 ```
 lib/
-  default.nix                — exposes mkTable, mkRuleset alongside types/internal
+  default.nix                — public surface: mkTable, mkRuleset,
+                               version + re-exports of `types` and
+                               `internal`.
   internal/
-    # Phase 1 helpers (implemented)
-    node.nix                 — toZone (node → zone lowering)
-    normalize.nix            — phase orchestrator + all Phase 1 phases
-                               (convertNodesToZones, collectAllZoneNames,
-                               expandWildcardZones, resolvePriorities,
-                               collectZoneRefs, checkNameCollisions,
-                               checkSettings, checkZoneRefs)
-
-    # Phase 2 helpers (implemented)
-    expand.nix               — expandTable (entry → cells per group)
-
-    # Phase 3 helpers (implemented)
-    dispatch.nix             — phase orchestrator (dispatchAndSort)
-                               + groupCellsByChain, buildChainBuckets
-                               (cells → chainBuckets keyed by
-                               `<hook>-at-<priority>`, slotted into
-                               preDispatch / subChains / postDispatch)
-
-    # Existing helpers used by Phases 2/4 (implemented)
-    zone.nix                 — genMatch (per-zone match expressions)
-    entry.nix                — toCells (entry → list of cells)
+    # Layer 0 — leaves (no inter-module deps)
+    zone.nix                 — genMatch (per-zone match expressions),
+                               genSets (per-zone nftables sets,
+                               consumed by both Phase 1 validators and
+                               Phase 4 emit).
+    entry.nix                — toCells (one entry → list of cells per
+                               cartesian product of from / to).
     priority.nix             — resolvePriority (symbol → int),
                                entryPriorities (canonical symbol → int
-                               table consumed by Phase 3)
+                               table consumed by Phase 3).
+    node.nix                 — toZone (node → zone lowering).
+    refs.nix                 — extractRefs (recursive walker that
+                               extracts named-object refs from any
+                               rule body or expression; consumed by
+                               Phase 1's checkObjectRefs).
 
-    # Phase 4 helpers (TBD)
-    emit-sets.nix            — per-zone interface / CIDR sets
-    emit-chains.nix          — base chain skeletons + boilerplate
-    emit-rules.nix           — rule body emission per cell
-    emit-table.nix           — table assembly
-    emit-ruleset.nix         — ruleset envelope wrapper
+    # Layer 1 — phase orchestrators (consume the leaves above)
+    normalize.nix            — Phase 1 orchestrator + 14 phases:
+                               convertNodesToZones, computeZoneSets,
+                               collectAllZoneNames, expandWildcardZones,
+                               resolvePriorities, collectZoneRefs,
+                               checkNameCollisions, checkSettings,
+                               checkZoneRefs, checkZoneMatchable,
+                               checkChainOverridePlacement,
+                               checkPolicyUniqueness,
+                               checkSetNameCollisions, checkObjectRefs.
+    expand.nix               — Phase 2 orchestrator: expandTable
+                               (cartesian product per entry into cells).
+    dispatch.nix             — Phase 3 orchestrator: dispatchAndSort
+                               (groupCellsByChain → chain buckets
+                               keyed by `<hook>-at-<priority>`,
+                               slotted into preDispatch / subChains
+                               / postDispatch).
+    emit.nix                 — Phase 4 orchestrator: emitTable
+                               (emitBaseChains → emitSubChains →
+                               emitUserObjects → assembleOutput) plus
+                               every helper used by those phases
+                               (mkBaseChain, mkSubChain, mkRuleBody,
+                               mkJumpRules, mkDirectionVariants, etc.).
 
-    # Orchestrator (TBD)
-    compile.nix              — wires the four phases together
-  types/                     — (existing)
+    # Layer 2 — top-level orchestrator (consumes all phases above)
+    compile.nix              — pipes Phase 1-4 together; exposes
+                               compile, mkTable, mkRuleset (the
+                               internal entry points wrapped by the
+                               public API in lib/default.nix).
+
+    default.nix              — composes the three layers and threads
+                               each layer into the next via the
+                               `internal` arg.
+  types/                     — option submodules; consumed by both the
+                               public API surface and tests' evalModules.
 ```
 
-Each new internal module gets a unit-test file. Orchestrator and emit modules also get integration tests with realistic configs that diff against expected JSON fixtures.
+Each internal module has a unit-test file under `tests/unit/internal/<module>.nix`. End-to-end coverage lives in `tests/unit/internal/compile.nix`.
 
 ## Open questions
 
@@ -390,26 +408,55 @@ All four phases are implemented, unit-tested, and wired through the public API (
 
 The pipeline end-to-end:
 
+`compile` pipes four sub-orchestrators; each one is itself a `lib.pipe` over per-phase steps:
+
 ```nix
-final = lib.pipe table [
-  # Phase 1 — normalize
-  convertNodesToZones computeZoneSets
-  collectAllZoneNames expandWildcardZones
-  resolvePriorities  collectZoneRefs
-  checkNameCollisions checkSettings checkZoneRefs
-  checkZoneMatchable checkChainOverridePlacement checkPolicyUniqueness
-  checkSetNameCollisions checkObjectRefs
-  # Phase 2 — expand
-  expandTable
-  # Phase 3 — dispatch + sort
-  dispatchAndSort  # = groupCellsByChain |> buildChainBuckets
-  # Phase 4 — emit (consumes ctx.zoneSets from Phase 1)
-  emitTable        # = emitBaseChains |> emitSubChains
-                   #   |> emitUserObjects |> assembleOutput
+compile = table:
+  lib.pipe table [
+    normalizeTable     # Phase 1
+    expandTable        # Phase 2
+    dispatchAndSort    # Phase 3
+    emitTable          # Phase 4
+  ];
+
+# Phase 1 — internal/normalize.nix
+normalizeTable = lib.pipe (mkInitialState table) [
+  convertNodesToZones      # ctx.mergedZones
+  computeZoneSets          # ctx.zoneSets   (consumed in P1 + P4)
+  collectAllZoneNames      # ctx.allZoneNames
+  expandWildcardZones      # ctx.expandedGroups
+  resolvePriorities        # ctx.resolvedPriorities
+  collectZoneRefs          # ctx.zoneRefs
+  checkNameCollisions      # ─┐
+  checkSettings            #  │
+  checkZoneRefs            #  │
+  checkZoneMatchable       #  │ all append to ctx.errors;
+  checkChainOverridePlacement  # orchestrator throws if non-empty
+  checkPolicyUniqueness    #  │
+  checkSetNameCollisions   #  │
+  checkObjectRefs          # ─┘
 ];
-# final.ctx.output = nftypes.dsl.table value, exposed as
-#   nftzones.mkTable name body  →  table value
-#   nftzones.mkRuleset name body →  { nftables = [ ... ] }
+
+# Phase 3 — internal/dispatch.nix
+dispatchAndSort = lib.pipe state [
+  groupCellsByChain        # ctx.groupedByChain
+  buildChainBuckets        # ctx.chainBuckets
+];
+
+# Phase 4 — internal/emit.nix (reads ctx.zoneSets from Phase 1)
+emitTable = lib.pipe state [
+  emitBaseChains           # ctx.baseChains
+  emitSubChains            # ctx.subChains
+  emitUserObjects          # ctx.userObjects
+  assembleOutput           # ctx.output  (nftypes.dsl.table value)
+];
+```
+
+Public wrappers in `lib/default.nix` call `internal.compile.{mkTable,mkRuleset}` after running the user's body through `evalModules`:
+
+```
+nftzones.mkTable   name body  →  nftypes-table-value     (composable)
+nftzones.mkRuleset name body  →  { nftables = [ ... ]; } (ready for `nft -f -j`)
 ```
 
 Pending follow-ups:

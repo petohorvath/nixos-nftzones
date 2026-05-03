@@ -36,12 +36,12 @@
   attrset key — Phase 3 sorts by `(priority, name)` and the name
   acts as a stable tiebreaker.
 
-  Output shape:
+  Output shape (`chain` is always-present, may be null):
     cells = {
-      filters  = [ { from; to;   name; rule; priority; comment; chain?; } … ];
+      filters  = [ { from; to;   name; rule; priority; comment; chain; } … ];
       policies = [ { from; to;   name; verdict; comment } … ];   # no priority
-      snats    = [ { from; to;   name; rule; priority; comment; chain?; } … ];
-      dnats    = [ { from;       name; rule; priority; comment; chain?; } … ];
+      snats    = [ { from; to;   name; rule; priority; comment; chain; } … ];
+      dnats    = [ { from;       name; rule; priority; comment; chain; } … ];
       sroutes  = [ { from;       name; rule; priority; comment } … ];
       droutes  = [ {       to;   name; rule; priority; comment } … ];
     };
