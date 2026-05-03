@@ -20,6 +20,7 @@ let
     mkSubChains
     mkDirectionVariants
     mkJumpRules
+    mkUserObjects
     assembleTable
     emitTable
     ;
@@ -1434,5 +1435,151 @@ in
       in
       builtins.length baseRules;
     expected = 6;
+  };
+
+  # ===== mkUserObjects — identity passthrough =====
+
+  testMkUserObjectsIdentity = {
+    expr = mkUserObjects {
+      counters.web = { };
+      quotas = { };
+    };
+    expected = {
+      counters.web = { };
+      quotas = { };
+    };
+  };
+
+  # ===== emitTable — empty table.objects → no extra body kinds =====
+
+  testEmitTableEmptyObjects = {
+    expr =
+      let
+        out =
+          (runEmit {
+            zones.lan = {
+              interfaces = [ "lan0" ];
+            };
+          }).output;
+      in
+      pkgs.lib.attrNames out;
+    # `family` and `name` are always present; `sets` for the zone;
+    # `__nftTable` is the marker added by `nftypes.dsl.table`. No
+    # other body kinds because all 12 `table.objects.<kind>`
+    # default to `{}` and are filtered out.
+    expected = [
+      "__nftTable"
+      "family"
+      "name"
+      "sets"
+    ];
+  };
+
+  # ===== emitTable — counter passes through to body.counters =====
+
+  testEmitTableCounterPassthrough = {
+    expr =
+      let
+        out =
+          (runEmit {
+            objects.counters.web-hits = { };
+          }).output;
+      in
+      pkgs.lib.attrNames out.counters;
+    # Counter body fields (`bytes` / `comment` / `packets`) come
+    # from the type defaults; we only assert the entry shows up
+    # under the right name.
+    expected = [ "web-hits" ];
+  };
+
+  # ===== emitTable — multiple kinds flow through =====
+
+  testEmitTableMultipleKinds = {
+    expr =
+      let
+        out =
+          (runEmit {
+            objects = {
+              counters.hits = { };
+              quotas.bw = {
+                bytes = 1000000;
+              };
+              ctHelpers.ftp = {
+                type = "ftp";
+                protocol = "tcp";
+              };
+            };
+          }).output;
+      in
+      pkgs.lib.sort (a: b: a < b) (
+        builtins.filter (
+          k:
+          builtins.elem k [
+            "counters"
+            "quotas"
+            "ctHelpers"
+          ]
+        ) (pkgs.lib.attrNames out)
+      );
+    expected = [
+      "counters"
+      "ctHelpers"
+      "quotas"
+    ];
+  };
+
+  # ===== emitTable — user-defined set merges with zone sets =====
+
+  testEmitTableUserSetMergesWithZoneSets = {
+    expr =
+      let
+        out =
+          (runEmit {
+            zones.lan = {
+              interfaces = [ "lan0" ];
+            };
+            objects.sets.blocklist_v4 = {
+              type = "ipv4_addr";
+              flags = [ "interval" ];
+            };
+          }).output;
+      in
+      pkgs.lib.sort (a: b: a < b) (pkgs.lib.attrNames out.sets);
+    # Both zone-generated and user-defined sets share `body.sets`.
+    expected = [
+      "blocklist_v4"
+      "lan_iifs"
+    ];
+  };
+
+  # ===== emitTable — empty user-object kinds are skipped =====
+
+  testEmitTableEmptyKindsSkipped = {
+    # `objects.counters = {}` (default) shouldn't add a `counters`
+    # field to the output body.
+    expr =
+      let
+        out =
+          (runEmit {
+            zones.lan = {
+              interfaces = [ "lan0" ];
+            };
+            # all 12 kinds default to {}
+          }).output;
+      in
+      builtins.any (k: builtins.elem k (pkgs.lib.attrNames out)) [
+        "counters"
+        "quotas"
+        "limits"
+        "ctHelpers"
+        "ctTimeouts"
+        "ctExpectations"
+        "secmarks"
+        "synproxies"
+        "tunnels"
+        "maps"
+        "flowtables"
+      ];
+    expected = false;
   };
 }

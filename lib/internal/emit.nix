@@ -9,23 +9,22 @@
   Pipeline pattern: each phase takes `{ table; ctx }` and returns
   the same shape, mirroring earlier phases.
 
-  Phase pipeline (Phase 4 portion — incremental; this file
-  currently builds per-zone sets, base chains with cell rules in
-  pre/postDispatch slots and sub-chain dispatch jumps, and
-  per-pair sub-chain bodies, then assembles them into the table.
-  User-object passthrough still pending — step 5):
+  Phase pipeline (Phase 4, post-step-5 — every sub-phase below
+  contributes one `ctx` artifact; `assembleOutput` rolls them
+  into the final table body):
 
       { table; ctx (post-Phase 3) }
         ↓ emitZoneSets     ctx.zoneSets
         ↓ emitBaseChains   ctx.baseChains    (reads ctx.zoneSets for jumps)
         ↓ emitSubChains    ctx.subChains
+        ↓ emitUserObjects  ctx.userObjects
         ↓ assembleOutput   ctx.output        (nftypes.dsl.table value)
       { table; ctx }
 
-  Future steps slot more sub-phases — user-object passthrough —
-  each contributing one `ctx` artifact that `assembleOutput`
-  rolls into the final table body.
-  See `docs/compile-pipeline-draft.md` §4.5.
+  Phase 4 itself is now feature-complete; the remaining work is
+  the `compile.nix` orchestrator + public `mkTable` / `mkRuleset`
+  API (step 6) which lives outside this module. See
+  `docs/compile-pipeline-draft.md` §4.6.
 
   ===== mkPerZoneSets =====
 
@@ -224,17 +223,44 @@
   Pipeline phase that wraps `mkSubChains` and stashes the sub-chain
   attrset on `ctx`.
 
+  ===== mkUserObjects =====
+
+  Pure passthrough: `table.objects.<kind>.<name>` flows into
+  `body.<kind>.<name>` of the assembled table value. The type
+  layer's `asUserBody` (in `lib/types/table.nix`) has already
+  stripped `family` / `name` / `table` / `handle`; the nftypes
+  renderer fills them back in from the parent table.
+
+  Identity for now — placeholder for future kind-aware transforms
+  (e.g., named-object reference validation per design doc open
+  question 3).
+
+  ===== emitUserObjects =====
+
+  Reads:  table.objects
+  Writes: ctx.userObjects
+
+  Pipeline phase that wraps `mkUserObjects`.
+
   ===== assembleOutput =====
 
   Reads:  ctx.zoneSets, ctx.baseChains, ctx.subChains,
-          table.{family, name}
+          ctx.userObjects, table.{family, name}
   Writes: ctx.output
 
   Final pipeline phase: rolls the per-artifact ctx fields into
-  one `nftypes.dsl.table` value via `assembleTable`. Base chains
-  and sub-chains share the body's `chains` field — keys won't
-  collide because base chains use the bare `<chain-key>` and
-  sub-chains use `<chain-key>__<sub-key>`.
+  one `nftypes.dsl.table` value via `assembleTable`.
+
+  Body composition rules:
+    - Base chains and sub-chains share `body.chains` — keys don't
+      collide because base chains use the bare `<baseChainName>`
+      and sub-chains use `<baseChainName>__<subChainKey>`.
+    - User-defined sets merge with auto-generated zone sets under
+      `body.sets`. Name collisions resolve user-wins; a future
+      Phase 1 validator should flag these at compile time.
+    - Other user-object kinds (counters / quotas / limits / …)
+      pass through as their own body field. Empty kinds are
+      skipped so the output JSON stays minimal.
 
   ===== emitTable =====
 
@@ -691,6 +717,28 @@ let
       };
     };
 
+  /*
+    Pure passthrough: `table.objects.<kind>.<name>` maps directly to
+    `body.<kind>.<name>` in the assembled `nftypes.dsl.table` value.
+    The type layer's `asUserBody` (in `lib/types/table.nix`) has
+    already stripped `family` / `name` / `table` / `handle`; the
+    nftypes renderer fills them back in from the parent table.
+
+    Identity for now — placeholder for future kind-aware transforms
+    (e.g., named-object reference validation per design doc open
+    question 3).
+  */
+  mkUserObjects = objects: objects;
+
+  emitUserObjects =
+    { table, ctx }:
+    {
+      inherit table;
+      ctx = ctx // {
+        userObjects = mkUserObjects table.objects;
+      };
+    };
+
   assembleOutput =
     { table, ctx }:
     let
@@ -698,9 +746,24 @@ let
       # keys won't collide because base chains use the bare
       # `<chain-key>` and sub-chains use `<chain-key>__<sub-key>`.
       allChains = ctx.baseChains // ctx.subChains;
+
+      # User-defined sets merge with the auto-generated zone sets
+      # under one `body.sets` field. User wins on key collision.
+      # TODO: add a Phase 1 validator that flags collisions between
+      # user set names and auto-generated zone-set names
+      # (`<zone>_iifs` / `<zone>_v4` / `<zone>_v6`).
+      allSets = ctx.zoneSets // (ctx.userObjects.sets or { });
+
+      # Other user-object kinds pass through as their own body
+      # field. Empty kinds are skipped so the output stays clean.
+      otherUserObjectKinds = lib.filterAttrs (_: v: v != { }) (
+        builtins.removeAttrs ctx.userObjects [ "sets" ]
+      );
+
       body =
-        lib.optionalAttrs (ctx.zoneSets != { }) { sets = ctx.zoneSets; }
-        // lib.optionalAttrs (allChains != { }) { chains = allChains; };
+        lib.optionalAttrs (allSets != { }) { sets = allSets; }
+        // lib.optionalAttrs (allChains != { }) { chains = allChains; }
+        // otherUserObjectKinds;
     in
     {
       inherit table;
@@ -718,6 +781,7 @@ let
       emitZoneSets
       emitBaseChains
       emitSubChains
+      emitUserObjects
       assembleOutput
     ];
 in
@@ -733,10 +797,12 @@ in
     mkJumpRules
     mkBaseChain
     mkBaseChains
+    mkUserObjects
     assembleTable
     emitZoneSets
     emitBaseChains
     emitSubChains
+    emitUserObjects
     assembleOutput
     emitTable
     ;
