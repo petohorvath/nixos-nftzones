@@ -135,7 +135,7 @@ Each cell goes to a chain based on its group:
 
 The per-rule `chain` override submodule on filter / snat / dnat redirects a cell to a custom hook + priority chain (e.g., rpfilter at `prerouting + raw`).
 
-Output is a 2D buckets attrset: `{ <chainKey> = [ <cells>... ]; ... }`.
+Output is a 2D buckets attrset: `{ <baseChainName> = [ <cells>... ]; ... }`.
 
 ### 3.2 Sort
 
@@ -159,30 +159,118 @@ Empty sets are skipped. The compiler uses `internal.zone.genMatch` (already exis
 
 ### 4.2 Base chains
 
-Per the table's `family` and `settings`:
+One base chain per `(hook, priority)` bucket from `ctx.chainBuckets` (Phase 3). Default placements:
 
-- **Filter base chains** — `input`, `forward`, `output`. Each has `type filter hook <name> priority filter; policy <chainPolicy>;`.
+- **Filter base chains** — `input`, `forward`, `output` at `priority filter`. Header: `type filter hook <name> priority filter; policy <chainPolicy>;`.
 - **NAT base chains** — `prerouting` (DNAT) at `dstnat`, `postrouting` (SNAT) at `srcnat`.
-- **Route base chains** — `prerouting_route` at `mangle` (sroute), `output_route` at `mangle` (droute).
+- **Route base chains** — `prerouting` at `mangle` (sroute), `output` at `mangle` (droute).
 - **Optional `rpfilter` chain** — emitted only when `settings.rpfilter = true`. `type filter hook prerouting priority raw;` with one rule: `fib saddr . iif oif eq 0 drop`.
 
-Boilerplate prepended to filter base chains per `settings`:
+**Chain type derivation.** `chainAttrs` carries `(hook, priority)` only; `type` is derived locally in `emit.nix`. nftypes does *not* expose this mapping (only `nftypes.enums.chainType = [ "filter" "nat" "route" ]` and `nftypes.compatibility.familiesByChainType` for validation). Rule:
 
-- `iif lo accept` in `input` if `settings.loopback` (default true).
-- `ct state established,related accept; ct state invalid drop;` at the top of each filter chain if `settings.stateful` (default true).
+```nix
+chainTypeOf = chainAttrs:
+  let p = if builtins.isInt chainAttrs.priority
+          then chainAttrs.priority
+          else priorityIntsDefault.${chainAttrs.priority};
+  in
+    if p == priorityIntsDefault.srcnat || p == priorityIntsDefault.dstnat then "nat"
+    else if p == priorityIntsDefault.mangle
+         && (chainAttrs.hook == "prerouting" || chainAttrs.hook == "output") then "route"
+    else "filter";
+```
+
+Covers all default placements (snat → `nat`, dnat → `nat`, sroute / droute → `route`, filter / policy → `filter`, rpfilter override → `filter`) and any user override that doesn't deliberately land on `srcnat` / `dstnat` / special-`mangle`. If users ever need to pick chain type explicitly, add an optional `type` field to the chain-override schema later.
+
+**Rule order in a base chain:**
+
+1. (filter only) stateful boilerplate (`ct state established,related accept; ct state invalid drop`) if `settings.stateful` (default true).
+2. (filter input only) loopback boilerplate (`iif lo accept`) if `settings.loopback` (default true).
+3. `preDispatch` cells from this bucket, sorted.
+4. **Jump block** — one jump per sub-chain (see §4.4).
+5. `postDispatch` cells from this bucket, sorted.
+
+Chain `policy <chainPolicy>` is declared on the chain header (filter chains only), not as a rule.
 
 ### 4.3 Per-pair sub-chains
 
-For each non-empty `(chain, from, to)` bucket, emit one chain. Inside it: sorted rules + tail rule from the matching policy (if any). Suggested naming convention:
+For each non-empty `(chain, from, to)` bucket, emit one chain. Inside it: sorted cells (filter / snat / dnat / sroute / droute rules) plus the tail rule from the matching policy if any.
 
-- `fwd-<from>-to-<to>` for forward.
-- `in-<from>` for input.
-- `out-<to>` for output.
-- NAT and route get analogous prefixes (`nat-pre-…`, `mangle-pre-…`, etc.).
+**Naming convention:** `<baseChainName>__<subChainKey>` (double-underscore separator), reusing Phase 3's `chainBuckets` keys verbatim. The `baseChainName` is the bucket key from Phase 3 (`"<hook>-at-<priority>"`); the `subChainKey` is the local key within `bucket.subChains` (`"<from>-to-<to>"`, `"<from>"`, or `"<to>"`):
+
+| Group / scenario | Sub-chain name |
+|---|---|
+| Filter `lan → wan` (forward) | `forward-at-filter__lan-to-wan` |
+| Filter `wan → local` (input) | `input-at-filter__wan-to-local` |
+| Filter `local → wan` (output) | `output-at-filter__local-to-wan` |
+| Snat `lan → wan` | `postrouting-at-srcnat__lan-to-wan` |
+| Dnat `wan` (single-direction `from`) | `prerouting-at-dstnat__wan` |
+| Droute `vpn` (single-direction `to`) | `output-at-mangle__vpn` |
+| rpfilter override `(prerouting, raw)`, `wan → local` | `prerouting-at-raw__wan-to-local` |
+
+Verbose but unambiguous: each name is a literal concat of `chainBuckets` keys, so the name → `(hook, priority, from, to)` mapping is mechanical and auditable in the generated JSON.
+
+**Body:** sorted cells (per `(priority asc, name asc)` from Phase 3) followed by the policy tail rule (if any).
+
+**Rule body emission per group:**
+
+- **filter / sroute / droute** — `cell.rule` is `list-of-statements`; splice as one rule.
+- **snat** — `cell.rule.snat = { addr; port?; ... }` or `cell.rule.masquerade = { ... }` → single statement.
+- **dnat** — `cell.rule.match = [...]; cell.rule.action.{dnat|redirect} = { ... }` → match conditions ++ action statement.
+- **policy** — `cell.verdict = "accept" | "drop" | ...` → single verdict statement (always the tail rule).
 
 ### 4.4 Jumps
 
-In each base chain, emit one jump per non-empty `(from, to)` bucket. Match condition is built from per-zone sets (`iifname @lan_iifs ip saddr @lan_v4 …`); verdict is `jump <sub-chain>`. Pre-dispatch user rules (priority `< 100`) emit *before* the jump block; post-dispatch user rules (priority `≥ 100`) emit *after*.
+In each base chain, emit one or more jumps per non-empty sub-chain in that bucket's `subChains`. Match conditions select packets belonging to the `(from, to)` pair using per-zone sets from §4.1; verdict is `jump <sub-chain-name>`.
+
+**Per-direction variants — *not* a single ANDed clause list.** In `inet` family, `ip <addr>` and `ip6 <addr>` clauses cannot be ANDed in the same rule: a v4 packet hitting `ip6 saddr ...` skips the rule entirely (and vice versa). So each direction emits **one variant per address family** that has a non-empty set, plus the optional interface prefix when the hook allows it.
+
+The variant table mirrors `internal.zone.genMatch` (8 cases), with named-set references in place of inline lists:
+
+| Zone has        | Variants emitted (per direction) |
+|---|---|
+| empty           | `[ ]` *(Phase 1 `checkZoneMatchable` should prevent reaching this)* |
+| iface only      | `[[ <ifField> @<zone>_iifs ]]` |
+| v4 only         | `[[ <ipFamily> <addrField> @<zone>_v4 ]]` |
+| v6 only         | `[[ ip6 <addrField> @<zone>_v6 ]]` |
+| v4 + v6         | 2 variants — one v4, one v6 |
+| iface + v4      | 1 variant — iface prefix + v4 |
+| iface + v6      | 1 variant — iface prefix + v6 |
+| iface + v4 + v6 | 2 variants — each with iface prefix |
+
+Where `<ifField>` is `iifname` (from-direction) or `oifname` (to-direction), and `<addrField>` is `saddr` / `daddr` likewise.
+
+**Cartesian product across directions.** For each sub-chain, take the cartesian product of `from`-variants and `to`-variants. Each pair becomes one jump rule:
+
+```nix
+fromVariant ++ toVariant ++ [ (jump (subChainNameOf baseChainName subChainKey)) ]
+```
+
+**Family-mismatch waste (deferred optimization).** When both directions are `(v4 + v6)` zones, the cartesian product produces `(v4-from, v6-to)` and `(v6-from, v4-to)` jumps in addition to the matched-family pairs. These are harmless (skip on family mismatch) but bloat the chain. Optimization deferred — variants would need a family tag for the consumer to filter mismatched pairs. Revisit if chain sizes ever matter.
+
+**Hook-direction semantics** — interface fields are not always available; use `nftypes.compatibility.hooksWithOifname` (`[ "forward" "output" "postrouting" ]`) to gate the `oifname` clause. `iifname` is valid at every hook except `output`. The interface prefix is suppressed when the hook makes the field unavailable; address clauses are always allowed.
+
+| Hook | `iifname` valid? | `oifname` valid? |
+|---|---|---|
+| `prerouting` | ✓ | ✗ |
+| `input` | ✓ | ✗ |
+| `forward` | ✓ | ✓ |
+| `output` | ✗ | ✓ |
+| `postrouting` | ✓ | ✓ |
+
+When the hook makes the only available field unavailable AND the zone has no addr sets, the direction produces 0 variants. This case shouldn't reach Phase 4 because `checkChainOverridePlacement` (Phase 1) flags it; if it does (defense), the empty cartesian product drops the entire jump for that sub-chain — sub-chain becomes unreachable rather than over-permissive.
+
+**localZone references.** Phase 4 emits no match clauses for the `localZone` direction (it's a sentinel — never has a `mergedZones` entry, never has zone sets). The chain dispatch already used `localZone` for chain selection; once dispatched, the sentinel direction adds no further constraint. Single-direction sub-chains (dnat / sroute have no `to`; droute has no `from`) get the same wildcard treatment for the missing direction.
+
+Helper signatures:
+
+```nix
+mkDirectionVariants = { hook, direction, zoneName, zoneSets, localZone }:
+  <list-of-variants>;  # each variant is a list of statements
+
+mkJumpRules = { hook, baseChainName, subChains, zoneSets, localZone }:
+  <list-of-rules>;  # each rule = direction variants ++ [ jump-stmt ]
+```
 
 ### 4.5 User objects
 
