@@ -377,12 +377,12 @@ Each new internal module gets a unit-test file. Orchestrator and emit modules al
 
 ## Status
 
-Phases 1 (normalize), 2 (expand), and 3 (dispatch + sort) are implemented and unit-tested. Phase 4 (emit) is not yet written.
+All four phases are implemented, unit-tested, and wired through the public API (`nftzones.mkTable name body` / `nftzones.mkRuleset name body`).
 
-The pipeline today, end-to-end through what's built:
+The pipeline end-to-end:
 
 ```nix
-final = lib.pipe (mkInitialState table) [
+final = lib.pipe table [
   # Phase 1 — normalize
   convertNodesToZones collectAllZoneNames expandWildcardZones
   resolvePriorities  collectZoneRefs
@@ -392,15 +392,17 @@ final = lib.pipe (mkInitialState table) [
   expandTable
   # Phase 3 — dispatch + sort
   dispatchAndSort  # = groupCellsByChain |> buildChainBuckets
-  # Phase 4 — emit (steps 1-4; user objects + public API still pending)
-  emitTable        # = emitZoneSets |> emitBaseChains |> emitSubChains |> assembleOutput
+  # Phase 4 — emit
+  emitTable        # = emitZoneSets |> emitBaseChains |> emitSubChains
+                   #   |> emitUserObjects |> assembleOutput
 ];
-# final.ctx.output = nftypes.dsl.table value (assembled from
-#   ctx.zoneSets + ctx.baseChains + ctx.subChains).
+# final.ctx.output = nftypes.dsl.table value, exposed as
+#   nftzones.mkTable name body  →  table value
+#   nftzones.mkRuleset name body →  { nftables = [ ... ] }
 ```
 
-Next concrete milestones:
+Pending follow-ups:
 
-1. Phase 4 step 6 — `compile.nix` orchestrator + public `mkTable` / `mkRuleset` API. Ships the library.
-2. `checkSetNameCollisions` Phase 1 validator — catches user `objects.sets.<name>` colliding with auto-generated zone-set names (`<zone>_iifs` / `<zone>_v4` / `<zone>_v6`); see TODO in `internal.emit.assembleOutput`.
-3. Named-object reference validation (open question 3) — Phase 1 validator.
+1. `checkSetNameCollisions` Phase 1 validator — catches user `objects.sets.<name>` colliding with auto-generated zone-set names (`<zone>_iifs` / `<zone>_v4` / `<zone>_v6`); see TODO in `internal.emit.assembleOutput`.
+2. Named-object reference validation (open question 3) — Phase 1 validator.
+3. Drop `internal.zone.genMatch` from the pipeline — only `checkZoneMatchable` in Phase 1 reads `zone.match` (Phase 4 emit reads raw `interfaces` / `cidrs` directly). Rewrite the validator to inspect raw fields + `matchOverride` (mirroring `checkChainOverridePlacement`); see TODO above `checkZoneMatchable` in `internal.normalize`. The `match` field stays on the public `zone` / `node` types for external consumers.

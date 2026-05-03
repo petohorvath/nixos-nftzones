@@ -628,6 +628,14 @@ let
       };
     };
 
+  # TODO: this is the sole pipeline-internal consumer of the
+  # `zone.match` field (whose default is computed by
+  # `internal.zone.genMatch`). Phase 4's emit reads raw
+  # `zone.interfaces` / `zone.cidrs` directly. If we rewrite this
+  # validator to inspect those raw fields + `matchOverride`
+  # (mirroring `checkChainOverridePlacement`), `genMatch` becomes
+  # removable from the pipeline (the field would still be exposed
+  # on the public `zone` / `node` types for external consumers).
   checkZoneMatchable =
     { table, ctx }:
     let
