@@ -7,18 +7,15 @@
     - `zoneParent`        — optional reference to a parent zone
     - `zoneInterfaces`    — list of interface names
     - `zoneCidrs`         — list of CIDR prefixes (mixed v4/v6)
-    - `zoneMatch`         — submodule with read-only `ingress` and
-                            `egress` variant lists; shape of a zone's
-                            computed match
-    - `zoneMatchOverride` — same shape as `zoneMatch` but with nullable
-                            sides; `null` on a side keeps the computed
-                            value untouched
+    - `zoneMatchOverride` — per-direction wholesale match override
+                            (`{ ingress; egress; }` with nullable
+                            sides; `null` means "compute from
+                            interfaces / cidrs"); consumed by
+                            Phase 1's `checkZoneMatchable`
     - `zoneComment`       — optional free-form comment
 
-  `zone`'s `match` field is read-only and computed from `interfaces`,
-  `cidrs`, and `matchOverride` via `internal.zone.genMatch`.
-  Consumers wire it as `lib.mkOption { type = lib.types.attrsOf
-  nftzones.types.zone; }`.
+  Consumers wire the zone type as `lib.mkOption { type =
+  lib.types.attrsOf nftzones.types.zone; }`.
 
   `zoneName` only validates string shape; cross-cutting concerns —
   that a `parent` reference resolves to an existing zone, or that
@@ -43,7 +40,6 @@
 */
 {
   inputs,
-  internal,
   primitives,
 }:
 let
@@ -63,46 +59,37 @@ let
 
   zoneComment = primitives.comment;
 
-  zoneMatch = lib.types.submodule {
-    options = {
-      ingress = lib.mkOption {
-        type = zoneMatchVariants;
-        readOnly = true;
-        description = "Match variants for the ingress side.";
-      };
-      egress = lib.mkOption {
-        type = zoneMatchVariants;
-        readOnly = true;
-        description = "Match variants for the egress side.";
-      };
-    };
-  };
+  /*
+    One direction's match: a list of rule-body variants. Different
+    variants become separate rules sharing the same verdict.
+  */
+  zoneMatchVariants = lib.types.listOf primitives.rule;
 
   zoneMatchOverride = lib.types.submodule {
     options = {
       ingress = lib.mkOption {
         type = lib.types.nullOr zoneMatchVariants;
         default = null;
-        description = "Replace the computed ingress side wholesale.";
+        description = ''
+          Per-direction match override. `null` (the default)
+          means "derive matchability from interfaces / cidrs";
+          a non-null list provides a wholesale replacement.
+        '';
       };
       egress = lib.mkOption {
         type = lib.types.nullOr zoneMatchVariants;
         default = null;
-        description = "Replace the computed egress side wholesale.";
+        description = ''
+          Per-direction match override. `null` (the default)
+          means "derive matchability from interfaces / cidrs";
+          a non-null list provides a wholesale replacement.
+        '';
       };
     };
   };
 
-  /*
-    One direction's match: a list of rule-body variants. Different
-    variants become separate rules sharing the same verdict.
-    Variant count depends on what the zone declares — see
-    `internal/zone.nix` for the table.
-  */
-  zoneMatchVariants = lib.types.listOf primitives.rule;
-
   zone = lib.types.submodule (
-    { name, config, ... }:
+    { name, ... }:
     {
       options = {
         name = lib.mkOption {
@@ -154,22 +141,11 @@ let
           type = zoneMatchOverride;
           default = { };
           description = ''
-            Wholesale override for either or both directions. Useful for
-            zones whose membership cannot be expressed as a plain
-            interface/CIDR list.
-          '';
-        };
-
-        match = lib.mkOption {
-          type = zoneMatch;
-          readOnly = true;
-          default = internal.zone.genMatch {
-            inherit (config) interfaces cidrs;
-            override = config.matchOverride;
-          };
-          description = ''
-            Computed nftables match for this zone. Derived from
-            `interfaces`, `cidrs`, and `matchOverride`; not user-settable.
+            Per-direction match override. Useful for zones whose
+            membership cannot be expressed as a plain interface /
+            CIDR list. `null` on a side keeps the computed
+            matchability (from `interfaces` / `cidrs`); a non-null
+            list provides a wholesale replacement.
           '';
         };
 
@@ -193,7 +169,6 @@ in
     zoneParent
     zoneInterfaces
     zoneCidrs
-    zoneMatch
     zoneMatchOverride
     zoneComment
     zone

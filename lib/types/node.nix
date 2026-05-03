@@ -23,7 +23,6 @@
     interfaces    = [ ];
     cidrs         = optional ipv4 "${ipv4}/32"
                  ++ optional ipv6 "${ipv6}/128";
-    match         = computed via `internal.zone.genMatch`;
     matchOverride = { ingress = null; egress = null; };
     comment       = node.comment;
   The lowered values merge directly with declared zones (also

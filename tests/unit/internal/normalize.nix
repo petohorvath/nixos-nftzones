@@ -83,7 +83,8 @@ let
   /*
     Same as `runPipeline` but accepts a `body` and runs it through
     the table submodule first (via `evalTable`). Use when phases
-    read submodule-computed fields like `zone.match`.
+    rely on submodule-evaluated defaults (e.g. `matchOverride`'s
+    nullable fields filled in from defaults).
   */
   runEvalPipeline = phases: body: runPipeline phases (evalTable body);
 in
@@ -124,7 +125,6 @@ in
           matchOverride
           comment
           ;
-        matchPresent = web ? match;
       };
     expected = {
       name = "web";
@@ -139,7 +139,6 @@ in
         egress = null;
       };
       comment = null;
-      matchPresent = true;
     };
   };
 
@@ -1285,7 +1284,7 @@ in
         name = "zoneNotMatchable";
         value =
           "filters.f.from[0] references zone 'empty' which has no ingress match"
-          + " (no interfaces, no ingress CIDRs, no matchOverride.ingress)";
+          + " (no interfaces, no CIDRs, and no matchOverride.ingress)";
       }
     ];
   };
@@ -1320,7 +1319,7 @@ in
         name = "zoneNotMatchable";
         value =
           "filters.f.to[0] references zone 'empty' which has no egress match"
-          + " (no interfaces, no egress CIDRs, no matchOverride.egress)";
+          + " (no interfaces, no CIDRs, and no matchOverride.egress)";
       }
     ];
   };
@@ -1354,7 +1353,43 @@ in
         name = "zoneNotMatchable";
         value =
           "filters.from-ok.to[0] references zone 'partial' which has no egress match"
-          + " (no interfaces, no egress CIDRs, no matchOverride.egress)";
+          + " (no interfaces, no CIDRs, and no matchOverride.egress)";
+      }
+    ];
+  };
+
+  # ===== checkZoneMatchable — explicit empty override flagged with distinct reason =====
+
+  testCheckZoneMatchableExplicitEmptyOverride = {
+    # User explicitly killed the egress side via
+    # `matchOverride.egress = [ ]`. Distinct error reason from the
+    # null-override / nothing-declared case.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          collectZoneRefs
+          checkZoneMatchable
+        ]
+        {
+          name = "fw";
+          zones.killed-egress = {
+            interfaces = [ "x0" ];
+            matchOverride.egress = [ ];
+          };
+          filters.f = {
+            from = [ "killed-egress" ];
+            to = [ "killed-egress" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [
+      {
+        name = "zoneNotMatchable";
+        value =
+          "filters.f.to[0] references zone 'killed-egress' which has no egress match"
+          + " (matchOverride.egress is explicitly empty)";
       }
     ];
   };

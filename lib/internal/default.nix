@@ -18,7 +18,7 @@ let
   zone = import ./zone.nix { inherit inputs; };
   entry = import ./entry.nix { inherit inputs; };
   priority = import ./priority.nix { inherit inputs; };
-  node = import ./node.nix { inherit inputs zone; };
+  node = import ./node.nix { inherit inputs; };
   refs = import ./refs.nix { inherit inputs; };
 
   base = {

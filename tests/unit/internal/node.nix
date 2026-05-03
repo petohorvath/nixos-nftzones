@@ -135,7 +135,6 @@ in
       "cidrs"
       "comment"
       "interfaces"
-      "match"
       "matchOverride"
       "name"
       "parent"

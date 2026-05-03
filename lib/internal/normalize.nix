@@ -189,8 +189,12 @@
 
   Verifies that every group-side zone reference (`from` / `to` on
   filter / policy / snat / dnat / sroute / droute entries) hits a
-  zone whose computed `match` is non-empty *on the side actually
-  used*: `from` → `match.ingress`, `to` → `match.egress`.
+  zone whose match is non-empty *on the side actually used*:
+  `from` → ingress, `to` → egress.
+
+  Inspects raw `zone.interfaces` / `cidrs` / `matchOverride`
+  directly. Phase 4 emit reads the same raw fields via
+  `internal.zone.genSets`.
 
   Without this check, a zone declared as `zones.foo = { };` (empty
   interfaces, empty CIDRs, no `matchOverride`) — or one with an
@@ -302,7 +306,7 @@
   `dsl.goto <name>` inside rule bodies. nftzones generates chain
   names internally (`<hook>-at-<priority>__<key>`) and does not
   document them as a stable surface, so manually-written jumps
-  to those names are not validated. See follow-up #3 in
+  to those names are not validated. See follow-up #2 in
   `docs/compile-pipeline-draft.md` for the design discussion.
 
   Resolves names against the union of two namespaces:
@@ -714,14 +718,6 @@ let
       };
     };
 
-  # TODO: this is the sole pipeline-internal consumer of the
-  # `zone.match` field (whose default is computed by
-  # `internal.zone.genMatch`). Phase 4's emit reads raw
-  # `zone.interfaces` / `zone.cidrs` directly. If we rewrite this
-  # validator to inspect those raw fields + `matchOverride`
-  # (mirroring `checkChainOverridePlacement`), `genMatch` becomes
-  # removable from the pipeline (the field would still be exposed
-  # on the public `zone` / `node` types for external consumers).
   checkZoneMatchable =
     { table, ctx }:
     let
@@ -735,6 +731,18 @@ let
         to = "egress";
       };
 
+      /*
+        A zone is matchable on a given side iff EITHER the user
+        supplied a non-empty `matchOverride.<side>`, OR (in the
+        compute path) the zone declares any interfaces or CIDRs.
+      */
+      isMatchable =
+        zone: side:
+        let
+          override = zone.matchOverride.${side};
+        in
+        if override != null then override != [ ] else zone.interfaces != [ ] || zone.cidrs != [ ];
+
       # Skip refs without a `direction` (node parent refs), refs to
       # the localZone sentinel (no `mergedZones` entry by design),
       # and refs to unknown zones (already flagged by checkZoneRefs).
@@ -747,16 +755,20 @@ let
         let
           matchSide = directionToMatchSide.${r.direction};
         in
-        mergedZones.${r.zone}.match.${matchSide} == [ ]
+        !(isMatchable mergedZones.${r.zone} matchSide)
       ) directionBoundRefs;
 
       newErrors = map (
         r:
         let
           matchSide = directionToMatchSide.${r.direction};
-          msg =
-            "${r.path} references zone '${r.zone}' which has no ${matchSide} match"
-            + " (no interfaces, no ${matchSide} CIDRs, no matchOverride.${matchSide})";
+          override = mergedZones.${r.zone}.matchOverride.${matchSide};
+          reason =
+            if override != null then
+              "matchOverride.${matchSide} is explicitly empty"
+            else
+              "no interfaces, no CIDRs, and no matchOverride.${matchSide}";
+          msg = "${r.path} references zone '${r.zone}' which has no ${matchSide} match (${reason})";
         in
         lib.nameValuePair "zoneNotMatchable" msg
       ) unmatchableRefs;

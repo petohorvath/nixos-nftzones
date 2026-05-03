@@ -18,7 +18,7 @@ The pipeline (and the surrounding code) names the data-model levels consistently
 - **Cell** — a concrete `(from, to)` instance of an entry produced by Phase 2's cartesian product. Same shape as the entry but with the listed directions as scalars instead of lists. An entry with `from = [ "lan" "guest" ]; to = [ "wan" "vpn" ]` produces four cells. For single-direction groups, a cell has only the relevant scalar (e.g., a `dnat` cell has `from = "wan"` and no `to`).
 - **Slot** — one of three positions a cell occupies within its chain bucket, decided by the cell's resolved priority: `preDispatch` (emit in the base chain *before* the per-pair dispatch jumps), `subChains` (emit inside a per-`(from, to)` sub-chain — the default), or `postDispatch` (emit in the base chain *after* the dispatch jumps). Phase 3 buckets cells by `(chain, slot)`; Phase 4 emits each slot in order.
 - **Bucket** — Phase 3 container holding all cells destined for one `(hook, priority)` placement, organized by slot. `ctx.chainBuckets.<baseChainName> = { hook; priority; preDispatch; subChains; postDispatch; }`. Phase 4 emits one base chain per bucket.
-- **Variant** — one match-clause list within a `match.<ingress|egress>` direction (or in a Phase 4 jump rule). Multiple variants → multiple emitted rules. `internal.zone.genMatch` documents the 8-case variant table for zones; `mkDirectionVariants` mirrors it for jump-match construction.
+- **Variant** — one match-clause list within a `matchOverride.<ingress|egress>` direction (or in a Phase 4 jump rule). Multiple variants → multiple emitted rules. `internal.emit.mkDirectionVariants` documents the 8-case variant table for jump-match construction.
 
 ### nftables vocabulary
 
@@ -185,7 +185,7 @@ For each zone, generate up to three sets:
 - `<name>_v4` — `type ipv4_addr; flags interval` of v4 CIDRs.
 - `<name>_v6` — `type ipv6_addr; flags interval` of v6 CIDRs.
 
-Empty sets are skipped. The compiler uses `internal.zone.genMatch` (already exists) to compute the per-direction match expressions used by jumps.
+Empty sets are skipped. Per-direction match expressions used by jumps are constructed by `internal.emit.mkDirectionVariants` from these set names.
 
 ### 4.2 Base chains
 
@@ -255,7 +255,7 @@ In each base chain, emit one or more jumps per non-empty sub-chain in that bucke
 
 **Per-direction variants — *not* a single ANDed clause list.** In `inet` family, `ip <addr>` and `ip6 <addr>` clauses cannot be ANDed in the same rule: a v4 packet hitting `ip6 saddr ...` skips the rule entirely (and vice versa). So each direction emits **one variant per address family** that has a non-empty set, plus the optional interface prefix when the hook allows it.
 
-The variant table mirrors `internal.zone.genMatch` (8 cases), with named-set references in place of inline lists:
+The variant table covers 8 cases, with named-set references in place of inline lists:
 
 | Zone has        | Variants emitted (per direction) |
 |---|---|
@@ -324,8 +324,7 @@ lib/
                                `internal`.
   internal/
     # Layer 0 — leaves (no inter-module deps)
-    zone.nix                 — genMatch (per-zone match expressions),
-                               genSets (per-zone nftables sets,
+    zone.nix                 — genSets (per-zone nftables sets,
                                consumed by both Phase 1 validators and
                                Phase 4 emit).
     entry.nix                — toCells (one entry → list of cells per
@@ -461,6 +460,5 @@ nftzones.mkRuleset name body  →  { nftables = [ ... ]; } (ready for `nft -f -j
 
 Pending follow-ups:
 
-1. Drop `internal.zone.genMatch` from the pipeline — only `checkZoneMatchable` in Phase 1 reads `zone.match` (Phase 4 emit reads raw `interfaces` / `cidrs` directly). Rewrite the validator to inspect raw fields + `matchOverride` (mirroring `checkChainOverridePlacement`); see TODO above `checkZoneMatchable` in `internal.normalize`. The `match` field stays on the public `zone` / `node` types for external consumers.
-2. Honor `zone.matchOverride` in Phase 4 emit. Today `mkDirectionVariants` builds set references (`@<zone>_iifs` / `_v4` / `_v6`) unconditionally from raw `interfaces` / `cidrs`, ignoring any user-supplied override. A user setting `matchOverride.ingress = [ … ]` gets their content silently discarded at emit time even though Phase 1 (`checkObjectRefs`) now validates the refs inside it. Either: (a) fold the override into the variant construction in `internal.emit.mkDirectionVariants`, or (b) deprecate `matchOverride` and document interfaces / CIDRs as the only supported zone-membership inputs. Decide before the next release.
-3. Validate chain references in rule bodies. `checkObjectRefs` covers named-object refs (counter / set / map / etc.) but does NOT validate `dsl.jump <name>` / `dsl.goto <name>` targets. Two reasons today: (i) the chain-name surface in nftzones is internal (`<hook>-at-<priority>__<key>`) and not part of the public API, so users writing raw jumps to those names are working off-script; (ii) chains are synthesized in Phase 4, so Phase 1 doesn't yet know which names exist. Options if/when this matters: (a) add a Phase 4 post-emit validator that walks emitted rules and checks every `jump` / `goto` against the synthesized chain set, or (b) provide a public chain-name builder helper and validate at Phase 1 against that. Defer until a real consumer needs raw chain jumps.
+1. Honor `zone.matchOverride` in Phase 4 emit. Today `mkDirectionVariants` builds set references (`@<zone>_iifs` / `_v4` / `_v6`) unconditionally from raw `interfaces` / `cidrs`, ignoring any user-supplied override. A user setting `matchOverride.ingress = [ … ]` gets their content silently discarded at emit time even though Phase 1 (`checkObjectRefs`) now validates the refs inside it. Either: (a) fold the override into the variant construction in `internal.emit.mkDirectionVariants`, or (b) deprecate `matchOverride` and document interfaces / CIDRs as the only supported zone-membership inputs. Decide before the next release.
+2. Validate chain references in rule bodies. `checkObjectRefs` covers named-object refs (counter / set / map / etc.) but does NOT validate `dsl.jump <name>` / `dsl.goto <name>` targets. Two reasons today: (i) the chain-name surface in nftzones is internal (`<hook>-at-<priority>__<key>`) and not part of the public API, so users writing raw jumps to those names are working off-script; (ii) chains are synthesized in Phase 4, so Phase 1 doesn't yet know which names exist. Options if/when this matters: (a) add a Phase 4 post-emit validator that walks emitted rules and checks every `jump` / `goto` against the synthesized chain set, or (b) provide a public chain-name builder helper and validate at Phase 1 against that. Defer until a real consumer needs raw chain jumps.

@@ -8,7 +8,7 @@ let
     returns one attrset per source module; each module's exports stay
     under that submodule key, so callers reach functions as
     `nftzones.internal.<module>.<fn>` (e.g.
-    `nftzones.internal.zone.genMatch`,
+    `nftzones.internal.zone.genSets`,
     `nftzones.internal.compile.mkTable`).
   */
   internal = import ./internal { inherit inputs; };
@@ -17,11 +17,9 @@ let
     NixOS option types for the public surface. `lib/types/default.nix`
     returns one attrset per source module; we flatten their values
     onto a single `types` namespace (unlike `internal`, which keeps
-    the per-module sub-namespaces). `types.zone`'s `match` default
-    closes over `internal.zone.genMatch`, so type modules are
-    constructed after `internal` is in scope.
+    the per-module sub-namespaces).
   */
-  typeModules = import ./types { inherit inputs internal; };
+  typeModules = import ./types { inherit inputs; };
   types = lib.mergeAttrsList (lib.attrValues typeModules);
 
   /*

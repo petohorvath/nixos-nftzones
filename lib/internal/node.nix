@@ -26,7 +26,6 @@
         interfaces    = [ ];
         cidrs         = optional ipv4 "${ipv4}/32"
                      ++ optional ipv6 "${ipv6}/128";
-        match         = <internal.zone.genMatch result>;
         matchOverride = { ingress = null; egress = null; };
         comment       = <node.comment>;   # propagated; null if unset
       }
@@ -47,15 +46,13 @@
       parent = "dmz";
       interfaces = [ ];
       cidrs = [ "10.0.0.5/32" "fe80::1/128" ];
-      match = <ingress/egress match expressions>;
       matchOverride = { ingress = null; egress = null; };
       comment = null;
     }
 */
-{ inputs, zone }:
+{ inputs }:
 let
   inherit (inputs) lib;
-  inherit (zone) genMatch;
 
   toZone =
     {
@@ -80,7 +77,6 @@ let
         cidrs
         comment
         ;
-      match = genMatch { inherit interfaces cidrs; };
       matchOverride = {
         ingress = null;
         egress = null;

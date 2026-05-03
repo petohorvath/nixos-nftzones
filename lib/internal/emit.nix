@@ -109,9 +109,23 @@
   So one variant per address family with a non-empty set, plus
   the optional interface prefix when the hook allows it.
 
-  Mirrors the variant table in `internal.zone.genMatch`'s
-  docstring (8 cases) but emits set references (`@<zone>_iifs`,
-  etc.) instead of inline lists.
+  Variant count per direction (where both interfaces and CIDRs
+  are family-segregated by `internal.zone.genSets`):
+
+    zone has        | variants emitted
+    ----------------|-----------------------
+    empty           | 0
+    iface only      | 1 (family-agnostic)
+    v4 only         | 1
+    v6 only         | 1
+    v4 + v6         | 2
+    iface + v4      | 1 (iface prefix + v4)
+    iface + v6      | 1 (iface prefix + v6)
+    iface + v4 + v6 | 2 (each with iface prefix)
+
+  Set references (`@<zone>_iifs`, `@<zone>_v4`, `@<zone>_v6`)
+  point at the zone-derived sets emitted by Phase 1's
+  `computeZoneSets`.
 
   Wildcard cases:
     - `zoneName == null` (single-direction sub-chain — dnat /
