@@ -147,10 +147,7 @@ in
             snats.lan-out = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = {
-                match = [ ];
-                action.masquerade = null;
-              };
+              rule.masquerade = { };
             };
           }).chainBuckets."postrouting-at-srcnat";
       in
@@ -495,10 +492,7 @@ in
           snats.lan-out = {
             from = [ "lan" ];
             to = [ "wan" ];
-            rule = {
-              match = [ ];
-              action.masquerade = null;
-            };
+            rule.masquerade = { };
           };
         };
       in

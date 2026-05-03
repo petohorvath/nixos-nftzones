@@ -11,7 +11,6 @@ let
   inherit (nftzones.internal.expand) expandTable;
   inherit (nftzones.internal.dispatch) dispatchAndSort;
   inherit (nftzones.internal.emit)
-    mkPerZoneSets
     chainTypeOf
     mkBaseChain
     mkBaseChains
@@ -79,122 +78,6 @@ let
     };
 in
 {
-  # ===== mkPerZoneSets — empty input =====
-
-  testMkPerZoneSetsEmpty = {
-    expr = mkPerZoneSets { };
-    expected = { };
-  };
-
-  # ===== mkPerZoneSets — interfaces only =====
-
-  testMkPerZoneSetsInterfacesOnly = {
-    expr = mkPerZoneSets {
-      lan = {
-        interfaces = [
-          "lan0"
-          "lan1"
-        ];
-        cidrs = [ ];
-      };
-    };
-    expected = {
-      lan_iifs = {
-        type = "ifname";
-        elements = [
-          "lan0"
-          "lan1"
-        ];
-      };
-    };
-  };
-
-  # ===== mkPerZoneSets — v4 cidrs only =====
-
-  testMkPerZoneSetsV4Only = {
-    expr = mkPerZoneSets {
-      lan = {
-        interfaces = [ ];
-        cidrs = [
-          "10.0.0.0/24"
-          "192.168.1.0/24"
-        ];
-      };
-    };
-    expected = {
-      lan_v4 = {
-        type = "ipv4_addr";
-        flags = [ "interval" ];
-        elements = [
-          (expr.prefix "10.0.0.0" 24)
-          (expr.prefix "192.168.1.0" 24)
-        ];
-      };
-    };
-  };
-
-  # ===== mkPerZoneSets — v6 cidrs only =====
-
-  testMkPerZoneSetsV6Only = {
-    expr = mkPerZoneSets {
-      lan = {
-        interfaces = [ ];
-        cidrs = [ "2001:db8::/32" ];
-      };
-    };
-    expected = {
-      lan_v6 = {
-        type = "ipv6_addr";
-        flags = [ "interval" ];
-        elements = [ (expr.prefix "2001:db8::" 32) ];
-      };
-    };
-  };
-
-  # ===== mkPerZoneSets — interfaces + v4 + v6 (all three) =====
-
-  testMkPerZoneSetsMixed = {
-    expr = pkgs.lib.attrNames (mkPerZoneSets {
-      lan = {
-        interfaces = [ "eth0" ];
-        cidrs = [
-          "10.0.0.0/24"
-          "fe80::/64"
-        ];
-      };
-    });
-    expected = [
-      "lan_iifs"
-      "lan_v4"
-      "lan_v6"
-    ];
-  };
-
-  # ===== mkPerZoneSets — multiple zones produce distinct keys =====
-
-  testMkPerZoneSetsMultipleZones = {
-    expr = pkgs.lib.attrNames (mkPerZoneSets {
-      lan = {
-        interfaces = [ "lan0" ];
-        cidrs = [ ];
-      };
-      wan = {
-        interfaces = [ ];
-        cidrs = [ "0.0.0.0/0" ];
-      };
-      vpn = {
-        interfaces = [ "wg0" ];
-        cidrs = [ "fd00::/8" ];
-      };
-    });
-    expected = [
-      "lan_iifs"
-      "vpn_iifs"
-      "vpn_v6"
-      "wan_v4"
-    ];
-  };
-
   # ===== emitTable — empty table assembles a table marker =====
 
   testEmitTableEmpty = {

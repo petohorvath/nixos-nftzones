@@ -10,7 +10,7 @@ let
   inherit (nftypes.dsl) inSet expr;
   inherit (nftypes.dsl.fields) meta ip ip6;
 
-  inherit (nftzones.internal.zone) genMatch;
+  inherit (nftzones.internal.zone) genMatch genSets;
 
   cidrV4 = "10.0.0.0/24";
   cidrV6 = "2001:db8::/32";
@@ -192,6 +192,77 @@ in
     expected = [
       [ (inSet ip.daddr [ (expr.prefix "0.0.0.0" 0) ]) ]
       [ (inSet ip6.daddr [ (expr.prefix "::" 0) ]) ]
+    ];
+  };
+
+  # ===== genSets — empty zone produces no sets =====
+
+  testDerivedSetsEmpty = {
+    expr = genSets "lan" {
+      interfaces = [ ];
+      cidrs = [ ];
+    };
+    expected = { };
+  };
+
+  # ===== genSets — interface-only zone gets `_iifs` only =====
+
+  testDerivedSetsIfsOnly = {
+    expr = genSets "lan" {
+      interfaces = [ "lan0" ];
+      cidrs = [ ];
+    };
+    expected = {
+      lan_iifs = {
+        type = "ifname";
+        elements = [ "lan0" ];
+      };
+    };
+  };
+
+  # ===== genSets — v4-only CIDR zone gets `_v4` only =====
+
+  testDerivedSetsV4Only = {
+    expr = genSets "lan" {
+      interfaces = [ ];
+      cidrs = [ cidrV4 ];
+    };
+    expected = {
+      lan_v4 = {
+        type = "ipv4_addr";
+        flags = [ "interval" ];
+        elements = [ (expr.prefix "10.0.0.0" 24) ];
+      };
+    };
+  };
+
+  # ===== genSets — full dual-stack zone gets all three suffixes =====
+
+  testDerivedSetsAll = {
+    expr = pkgs.lib.attrNames (genSets "lan" {
+      interfaces = ifs;
+      cidrs = [
+        cidrV4
+        cidrV6
+      ];
+    });
+    expected = [
+      "lan_iifs"
+      "lan_v4"
+      "lan_v6"
+    ];
+  };
+
+  # ===== genSets — set names always carry the zone-name prefix =====
+
+  testDerivedSetsNamePrefix = {
+    expr = pkgs.lib.attrNames (genSets "guest" {
+      interfaces = [ "guest0" ];
+      cidrs = [ cidrV4 ];
+    });
+    expected = [
+      "guest_iifs"
+      "guest_v4"
     ];
   };
 }

@@ -9,6 +9,7 @@
 let
   inherit (nftzones.internal.normalize)
     convertNodesToZones
+    computeZoneSets
     checkNameCollisions
     checkPolicyUniqueness
     checkSettings
@@ -19,8 +20,12 @@ let
     checkZoneRefs
     checkZoneMatchable
     checkChainOverridePlacement
+    checkSetNameCollisions
+    checkObjectRefs
     normalizeTable
     ;
+
+  dsl = nftypes.dsl;
 
   inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
 
@@ -1916,6 +1921,619 @@ in
           normalizeTable (evalTable {
             name = "fw";
             zones.all = { };
+          })
+        );
+      in
+      attempt.success;
+    expected = false;
+  };
+
+  # ===== computeZoneSets — empty mergedZones produces empty zoneSets =====
+
+  testComputeZoneSetsEmpty = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          computeZoneSets
+        ]
+        { name = "fw"; }
+      ).zoneSets;
+    expected = { };
+  };
+
+  # ===== computeZoneSets — multi-zone fold produces all expected keys =====
+
+  testComputeZoneSetsMultipleZones = {
+    # Three zones with different field combinations exercise
+    # all three suffixes; the fold merges per-zone genSets
+    # outputs into one flat attrset.
+    expr = pkgs.lib.sort (a: b: a < b) (
+      builtins.attrNames (
+        (runEvalPipeline
+          [
+            convertNodesToZones
+            computeZoneSets
+          ]
+          {
+            name = "fw";
+            zones = {
+              lan = {
+                interfaces = [ "lan0" ];
+              };
+              wan = {
+                cidrs = [ "0.0.0.0/0" ];
+              };
+              vpn = {
+                interfaces = [ "wg0" ];
+                cidrs = [ "fd00::/8" ];
+              };
+            };
+          }
+        ).zoneSets
+      )
+    );
+    expected = [
+      "lan_iifs"
+      "vpn_iifs"
+      "vpn_v6"
+      "wan_v4"
+    ];
+  };
+
+  # ===== checkSetNameCollisions — no collision produces no errors =====
+
+  testCheckSetNameCollisionsClean = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          computeZoneSets
+          checkSetNameCollisions
+        ]
+        {
+          name = "fw";
+          zones.lan = {
+            interfaces = [ "lan0" ];
+            cidrs = [ "10.0.0.0/24" ];
+          };
+          objects.sets.user-blocklist = {
+            type = "ipv4_addr";
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkSetNameCollisions — colliding name flagged =====
+
+  testCheckSetNameCollisionsConflict = {
+    # Zone `lan` has v4 CIDRs → synthesizes `lan_v4`. User
+    # declares `objects.sets.lan_v4` → collision.
+    expr =
+      let
+        errors =
+          (runEvalPipeline
+            [
+              convertNodesToZones
+              computeZoneSets
+              checkSetNameCollisions
+            ]
+            {
+              name = "fw";
+              zones.lan = {
+                interfaces = [ "lan0" ];
+                cidrs = [ "10.0.0.0/24" ];
+              };
+              objects.sets.lan_v4 = {
+                type = "ipv4_addr";
+              };
+            }
+          ).errors;
+      in
+      {
+        count = builtins.length errors;
+        name = (builtins.head errors).name;
+        nm = pkgs.lib.hasInfix "lan_v4" (builtins.head errors).value;
+        zone = pkgs.lib.hasInfix "zone 'lan'" (builtins.head errors).value;
+        suffix = pkgs.lib.hasInfix "suffix 'v4'" (builtins.head errors).value;
+      };
+    expected = {
+      count = 1;
+      name = "setNameCollision";
+      nm = true;
+      zone = true;
+      suffix = true;
+    };
+  };
+
+  # ===== checkSetNameCollisions — underscore-named zone resolves correctly =====
+
+  testCheckSetNameCollisionsUnderscoreZone = {
+    # Zone `web_app` with v4 CIDRs synthesizes `web_app_v4`. User
+    # declares `objects.sets.web_app_v4` → collision. The error
+    # must name `web_app` (not `web` + suffix `app_v4`).
+    expr =
+      let
+        errors =
+          (runEvalPipeline
+            [
+              convertNodesToZones
+              computeZoneSets
+              checkSetNameCollisions
+            ]
+            {
+              name = "fw";
+              zones.web_app = {
+                interfaces = [ "wa0" ];
+                cidrs = [ "10.1.0.0/24" ];
+              };
+              objects.sets.web_app_v4 = {
+                type = "ipv4_addr";
+              };
+            }
+          ).errors;
+      in
+      {
+        zone = pkgs.lib.hasInfix "zone 'web_app'" (builtins.head errors).value;
+        suffix = pkgs.lib.hasInfix "suffix 'v4'" (builtins.head errors).value;
+      };
+    expected = {
+      zone = true;
+      suffix = true;
+    };
+  };
+
+  # ===== checkSetNameCollisions — non-zone-derived name accepted =====
+
+  testCheckSetNameCollisionsUnrelatedName = {
+    # `objects.sets.lan_other` doesn't match the
+    # `<zone>_{iifs,v4,v6}` pattern → no collision.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          computeZoneSets
+          checkSetNameCollisions
+        ]
+        {
+          name = "fw";
+          zones.lan = {
+            interfaces = [ "lan0" ];
+            cidrs = [ "10.0.0.0/24" ];
+          };
+          objects.sets.lan_other = {
+            type = "ipv4_addr";
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkObjectRefs — empty rule bodies produce no errors =====
+
+  testCheckObjectRefsEmpty = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          computeZoneSets
+          checkObjectRefs
+        ]
+        {
+          name = "fw";
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
+          filters.f = {
+            from = [ "lan" ];
+            to = [ "lan" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkObjectRefs — declared counter resolves =====
+
+  testCheckObjectRefsCounterResolves = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          computeZoneSets
+          checkObjectRefs
+        ]
+        {
+          name = "fw";
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
+          objects.counters.drops = { };
+          filters.f = {
+            from = [ "lan" ];
+            to = [ "lan" ];
+            rule = [
+              (dsl.counter.ref "drops")
+              dsl.drop
+            ];
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkObjectRefs — undeclared counter flagged =====
+
+  testCheckObjectRefsCounterUnknown = {
+    expr =
+      let
+        errors =
+          (runEvalPipeline
+            [
+              convertNodesToZones
+              computeZoneSets
+              checkObjectRefs
+            ]
+            {
+              name = "fw";
+              zones.lan = {
+                interfaces = [ "lan0" ];
+              };
+              filters.f = {
+                from = [ "lan" ];
+                to = [ "lan" ];
+                rule = [ (dsl.counter.ref "missing-counter") ];
+              };
+            }
+          ).errors;
+      in
+      {
+        count = builtins.length errors;
+        name = (builtins.head errors).name;
+        path = pkgs.lib.hasInfix "filters.f.rule" (builtins.head errors).value;
+        kind = pkgs.lib.hasInfix "counters" (builtins.head errors).value;
+        nm = pkgs.lib.hasInfix "missing-counter" (builtins.head errors).value;
+      };
+    expected = {
+      count = 1;
+      name = "objectRefUnknown";
+      path = true;
+      kind = true;
+      nm = true;
+    };
+  };
+
+  # ===== checkObjectRefs — multiple kinds across multiple groups =====
+
+  testCheckObjectRefsMultipleKindsAcrossGroups = {
+    expr =
+      let
+        errors =
+          (runEvalPipeline
+            [
+              convertNodesToZones
+              computeZoneSets
+              checkObjectRefs
+            ]
+            {
+              name = "fw";
+              zones = {
+                lan = {
+                  interfaces = [ "lan0" ];
+                };
+                wan = {
+                  interfaces = [ "wan0" ];
+                };
+              };
+              filters.bad-counter = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+                rule = [ (dsl.counter.ref "ghost") ];
+              };
+              dnats.bad-set = {
+                from = [ "wan" ];
+                rule = {
+                  match = [
+                    (dsl.inSet
+                      nftypes.dsl.fields.ip.saddr
+                      (dsl.expr.set "ghost-set"))
+                  ];
+                  action.dnat = {
+                    addr = "10.0.0.5";
+                    port = 80;
+                  };
+                };
+              };
+            }
+          ).errors;
+      in
+      {
+        count = builtins.length errors;
+        kinds = pkgs.lib.sort (a: b: a < b) (
+          map (e: builtins.head (pkgs.lib.match ".* unknown ([a-zA-Z]+) object .*" e.value)) errors
+        );
+      };
+    expected = {
+      count = 2;
+      kinds = [
+        "counters"
+        "sets"
+      ];
+    };
+  };
+
+  # ===== checkObjectRefs — zone-derived auto-set names accepted (option a) =====
+
+  testCheckObjectRefsZoneSetAccepted = {
+    # Per open question 6 (decision (a)): users can reference
+    # zone-derived sets like `lan_v4` directly in match clauses;
+    # they're synthesized at Phase 4 but the validator must
+    # treat them as known.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          computeZoneSets
+          checkObjectRefs
+        ]
+        {
+          name = "fw";
+          zones.lan = {
+            interfaces = [ "lan0" ];
+            cidrs = [ "10.0.0.0/24" ];
+          };
+          filters.use-zone-set = {
+            from = [ "lan" ];
+            to = [ "lan" ];
+            rule = [
+              (dsl.inSet
+                nftypes.dsl.fields.ip.saddr
+                (dsl.expr.set "lan_v4"))
+              dsl.accept
+            ];
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkObjectRefs — zone-derived names limited to existing zones =====
+
+  testCheckObjectRefsUnknownZoneSetFlagged = {
+    # `wan_v6` would only exist if zone `wan` had v6 CIDRs; it
+    # doesn't, so the ref is unresolved.
+    expr =
+      let
+        errors =
+          (runEvalPipeline
+            [
+              convertNodesToZones
+              computeZoneSets
+              checkObjectRefs
+            ]
+            {
+              name = "fw";
+              zones.wan = {
+                interfaces = [ "wan0" ];
+              };
+              filters.f = {
+                from = [ "wan" ];
+                to = [ "wan" ];
+                rule = [
+                  (dsl.inSet
+                    nftypes.dsl.fields.ip6.saddr
+                    (dsl.expr.set "wan_v6"))
+                  dsl.accept
+                ];
+              };
+            }
+          ).errors;
+      in
+      builtins.length errors;
+    expected = 1;
+  };
+
+  # ===== checkObjectRefs — matchOverride content is walked =====
+
+  testCheckObjectRefsMatchOverrideUnknown = {
+    # A user-supplied matchOverride is also a vector for
+    # named-ref typos — checkObjectRefs must walk it just like
+    # entry.rule bodies.
+    expr =
+      let
+        errors =
+          (runEvalPipeline
+            [
+              convertNodesToZones
+              computeZoneSets
+              checkObjectRefs
+            ]
+            {
+              name = "fw";
+              zones.lan = {
+                interfaces = [ "lan0" ];
+                matchOverride.ingress = [
+                  [
+                    (dsl.inSet
+                      nftypes.dsl.fields.ip.saddr
+                      (dsl.expr.set "ghost-set"))
+                  ]
+                ];
+              };
+            }
+          ).errors;
+      in
+      {
+        count = builtins.length errors;
+        path = pkgs.lib.hasInfix "zones.lan.matchOverride.ingress" (builtins.head errors).value;
+        kind = pkgs.lib.hasInfix "sets" (builtins.head errors).value;
+        nm = pkgs.lib.hasInfix "ghost-set" (builtins.head errors).value;
+      };
+    expected = {
+      count = 1;
+      path = true;
+      kind = true;
+      nm = true;
+    };
+  };
+
+  # ===== checkObjectRefs — object bodies with no refs produce no errors =====
+
+  testCheckObjectRefsObjectBodiesNoFalsePositives = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          computeZoneSets
+          checkObjectRefs
+        ]
+        {
+          name = "fw";
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
+          objects = {
+            counters.drops = { };
+            limits.burst-1 = {
+              rate = 100;
+              per = "second";
+            };
+            sets.blocklist = {
+              type = "ipv4_addr";
+              elem = [ "1.2.3.4" "5.6.7.8" ];
+            };
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkObjectRefs — element-attached stmt ref flagged when unknown =====
+
+  testCheckObjectRefsElementStmtUnknown = {
+    # Per-element stateful statements (`add element ip filter
+    # tracker { 1.2.3.4 counter "tracker-hits" }`) carry refs
+    # that must resolve against `objects.<kind>` keys.
+    expr =
+      let
+        errors =
+          (runEvalPipeline
+            [
+              convertNodesToZones
+              computeZoneSets
+              checkObjectRefs
+            ]
+            {
+              name = "fw";
+              zones.lan = {
+                interfaces = [ "lan0" ];
+              };
+              objects.sets.tracker = {
+                type = "ipv4_addr";
+                elem = [
+                  (dsl.expr.elem {
+                    val = "1.2.3.4";
+                    stmt = [ (dsl.counter.ref "ghost-counter") ];
+                  })
+                ];
+              };
+            }
+          ).errors;
+      in
+      {
+        count = builtins.length errors;
+        path = pkgs.lib.hasInfix "objects.sets.tracker" (builtins.head errors).value;
+        kind = pkgs.lib.hasInfix "counters" (builtins.head errors).value;
+        nm = pkgs.lib.hasInfix "ghost-counter" (builtins.head errors).value;
+      };
+    expected = {
+      count = 1;
+      path = true;
+      kind = true;
+      nm = true;
+    };
+  };
+
+  # ===== checkObjectRefs — element-attached stmt ref accepted when known =====
+
+  testCheckObjectRefsElementStmtResolves = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          computeZoneSets
+          checkObjectRefs
+        ]
+        {
+          name = "fw";
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
+          objects = {
+            counters.tracker-hits = { };
+            sets.tracker = {
+              type = "ipv4_addr";
+              elem = [
+                (dsl.expr.elem {
+                  val = "1.2.3.4";
+                  stmt = [ (dsl.counter.ref "tracker-hits") ];
+                })
+              ];
+            };
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkObjectRefs — matchOverride resolved refs accepted =====
+
+  testCheckObjectRefsMatchOverrideResolves = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          computeZoneSets
+          checkObjectRefs
+        ]
+        {
+          name = "fw";
+          zones.lan = {
+            interfaces = [ "lan0" ];
+            matchOverride.egress = [
+              [
+                (dsl.inSet
+                  nftypes.dsl.fields.ip.daddr
+                  (dsl.expr.set "blocklist"))
+              ]
+            ];
+          };
+          objects.sets.blocklist = {
+            type = "ipv4_addr";
+          };
+        }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== normalizeTable — unknown object ref throws =====
+
+  testNormalizeUnknownObjectRefThrows = {
+    expr =
+      let
+        attempt = builtins.tryEval (
+          normalizeTable (evalTable {
+            name = "fw";
+            zones.lan = {
+              interfaces = [ "lan0" ];
+            };
+            filters.f = {
+              from = [ "lan" ];
+              to = [ "lan" ];
+              rule = [ (dsl.counter.ref "ghost") ];
+            };
           })
         );
       in

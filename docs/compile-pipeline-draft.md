@@ -374,6 +374,15 @@ Each new internal module gets a unit-test file. Orchestrator and emit modules al
    **Decision:** implement the special-case extractor in nftzones first. One consumer, small surface, no speculative API design. If a second use case appears (Phase 4 emit doing structural transforms, a future linter, etc.), upstream the generalized walker to nftypes then — designing the walker API with a single consumer risks the wrong abstraction.
 4. **Error aggregation strategy.** Phase 1 validators return error lists. Should Phase 4 emission also return errors, or is "we got here, so emission can't fail" reasonable? The latter assumes Phases 1-3 fully validate.
 5. **Single-table vs multi-table compile.** `mkTable` takes one table; multi-table consumers compose externally. Reconsider only if a real consumer wants a single function call.
+6. **Zone-derived auto-sets in user rule bodies.** Phase 1's `computeZoneSets` materializes `<zone>_iifs` / `<zone>_v4` / `<zone>_v6` into `ctx.zoneSets`, which Phase 4 emits into `table.objects.sets` at output time. A user could in principle reference one of those names from a `match` clause inside their own rule body (e.g. `right = "@lan_v4"`). At Phase 1 validation time those names are not yet in `table.objects.sets` — they're synthesized later — so a naive `checkObjectRefs` would falsely flag them as unknown.
+
+    Three options:
+
+    - **(a) Parallel namespace** — `checkObjectRefs` resolves names against both `objects.sets.<name>` keys and the predictable `<zone>_{iifs,v4,v6}` names derived from `mergedZones`. No schema change; gives users an escape hatch when raw `match` against zone membership is more natural than `from` / `to`.
+    - **(b) Pre-seed synthetic sets** — add a Phase 1 sub-phase that materializes zone-derived sets into a virtual `objects.sets` view before validation. Cleaner separation but more pipeline machinery.
+    - **(c) Disallow user refs to zone-derived names** — document `from` / `to` as the only sanctioned way to express zone membership in match clauses; explicitly reject `@<zone>_{iifs,v4,v6}` shapes inside rule bodies.
+
+    **Decision: (a)** — same cost as (c), but preserves the escape hatch for users who need raw `match` against zone membership. `checkObjectRefs` will resolve names against the union of `objects.sets.<name>` keys and the predictable `<zone>_{iifs,v4,v6}` names derived from `mergedZones`.
 
 ## Status
 
@@ -384,16 +393,18 @@ The pipeline end-to-end:
 ```nix
 final = lib.pipe table [
   # Phase 1 — normalize
-  convertNodesToZones collectAllZoneNames expandWildcardZones
+  convertNodesToZones computeZoneSets
+  collectAllZoneNames expandWildcardZones
   resolvePriorities  collectZoneRefs
   checkNameCollisions checkSettings checkZoneRefs
   checkZoneMatchable checkChainOverridePlacement checkPolicyUniqueness
+  checkSetNameCollisions checkObjectRefs
   # Phase 2 — expand
   expandTable
   # Phase 3 — dispatch + sort
   dispatchAndSort  # = groupCellsByChain |> buildChainBuckets
-  # Phase 4 — emit
-  emitTable        # = emitZoneSets |> emitBaseChains |> emitSubChains
+  # Phase 4 — emit (consumes ctx.zoneSets from Phase 1)
+  emitTable        # = emitBaseChains |> emitSubChains
                    #   |> emitUserObjects |> assembleOutput
 ];
 # final.ctx.output = nftypes.dsl.table value, exposed as
@@ -403,6 +414,6 @@ final = lib.pipe table [
 
 Pending follow-ups:
 
-1. `checkSetNameCollisions` Phase 1 validator — catches user `objects.sets.<name>` colliding with auto-generated zone-set names (`<zone>_iifs` / `<zone>_v4` / `<zone>_v6`); see TODO in `internal.emit.assembleOutput`.
-2. Named-object reference validation (open question 3) — Phase 1 validator.
-3. Drop `internal.zone.genMatch` from the pipeline — only `checkZoneMatchable` in Phase 1 reads `zone.match` (Phase 4 emit reads raw `interfaces` / `cidrs` directly). Rewrite the validator to inspect raw fields + `matchOverride` (mirroring `checkChainOverridePlacement`); see TODO above `checkZoneMatchable` in `internal.normalize`. The `match` field stays on the public `zone` / `node` types for external consumers.
+1. Drop `internal.zone.genMatch` from the pipeline — only `checkZoneMatchable` in Phase 1 reads `zone.match` (Phase 4 emit reads raw `interfaces` / `cidrs` directly). Rewrite the validator to inspect raw fields + `matchOverride` (mirroring `checkChainOverridePlacement`); see TODO above `checkZoneMatchable` in `internal.normalize`. The `match` field stays on the public `zone` / `node` types for external consumers.
+2. Honor `zone.matchOverride` in Phase 4 emit. Today `mkDirectionVariants` builds set references (`@<zone>_iifs` / `_v4` / `_v6`) unconditionally from raw `interfaces` / `cidrs`, ignoring any user-supplied override. A user setting `matchOverride.ingress = [ … ]` gets their content silently discarded at emit time even though Phase 1 (`checkObjectRefs`) now validates the refs inside it. Either: (a) fold the override into the variant construction in `internal.emit.mkDirectionVariants`, or (b) deprecate `matchOverride` and document interfaces / CIDRs as the only supported zone-membership inputs. Decide before the next release.
+3. Validate chain references in rule bodies. `checkObjectRefs` covers named-object refs (counter / set / map / etc.) but does NOT validate `dsl.jump <name>` / `dsl.goto <name>` targets. Two reasons today: (i) the chain-name surface in nftzones is internal (`<hook>-at-<priority>__<key>`) and not part of the public API, so users writing raw jumps to those names are working off-script; (ii) chains are synthesized in Phase 4, so Phase 1 doesn't yet know which names exist. Options if/when this matters: (a) add a Phase 4 post-emit validator that walks emitted rules and checks every `jump` / `goto` against the synthesized chain set, or (b) provide a public chain-name builder helper and validate at Phase 1 against that. Defer until a real consumer needs raw chain jumps.

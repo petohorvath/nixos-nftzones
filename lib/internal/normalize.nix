@@ -18,6 +18,7 @@
 
       { table; ctx = { errors = [ ]; }; }
         ↓ convertNodesToZones           ctx.mergedZones
+        ↓ computeZoneSets               ctx.zoneSets
         ↓ collectAllZoneNames           ctx.allZoneNames
         ↓ expandWildcardZones           ctx.expandedGroups
         ↓ resolvePriorities             ctx.resolvedPriorities
@@ -28,9 +29,11 @@
         ↓ checkZoneMatchable            ctx.errors  (appends)
         ↓ checkChainOverridePlacement   ctx.errors  (appends)
         ↓ checkPolicyUniqueness         ctx.errors  (appends)
+        ↓ checkSetNameCollisions        ctx.errors  (appends)
+        ↓ checkObjectRefs               ctx.errors  (appends)
       { table;
         ctx = {
-          mergedZones; allZoneNames; expandedGroups;
+          mergedZones; zoneSets; allZoneNames; expandedGroups;
           resolvedPriorities; zoneRefs; errors;
         };
       }
@@ -55,6 +58,21 @@
   this shape from submodule evaluation, so `ctx.mergedZones` is
   uniformly shaped — downstream phases can consume it without
   re-evaluation.
+
+  ===== computeZoneSets =====
+
+  Reads:  ctx.mergedZones
+  Writes: ctx.zoneSets
+
+  Folds `internal.zone.genSets` over every merged zone. The
+  resulting attrset is the single source of truth for zone-derived
+  set names and bodies, consumed by:
+    - `checkSetNameCollisions` (just keys)
+    - `checkObjectRefs` (just keys, for the resolution union)
+    - Phase 4 emit (full bodies, for `assembleOutput`)
+
+  Materializing once in Phase 1 avoids redundant evaluation in
+  three downstream consumers.
 
   ===== convertNodesToZones =====
 
@@ -240,6 +258,64 @@
   with the message naming the `(from, to)` pair and every entry
   whose expansion produced a cell for it.
 
+  ===== checkSetNameCollisions =====
+
+  Reads:  table.objects.sets, ctx.mergedZones
+  Writes: ctx.errors (appends)
+
+  Catches collisions between user-declared `objects.sets.<name>`
+  and auto-generated zone-derived set names (`<zone>_iifs` /
+  `<zone>_v4` / `<zone>_v6` from `internal.zone.genSets`). Phase 4
+  emit merges the two namespaces under `body.sets` and the user's
+  body wins on collision — silently overwriting the zone-derived
+  set, breaking every jump rule that referenced it.
+
+  Runs before `checkObjectRefs` so that validator can resolve
+  refs against the union of both namespaces without ambiguity:
+  by the time `checkObjectRefs` runs, no collision exists.
+
+  Each error is `lib.nameValuePair "setNameCollision" <message>`.
+
+  ===== checkObjectRefs =====
+
+  Reads:  table.{filters,snats,dnats,sroutes,droutes}.<entry>.rule,
+          ctx.mergedZones.<zone>.matchOverride.{ingress,egress},
+          table.objects.<kind>.<name> (full bodies, recursively),
+          table.objects.<kind> (key list, for resolution)
+  Writes: ctx.errors (appends)
+
+  Walks every place where a user can supply nftables-DSL content
+  with named refs:
+    - entry rule bodies (all five rule groups)
+    - non-null zone matchOverride content (ingress + egress)
+    - object bodies (sets / maps may carry refs in element-
+      attached stateful statements via `dsl.expr.elem { val;
+      stmt; }`; other object kinds are config-only leaves and
+      contribute no refs)
+
+  Each ref is resolved against `table.objects.<kind>` (plus
+  zone-derived set names for `kind == "sets"`). Unknowns become
+  `objectRefUnknown` errors with the source path; users see
+  typos at compile time instead of at `nft load` time.
+
+  Not covered: chain refs from raw `dsl.jump <name>` /
+  `dsl.goto <name>` inside rule bodies. nftzones generates chain
+  names internally (`<hook>-at-<priority>__<key>`) and does not
+  document them as a stable surface, so manually-written jumps
+  to those names are not validated. See follow-up #3 in
+  `docs/compile-pipeline-draft.md` for the design discussion.
+
+  Resolves names against the union of two namespaces:
+    - `table.objects.<kind>` keys (user-declared named objects)
+    - For `kind == "sets"` only: predictable zone-derived set
+      names (`<zone>_iifs` / `<zone>_v4` / `<zone>_v6`) emitted
+      by Phase 4. This lets users write raw `match` clauses
+      against zone membership when `from` / `to` mechanics
+      aren't expressive enough — see open question 6 (decision
+      (a)) in `docs/compile-pipeline-draft.md`.
+
+  Each error is `lib.nameValuePair "objectRefUnknown" <message>`.
+
   ===== normalizeTable =====
 
   Input:  A `nftzones.types.table` value.
@@ -260,6 +336,7 @@
 let
   inherit (inputs) lib nftypes;
   inherit (internal.node) toZone;
+  inherit (internal.zone) genSets;
 
   /*
     Build the pipeline's initial `{ table; ctx }` from a fresh
@@ -292,6 +369,15 @@ let
       inherit table;
       ctx = ctx // {
         mergedZones = table.zones // lib.mapAttrs (_: toZone) table.nodes;
+      };
+    };
+
+  computeZoneSets =
+    { table, ctx }:
+    {
+      inherit table;
+      ctx = ctx // {
+        zoneSets = lib.foldlAttrs (acc: name: zone: acc // genSets name zone) { } ctx.mergedZones;
       };
     };
 
@@ -682,11 +768,162 @@ let
       };
     };
 
+  checkSetNameCollisions =
+    { table, ctx }:
+    let
+      userSetNames = builtins.attrNames table.objects.sets;
+      zoneSetNames = builtins.attrNames ctx.zoneSets;
+
+      collisions = lib.intersectLists userSetNames zoneSetNames;
+
+      # Reverse map { setName -> sourceZone } so error messages
+      # name the responsible zone. Lazy: never forced when
+      # `collisions` is empty (the happy path).
+      zoneSetSource = lib.foldlAttrs (
+        acc: zoneName: zone:
+        acc // lib.mapAttrs (_: _: zoneName) (genSets zoneName zone)
+      ) { } ctx.mergedZones;
+
+      newErrors = map (
+        n:
+        let
+          sourceZone = zoneSetSource.${n};
+          suffix = lib.removePrefix "${sourceZone}_" n;
+        in
+        lib.nameValuePair "setNameCollision" (
+          "objects.sets.${n} collides with the auto-generated set name "
+          + "from zone '${sourceZone}' (suffix '${suffix}'); rename one"
+        )
+      ) collisions;
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
+  checkObjectRefs =
+    { table, ctx }:
+    let
+      inherit (ctx) mergedZones;
+      inherit (internal.refs) extractRefs;
+
+      /*
+        Zone-derived set names cached in `ctx.zoneSets` by
+        `computeZoneSets`, also consumed by Phase 4 emit's
+        `assembleOutput`.
+
+        Collisions between `objects.sets.<name>` and zone-derived
+        names are caught upstream by `checkSetNameCollisions`, so
+        the union here is unambiguous when the table reaches this
+        validator (or the table is rejected before it gets here).
+      */
+      zoneSetNames = builtins.attrNames ctx.zoneSets;
+
+      knownNames = {
+        counters = builtins.attrNames table.objects.counters;
+        quotas = builtins.attrNames table.objects.quotas;
+        limits = builtins.attrNames table.objects.limits;
+        ctHelpers = builtins.attrNames table.objects.ctHelpers;
+        ctTimeouts = builtins.attrNames table.objects.ctTimeouts;
+        ctExpectations = builtins.attrNames table.objects.ctExpectations;
+        secmarks = builtins.attrNames table.objects.secmarks;
+        synproxies = builtins.attrNames table.objects.synproxies;
+        tunnels = builtins.attrNames table.objects.tunnels;
+        sets = (builtins.attrNames table.objects.sets) ++ zoneSetNames;
+        maps = builtins.attrNames table.objects.maps;
+        flowtables = builtins.attrNames table.objects.flowtables;
+      };
+
+      /*
+        Walk every entry's `rule` body across all rule groups,
+        annotating each ref with its source path for the error
+        message.
+      */
+      refsFromGroup =
+        groupName: group:
+        lib.concatLists (
+          lib.mapAttrsToList (
+            entryName: entry:
+            map (ref: ref // { path = "${groupName}.${entryName}.rule"; }) (extractRefs entry.rule)
+          ) group
+        );
+
+      /*
+        Walk every zone's `matchOverride.{ingress, egress}` (when
+        non-null). Nodes always lower with null overrides, so this
+        only finds content the user wrote on declared zones.
+      */
+      refsFromMatchOverrides = lib.concatLists (
+        lib.mapAttrsToList (
+          zoneName: zone:
+          lib.concatMap (
+            dir:
+            let
+              body = zone.matchOverride.${dir};
+            in
+            lib.optionals (body != null) (
+              map (ref: ref // { path = "zones.${zoneName}.matchOverride.${dir}"; }) (extractRefs body)
+            )
+          ) [ "ingress" "egress" ]
+        ) mergedZones
+      );
+
+      /*
+        Walk every `table.objects.<kind>.<name>` body. Most object
+        kinds (counters, limits, quotas, synproxies, …) are
+        config-only leaves and contribute no refs. Sets and maps
+        may carry refs in element-attached stateful statements
+        (`dsl.expr.elem { val; stmt; }`); the recursive walker
+        picks those up uniformly.
+      */
+      refsFromObjectKind =
+        kindName: kindAttrs:
+        lib.concatLists (
+          lib.mapAttrsToList (
+            objectName: body:
+            map (ref: ref // { path = "objects.${kindName}.${objectName}"; }) (extractRefs body)
+          ) kindAttrs
+        );
+
+      refsFromObjects = lib.concatLists (
+        lib.mapAttrsToList refsFromObjectKind table.objects
+      );
+
+      allRefs = lib.concatLists [
+        (refsFromGroup "filters" table.filters)
+        (refsFromGroup "snats" table.snats)
+        (refsFromGroup "dnats" table.dnats)
+        (refsFromGroup "sroutes" table.sroutes)
+        (refsFromGroup "droutes" table.droutes)
+        refsFromMatchOverrides
+        refsFromObjects
+      ];
+
+      unresolvedRefs = builtins.filter (
+        r: !(builtins.elem r.name (knownNames.${r.kind} or [ ]))
+      ) allRefs;
+
+      newErrors = map (
+        r:
+        lib.nameValuePair "objectRefUnknown"
+          "${r.path} references unknown ${r.kind} object '${r.name}'"
+      ) unresolvedRefs;
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
   normalizeTable =
     table:
     let
       final = lib.pipe (mkInitialState table) [
         convertNodesToZones
+        computeZoneSets
         collectAllZoneNames
         expandWildcardZones
         resolvePriorities
@@ -697,6 +934,8 @@ let
         checkZoneMatchable
         checkChainOverridePlacement
         checkPolicyUniqueness
+        checkSetNameCollisions
+        checkObjectRefs
       ];
     in
     if final.ctx.errors == [ ] then
@@ -710,6 +949,7 @@ in
 {
   inherit
     convertNodesToZones
+    computeZoneSets
     checkNameCollisions
     checkPolicyUniqueness
     checkSettings
@@ -720,6 +960,8 @@ in
     checkZoneRefs
     checkZoneMatchable
     checkChainOverridePlacement
+    checkSetNameCollisions
+    checkObjectRefs
     normalizeTable
     ;
 }

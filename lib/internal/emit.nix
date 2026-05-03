@@ -14,42 +14,22 @@
   into the final table body):
 
       { table; ctx (post-Phase 3) }
-        ↓ emitZoneSets     ctx.zoneSets
         ↓ emitBaseChains   ctx.baseChains    (reads ctx.zoneSets for jumps)
         ↓ emitSubChains    ctx.subChains
         ↓ emitUserObjects  ctx.userObjects
         ↓ assembleOutput   ctx.output        (nftypes.dsl.table value)
       { table; ctx }
 
+  `ctx.zoneSets` is materialized once in Phase 1
+  (`internal.normalize.computeZoneSets`) — the same artifact
+  serves both Phase 1 validators (`checkSetNameCollisions`,
+  `checkObjectRefs`) and Phase 4 emit (jump construction +
+  `assembleOutput`'s final body), avoiding redundant evaluation.
+
   Phase 4 itself is now feature-complete; the remaining work is
   the `compile.nix` orchestrator + public `mkTable` / `mkRuleset`
   API (step 6) which lives outside this module. See
   `docs/compile-pipeline-draft.md` §4.6.
-
-  ===== mkPerZoneSets =====
-
-  Reads:  ctx.mergedZones
-  Returns: attrset of nftables set bodies, keyed by `<zone>_iifs`,
-           `<zone>_v4`, `<zone>_v6`.
-
-  For each zone in `ctx.mergedZones`, emits up to three sets:
-    - `<name>_iifs` — `type ifname` set of interface names.
-                      Elements: bare interface-name strings.
-    - `<name>_v4`   — `type ipv4_addr; flags interval`.
-                      Elements: `expr.prefix` values for v4 CIDRs.
-    - `<name>_v6`   — `type ipv6_addr; flags interval`.
-                      Elements: `expr.prefix` values for v6 CIDRs.
-
-  Empty sets are skipped — a zone with only interfaces gets a
-  single `_iifs` set; a zone with no interfaces and only v4 CIDRs
-  gets a single `_v4`; etc. Phase 1's `checkZoneMatchable`
-  guarantees every referenced zone has at least one matchable
-  side, so the only way to land here with zero sets is a
-  declared-but-never-referenced zone (allowed; renders as no sets
-  for that zone).
-
-  Field-name note: nftypes' DSL uses `elements` (plural); the
-  renderer maps it to the JSON `elem` key before validation.
 
   ===== assembleTable =====
 
@@ -196,24 +176,15 @@
   produced a `prerouting-at-raw` bucket, synthesizes one so the
   rpfilter rule has a chain to live in.
 
-  ===== emitZoneSets =====
-
-  Reads:  ctx.mergedZones
-  Writes: ctx.zoneSets
-
-  Pipeline phase that wraps `mkPerZoneSets` and stashes the result
-  on `ctx`. Decoupling the computation from the assembly step
-  matches the established Phase 1 / Phase 3 pattern: one phase per
-  ctx artifact.
-
   ===== emitBaseChains =====
 
   Reads:  ctx.chainBuckets, ctx.zoneSets, table.{family, settings}
   Writes: ctx.baseChains
 
   Pipeline phase that wraps `mkBaseChains` and stashes the chain
-  attrset on `ctx`. Reads `ctx.zoneSets` (produced by `emitZoneSets`
-  upstream in the pipe) to construct the jump-match clauses.
+  attrset on `ctx`. Reads `ctx.zoneSets` (produced in Phase 1 by
+  `internal.normalize.computeZoneSets`) to construct the jump-match
+  clauses.
 
   ===== emitSubChains =====
 
@@ -264,13 +235,14 @@
 
   ===== emitTable =====
 
-  Orchestrator: pipes `emitZoneSets`, `emitBaseChains`,
-  `emitSubChains`, then `assembleOutput`. Returns `{ table; ctx }`
-  with `ctx.output` set.
+  Orchestrator: pipes `emitBaseChains`, `emitSubChains`,
+  `emitUserObjects`, then `assembleOutput`. Returns `{ table; ctx }`
+  with `ctx.output` set. `ctx.zoneSets` is consumed (produced in
+  Phase 1 by `internal.normalize.computeZoneSets`).
 */
 { inputs, internal }:
 let
-  inherit (inputs) lib libnet nftypes;
+  inherit (inputs) lib nftypes;
   inherit (nftypes.dsl)
     expr
     eq
@@ -290,51 +262,6 @@ let
     ip6
     ;
   inherit (nftypes.compatibility) priorityIntsDefault;
-
-  cidrToPrefix =
-    isV4: parsed:
-    let
-      addrStr = if isV4 then libnet.ipv4.toString parsed.address else libnet.ipv6.toString parsed.address;
-    in
-    expr.prefix addrStr parsed.prefix;
-
-  mkSetsForZone =
-    name: zone:
-    let
-      parsed = map libnet.cidr.parse zone.cidrs;
-      parsedV4 = builtins.filter libnet.cidr.isIpv4 parsed;
-      parsedV6 = builtins.filter libnet.cidr.isIpv6 parsed;
-      hasIfs = zone.interfaces != [ ];
-      hasV4 = parsedV4 != [ ];
-      hasV6 = parsedV6 != [ ];
-    in
-    lib.optionalAttrs hasIfs {
-      "${name}_iifs" = {
-        type = "ifname";
-        elements = zone.interfaces;
-      };
-    }
-    // lib.optionalAttrs hasV4 {
-      "${name}_v4" = {
-        type = "ipv4_addr";
-        flags = [ "interval" ];
-        elements = map (cidrToPrefix true) parsedV4;
-      };
-    }
-    // lib.optionalAttrs hasV6 {
-      "${name}_v6" = {
-        type = "ipv6_addr";
-        flags = [ "interval" ];
-        elements = map (cidrToPrefix false) parsedV6;
-      };
-    };
-
-  mkPerZoneSets =
-    mergedZones:
-    lib.foldlAttrs (
-      acc: name: zone:
-      acc // mkSetsForZone name zone
-    ) { } mergedZones;
 
   /*
     Resolve a chain priority value (int or symbol) to its int
@@ -687,15 +614,6 @@ let
     }:
     nftypes.dsl.table family name body;
 
-  emitZoneSets =
-    { table, ctx }:
-    {
-      inherit table;
-      ctx = ctx // {
-        zoneSets = mkPerZoneSets ctx.mergedZones;
-      };
-    };
-
   emitBaseChains =
     { table, ctx }:
     {
@@ -748,10 +666,9 @@ let
       allChains = ctx.baseChains // ctx.subChains;
 
       # User-defined sets merge with the auto-generated zone sets
-      # under one `body.sets` field. User wins on key collision.
-      # TODO: add a Phase 1 validator that flags collisions between
-      # user set names and auto-generated zone-set names
-      # (`<zone>_iifs` / `<zone>_v4` / `<zone>_v6`).
+      # under one `body.sets` field. Collisions are rejected
+      # upstream by `internal.normalize.checkSetNameCollisions`,
+      # so this merge is always safe — `//` semantics don't matter.
       allSets = ctx.zoneSets // (ctx.userObjects.sets or { });
 
       # Other user-object kinds pass through as their own body
@@ -778,7 +695,6 @@ let
   emitTable =
     state:
     lib.pipe state [
-      emitZoneSets
       emitBaseChains
       emitSubChains
       emitUserObjects
@@ -787,7 +703,6 @@ let
 in
 {
   inherit
-    mkPerZoneSets
     chainTypeOf
     mkRuleBody
     subChainNameOf
@@ -799,7 +714,6 @@ in
     mkBaseChains
     mkUserObjects
     assembleTable
-    emitZoneSets
     emitBaseChains
     emitSubChains
     emitUserObjects

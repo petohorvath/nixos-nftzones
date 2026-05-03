@@ -19,6 +19,7 @@ let
   entry = import ./entry.nix { inherit inputs; };
   priority = import ./priority.nix { inherit inputs; };
   node = import ./node.nix { inherit inputs zone; };
+  refs = import ./refs.nix { inherit inputs; };
 
   base = {
     inherit
@@ -26,6 +27,7 @@ let
       entry
       priority
       node
+      refs
       ;
   };
 
