@@ -19,7 +19,7 @@
   nftzones.types.filter; }`.
 
   `filterZones` is a non-empty list of `zoneName` strings; it lets a
-  single rule fan out across multiple zones on either side (e.g.
+  single entry fan out across multiple zones on either side (e.g.
   `from = [ "lan" "guest" ]`). Each entry's shape is validated
   against `zoneName`; whether it resolves to a declared zone or
   one of the reserved names (`host`, `local`, `self`, `firewall`,
@@ -41,12 +41,12 @@
   before per-zone matchers) and post-dispatch (>= 100, after).
 
   `filterChain` is an optional override for chain placement. By
-  default (`chain = null`), the rule is dispatched to `input`,
+  default (`chain = null`), the entry is dispatched to `input`,
   `forward`, or `output` via the host-position rule:
     - `to` is a host-alias → `input`
     - `from` is a host-alias → `output`
     - neither → `forward`
-  Setting `chain` pins the rule to a specific base chain via a
+  Setting `chain` pins the entry to a specific base chain via a
   submodule with `hook` (the nftables hook to attach to) and
   `priority` (the nftables chain priority — `raw`, `filter`, etc.).
   Useful for rpfilter
@@ -216,7 +216,7 @@ let
             Override the chain placement. `null` (the default)
             dispatches to `input` / `forward` / `output` via the
             host-position rule based on `from` / `to`. A submodule
-            pins the rule to a specific base chain — useful for
+            pins the entry to a specific base chain — useful for
             placements like rpfilter
             (`chain = { hook = "prerouting"; priority = "raw"; }`).
             At non-default hooks, `to` / `from` may lose their

@@ -198,10 +198,10 @@
 
   Verifies that filter / snat / dnat entries with a `chain`
   override land at a hook where their `from` / `to` zones can
-  actually be matched. Without this check, a rule overridden to
+  actually be matched. Without this check, an entry overridden to
   e.g. `(prerouting, raw)` with a `to` zone that's interface-only
-  would silently emit a jump *without* any to-side constraint
-  (oifname is unavailable in prerouting), broadening the rule's
+  would silently emit a jump *without* any to-direction constraint
+  (oifname is unavailable in prerouting), broadening the entry's
   scope far beyond what the user wrote.
 
   A zone direction is reachable at hook H if any of:
@@ -601,11 +601,18 @@ let
 
       mkError =
         r:
-        lib.nameValuePair "chainOverrideUnreachable" "${r.groupName}.${r.entryName}.${r.direction} references zone '${r.zoneName}' which has no ${
-          directionToOverrideField.${r.direction}
-        } match expressible at chain (hook=${r.hook}, priority=${toString r.priority}) — zone has no ${addrFieldName r.direction} CIDRs / matchOverride.${
-          directionToOverrideField.${r.direction}
-        } and ${ifFieldName r.direction} is unavailable in ${r.hook}";
+        let
+          matchSide = directionToOverrideField.${r.direction};
+          addrField = addrFieldName r.direction;
+          ifField = ifFieldName r.direction;
+          msg =
+            "${r.groupName}.${r.entryName}.${r.direction} references zone '${r.zoneName}'"
+            + " which has no ${matchSide} match expressible at chain"
+            + " (hook=${r.hook}, priority=${toString r.priority})"
+            + " — zone has no ${addrField} CIDRs / matchOverride.${matchSide}"
+            + " and ${ifField} is unavailable in ${r.hook}";
+        in
+        lib.nameValuePair "chainOverrideUnreachable" msg;
 
       newErrors = lib.pipe groupDirections [
         (lib.mapAttrsToList enumerateGroup)
@@ -634,27 +641,30 @@ let
         to = "egress";
       };
 
-      # Skip refs that aren't side-bound (node parent refs), refs to
+      # Skip refs without a `direction` (node parent refs), refs to
       # the localZone sentinel (no `mergedZones` entry by design),
       # and refs to unknown zones (already flagged by checkZoneRefs).
-      sideBoundRefs = builtins.filter (
+      directionBoundRefs = builtins.filter (
         r: r ? direction && r.zone != localZone && mergedZones ? ${r.zone}
       ) zoneRefs;
 
       unmatchableRefs = builtins.filter (
         r:
         let
-          side = directionToMatchSide.${r.direction};
+          matchSide = directionToMatchSide.${r.direction};
         in
-        mergedZones.${r.zone}.match.${side} == [ ]
-      ) sideBoundRefs;
+        mergedZones.${r.zone}.match.${matchSide} == [ ]
+      ) directionBoundRefs;
 
       newErrors = map (
         r:
         let
-          side = directionToMatchSide.${r.direction};
+          matchSide = directionToMatchSide.${r.direction};
+          msg =
+            "${r.path} references zone '${r.zone}' which has no ${matchSide} match"
+            + " (no interfaces, no ${matchSide} CIDRs, no matchOverride.${matchSide})";
         in
-        lib.nameValuePair "zoneNotMatchable" "${r.path} references zone '${r.zone}' which has no ${side} match (no interfaces, no ${side}-side CIDRs, no matchOverride.${side})"
+        lib.nameValuePair "zoneNotMatchable" msg
       ) unmatchableRefs;
     in
     {

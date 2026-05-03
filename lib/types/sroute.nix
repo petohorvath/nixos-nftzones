@@ -21,7 +21,7 @@
 
   Why no `to`: prerouting runs before the routing decision, so the
   destination zone (which depends on routing) isn't determined
-  when the rule fires. Same structural reason dnat omits `to`.
+  when the entry's emitted rules fire. Same structural reason dnat omits `to`.
 
   `srouteZones` and the wildcard / reserved-name behaviour are
   identical to filter / snat / dnat — see `types/filter.nix` for

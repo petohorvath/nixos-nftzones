@@ -1296,7 +1296,9 @@ in
     expected = [
       {
         name = "zoneNotMatchable";
-        value = "filters.f.from[0] references zone 'empty' which has no ingress match (no interfaces, no ingress-side CIDRs, no matchOverride.ingress)";
+        value =
+          "filters.f.from[0] references zone 'empty' which has no ingress match"
+          + " (no interfaces, no ingress CIDRs, no matchOverride.ingress)";
       }
     ];
   };
@@ -1329,7 +1331,9 @@ in
     expected = [
       {
         name = "zoneNotMatchable";
-        value = "filters.f.to[0] references zone 'empty' which has no egress match (no interfaces, no egress-side CIDRs, no matchOverride.egress)";
+        value =
+          "filters.f.to[0] references zone 'empty' which has no egress match"
+          + " (no interfaces, no egress CIDRs, no matchOverride.egress)";
       }
     ];
   };
@@ -1361,7 +1365,9 @@ in
     expected = [
       {
         name = "zoneNotMatchable";
-        value = "filters.fromOk.to[0] references zone 'partial' which has no egress match (no interfaces, no egress-side CIDRs, no matchOverride.egress)";
+        value =
+          "filters.fromOk.to[0] references zone 'partial' which has no egress match"
+          + " (no interfaces, no egress CIDRs, no matchOverride.egress)";
       }
     ];
   };
@@ -1590,7 +1596,11 @@ in
     expected = [
       {
         name = "chainOverrideUnreachable";
-        value = "filters.early-drop.to references zone 'host' which has no egress match expressible at chain (hook=prerouting, priority=raw) — zone has no daddr CIDRs / matchOverride.egress and oifname is unavailable in prerouting";
+        value =
+          "filters.early-drop.to references zone 'host' which has no egress match expressible at chain"
+          + " (hook=prerouting, priority=raw)"
+          + " — zone has no daddr CIDRs / matchOverride.egress"
+          + " and oifname is unavailable in prerouting";
       }
     ];
   };
@@ -1703,7 +1713,11 @@ in
     expected = [
       {
         name = "chainOverrideUnreachable";
-        value = "filters.f.to references zone 'host' which has no egress match expressible at chain (hook=prerouting, priority=raw) — zone has no daddr CIDRs / matchOverride.egress and oifname is unavailable in prerouting";
+        value =
+          "filters.f.to references zone 'host' which has no egress match expressible at chain"
+          + " (hook=prerouting, priority=raw)"
+          + " — zone has no daddr CIDRs / matchOverride.egress"
+          + " and oifname is unavailable in prerouting";
       }
     ];
   };

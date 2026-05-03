@@ -15,22 +15,17 @@
                            chainPolicy / localZone / wildcardZone)
     - `tableChainPolicy` — `accept` / `drop` (reuses
                            `nftypes.types.policy`)
-    - `tableZones`       — collection of zone declarations
+    - `tableZones`       — zone declarations
                            (`attrsOf nftzones.types.zone`)
-    - `tableNodes`       — collection of node declarations
+    - `tableNodes`       — node declarations
                            (`attrsOf nftzones.types.node`)
-    - `tableFilters`     — collection of filter rules
-                           (`attrsOf nftzones.types.filter`)
-    - `tablePolicies`    — collection of per-pair policies
+    - `tableFilters`     — filters group (`attrsOf nftzones.types.filter`)
+    - `tablePolicies`    — policies group, per-`(from, to)` defaults
                            (`attrsOf nftzones.types.policy`)
-    - `tableSnats`       — collection of snat rules
-                           (`attrsOf nftzones.types.snat`)
-    - `tableDnats`       — collection of dnat rules
-                           (`attrsOf nftzones.types.dnat`)
-    - `tableSroutes`     — collection of sroute rules
-                           (`attrsOf nftzones.types.sroute`)
-    - `tableDroutes`     — collection of droute rules
-                           (`attrsOf nftzones.types.droute`)
+    - `tableSnats`       — snats group (`attrsOf nftzones.types.snat`)
+    - `tableDnats`       — dnats group (`attrsOf nftzones.types.dnat`)
+    - `tableSroutes`     — sroutes group (`attrsOf nftzones.types.sroute`)
+    - `tableDroutes`     — droutes group (`attrsOf nftzones.types.droute`)
     - `tableObjects`     — submodule for user-defined named
                            nftables objects (counters, ct helpers,
                            sets, maps, …); reuses nftypes'
@@ -121,9 +116,11 @@ let
   tableChainPolicy = nftypes.types.policy;
 
   /*
-    Zone-firewall content collections — one `attrsOf <kind-submodule>`
-    per content kind. Named so that consumers (tests, modules, future
-    refactors) can reference the type directly instead of inlining
+    Zone-firewall groups (`filters` / `policies` / `snats` /
+    `dnats` / `sroutes` / `droutes`) plus zone declarations
+    (`zones` / `nodes`) — each is `attrsOf <entry-submodule>`.
+    Named so that consumers (tests, modules, future refactors)
+    can reference the type directly instead of inlining
     `lib.types.attrsOf foo.foo` at every use site.
   */
   tableZones = lib.types.attrsOf zone.zone;

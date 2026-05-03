@@ -8,7 +8,7 @@
                        of `from` and `to`)
     - `snatRule`     — attrTag union of `snat` and `masquerade`
                        bodies (the rule body)
-    - `snatPriority` — symbol-or-int rule sort key (`first` /
+    - `snatPriority` — symbol-or-int entry sort key (`first` /
                        `preDispatch` / `default` / …)
     - `snatChain`    — optional chain-placement override
                        (submodule with `hook` + `priority`)
@@ -38,14 +38,14 @@
   `natTypeFlag`) and field validation in lock-step with
   libnftables-json.
 
-  `snatPriority` is the rule sort key — symbol or int, default
+  `snatPriority` is the entry sort key — symbol or int, default
   `"default"` (= 500). NOT the nftables chain priority (that's
   `snatChain.priority`). See `primitives.entryPriority` for the
   symbol → int mapping.
 
   `snatChain` is an optional override for chain placement.
   `null` (the default) uses postrouting at `srcnat` priority.
-  Setting it pins the rule to a specific base chain via a
+  Setting it pins the entry to a specific base chain via a
   submodule with `hook` and `priority` — useful for output-hook
   SNAT on locally-generated traffic.
 
@@ -110,7 +110,7 @@ let
   /*
     Chain-placement override — `null` means default postrouting
     placement (`type nat hook postrouting priority srcnat`). A
-    submodule pins the rule to a specific base chain at the given
+    submodule pins the entry to a specific base chain at the given
     priority, e.g. for output-hook SNAT on locally-generated
     traffic.
   */
@@ -209,7 +209,7 @@ let
           description = ''
             Override the chain placement. `null` (the default)
             uses postrouting at `srcnat` priority. A submodule
-            pins the rule to a specific base chain — useful for
+            pins the entry to a specific base chain — useful for
             output-hook SNAT on locally-generated traffic.
           '';
         };

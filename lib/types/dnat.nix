@@ -8,7 +8,7 @@
                        of `from`)
     - `dnatRule`     — submodule with `match` (required) and
                        `action` (attrTag of `dnat` / `redirect`)
-    - `dnatPriority` — symbol-or-int rule sort key (`first` /
+    - `dnatPriority` — symbol-or-int entry sort key (`first` /
                        `preDispatch` / `default` / …)
     - `dnatChain`    — optional chain-placement override
                        (submodule with `hook` + `priority`)
@@ -23,10 +23,10 @@
 
   Why no `to`: prerouting runs before the routing decision, so the
   destination zone (which depends on routing) isn't determined when
-  the rule fires. The "target" of the rewrite is part of the rule
-  spec (`rule.action.dnat.addr`, …), not a zone match. Filter and
-  snat both have `to` because they fire after routing — dnat is the
-  structural exception.
+  the entry's emitted rules fire. The "target" of the rewrite is
+  part of the rule body (`rule.action.dnat.addr`, …), not a zone
+  match. Filter and snat both have `to` because they fire after
+  routing — dnat is the structural exception.
 
   `dnatZones` and the wildcard / reserved-name behaviour are
   identical to filter and snat — see `types/filter.nix` for the
@@ -52,16 +52,16 @@
   `natTypeFlag`) and field validation in lock-step with
   libnftables-json.
 
-  `dnatPriority` is the rule sort key — symbol or int, default
+  `dnatPriority` is the entry sort key — symbol or int, default
   `"default"` (= 500). NOT the nftables chain priority (that's
   `dnatChain.priority`). See `primitives.entryPriority` for the
   symbol → int mapping.
 
   `dnatChain` is an optional override for chain placement. `null`
   (the default) uses prerouting at `dstnat` priority. Setting it
-  pins the rule to a specific base chain via a submodule with
-  `hook` and `priority` — useful for output-hook DNAT on
-  locally-generated traffic.
+  pins the entry to a specific base chain via a
+  submodule with `hook` and `priority` — useful for output-hook
+  DNAT on locally-generated traffic.
 
   Example:
     options.dnats = lib.mkOption {
@@ -156,7 +156,7 @@ let
   /*
     Chain-placement override — `null` means default prerouting
     placement (`type nat hook prerouting priority dstnat`). A
-    submodule pins the rule to a specific base chain at the given
+    submodule pins the entry to a specific base chain at the given
     priority, e.g. for output-hook DNAT on locally-generated
     traffic.
   */
@@ -247,7 +247,7 @@ let
           description = ''
             Override the chain placement. `null` (the default)
             uses prerouting at `dstnat` priority. A submodule
-            pins the rule to a specific base chain — useful for
+            pins the entry to a specific base chain — useful for
             output-hook DNAT on locally-generated traffic.
           '';
         };

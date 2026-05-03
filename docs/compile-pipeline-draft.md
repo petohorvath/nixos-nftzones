@@ -17,8 +17,38 @@ The pipeline (and the surrounding code) names the data-model levels consistently
 - **Direction** — `from` or `to`, the zone-name fields on an entry. Some groups are bidirectional (filters, policies, snats — both `from` and `to`); others are single-direction (`dnats`, `sroutes` have only `from`; `droutes` only `to`).
 - **Cell** — a concrete `(from, to)` instance of an entry produced by Phase 2's cartesian product. Same shape as the entry but with the listed directions as scalars instead of lists. An entry with `from = [ "lan" "guest" ]; to = [ "wan" "vpn" ]` produces four cells. For single-direction groups, a cell has only the relevant scalar (e.g., a `dnat` cell has `from = "wan"` and no `to`).
 - **Slot** — one of three positions a cell occupies within its chain bucket, decided by the cell's resolved priority: `preDispatch` (emit in the base chain *before* the per-pair dispatch jumps), `subChains` (emit inside a per-`(from, to)` sub-chain — the default), or `postDispatch` (emit in the base chain *after* the dispatch jumps). Phase 3 buckets cells by `(chain, slot)`; Phase 4 emits each slot in order.
+- **Bucket** — Phase 3 container holding all cells destined for one `(hook, priority)` placement, organized by slot. `ctx.chainBuckets.<baseChainName> = { hook; priority; preDispatch; subChains; postDispatch; }`. Phase 4 emits one base chain per bucket.
+- **Variant** — one match-clause list within a `match.<ingress|egress>` direction (or in a Phase 4 jump rule). Multiple variants → multiple emitted rules. `internal.zone.genMatch` documents the 8-case variant table for zones; `mkDirectionVariants` mirrors it for jump-match construction.
 
-The trio shows up directly in `internal/normalize.nix`'s helpers:
+### nftables vocabulary
+
+These are nftables's own concepts; we adopt the same terms verbatim:
+
+- **Hook** — netfilter attachment point. One of `prerouting` / `input` / `forward` / `output` / `postrouting` / `ingress` / `egress`. Field name in code: `hook`.
+- **Chain priority** — orders chains attached to the same hook. Symbol (`raw` / `mangle` / `dstnat` / `filter` / `security` / `srcnat`) or int. NOT to be confused with **entry priority**. Field name: `chainAttrs.priority`.
+- **Entry priority** — orders entries within their slot in a sub-chain (or pre/postDispatch in a base chain). Symbol (`first` / `preDispatch` / `postDispatch` / `default` / `last`) or int. Resolved by `internal.priority.resolvePriority`. Type: `primitives.entryPriority`.
+- **Chain type** — `filter` / `nat` / `route`. Phase 4 derives this from `(hook, priority)` via `chainTypeOf`.
+- **Base chain** — chain attached to a hook (carries `type` / `hook` / `priority` / `policy`).
+- **Sub-chain** — regular chain (only reachable via `jump`). One per `(from, to)` pair in our model.
+
+### Naming convention for chain identifiers
+
+The same string travels from Phase 3 (as an attrset key) through to Phase 4 (as the actual nftables chain name):
+
+- **`baseChainName`** = `"<hook>-at-<priority>"` (e.g. `"forward-at-filter"`). Computed by `internal.dispatch.baseChainNameOf`. Used as the bucket key in `chainBuckets` *and* as the base chain's name in the emitted nftables output.
+- **`subChainKey`** — local key within `bucket.subChains` (e.g. `"lan-to-wan"` / `"wan"` / `"lan"`). Computed by `internal.dispatch.subChainKeyOf` from a cell's `from` / `to`.
+- **`subChainName`** — full sub-chain name in the nftables output, `"<baseChainName>__<subChainKey>"` (e.g. `"forward-at-filter__lan-to-wan"`). Computed by `internal.emit.subChainNameOf`.
+
+### Two framings of `(hook, priority)`
+
+The pair shows up under two names depending on context:
+
+- **Chain placement** — user-facing term, used in type docstrings (`filterChain`, `snatChain`, `dnatChain` overrides). Describes what the override *does*: pins the entry to a specific base chain.
+- **Chain attrs** — implementation term, used in `internal.dispatch` / `internal.emit`. Describes the attrset shape `{ hook; priority; }` carried alongside cells.
+
+Same concept, different framings.
+
+The Group / Entry / Direction trio shows up directly in `internal/normalize.nix`'s helpers:
 
 ```
 expandWildcardZones          # table -> table
@@ -124,16 +154,16 @@ Each cell preserves the original entry's body (`rule`, `priority`, `comment`, et
 
 Each cell goes to a chain based on its group:
 
-| Group    | Chain dispatch                                                                          |
-|----------|-----------------------------------------------------------------------------------------|
-| `filter` | `internal.filter.groupCellsByChain` — input/forward/output via host-position rule. |
-| `policy` | Same as filter — policies become tail rules in the same per-pair sub-chains.            |
-| `snat`   | Always postrouting (`type nat hook postrouting priority srcnat`).                        |
-| `dnat`   | Always prerouting (`type nat hook prerouting priority dstnat`).                          |
-| `sroute` | Always prerouting (`type route hook prerouting priority mangle`).                        |
-| `droute` | Always output (`type route hook output priority mangle`).                                |
+| Group | Chain dispatch |
+|---|---|
+| `filters` | `internal.dispatch.filterChainHook` — input / forward / output via host-position rule. |
+| `policies` | Same as `filters` — policies become tail rules in the same per-pair sub-chains. |
+| `snats` | Always postrouting (`type nat hook postrouting priority srcnat`). |
+| `dnats` | Always prerouting (`type nat hook prerouting priority dstnat`). |
+| `sroutes` | Always prerouting (`type route hook prerouting priority mangle`). |
+| `droutes` | Always output (`type route hook output priority mangle`). |
 
-The per-rule `chain` override submodule on filter / snat / dnat redirects a cell to a custom hook + priority chain (e.g., rpfilter at `prerouting + raw`).
+The per-entry `chain` override submodule on `filters` / `snats` / `dnats` redirects a cell to a custom hook + priority chain (e.g., rpfilter at `prerouting + raw`).
 
 Output is a 2D buckets attrset: `{ <baseChainName> = [ <cells>... ]; ... }`.
 
@@ -360,22 +390,22 @@ final = lib.pipe (mkInitialState table) [
   # Phase 1 — normalize
   convertNodesToZones collectAllZoneNames expandWildcardZones
   resolvePriorities  collectZoneRefs
-  checkNameCollisions checkSettings checkZoneRefs checkPolicyUniqueness
+  checkNameCollisions checkSettings checkZoneRefs
+  checkZoneMatchable checkChainOverridePlacement checkPolicyUniqueness
   # Phase 2 — expand
   expandTable
   # Phase 3 — dispatch + sort
   dispatchAndSort  # = groupCellsByChain |> buildChainBuckets
+  # Phase 4 — emit (steps 1-4; user objects + public API still pending)
+  emitTable        # = emitZoneSets |> emitBaseChains |> emitSubChains |> assembleOutput
 ];
-# final.ctx.chainBuckets."<hook>-at-<priority>" = {
-#   hook; priority; preDispatch; subChains; postDispatch;
-# }
+# final.ctx.output = nftypes.dsl.table value (assembled from
+#   ctx.zoneSets + ctx.baseChains + ctx.subChains).
 ```
 
 Next concrete milestones:
 
-1. Phase 4 minimum-viable emit — empty base chains with settings boilerplate, no rules. Verifies the output shape via `nft -c -j`.
-2. Rule emission for filter and policy.
-3. NAT and route emission.
-4. Named-object passthrough and reference validation (open question 3).
-5. Top-level `compile.nix` orchestrator + public `mkTable` / `mkRuleset` API.
-6. Remove orphan `internal/filter.nix` (superseded by Phase 3's inline `filterChainHook`).
+1. Phase 4 step 5 — user-object passthrough (`mkUserObjects` + `emitUserObjects` sub-phase, threading `table.objects.<kind>` into the body).
+2. Phase 4 step 6 — `compile.nix` orchestrator + public `mkTable` / `mkRuleset` API. Ships the library.
+3. Named-object reference validation (open question 3) — Phase 1 validator.
+4. Remove orphan `internal/filter.nix` (superseded by Phase 3's inline `filterChainHook`).
