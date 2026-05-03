@@ -35,5 +35,18 @@ let
     inherit inputs;
     internal = base;
   };
+
+  emit = import ./emit.nix {
+    inherit inputs;
+    internal = base;
+  };
 in
-base // { inherit normalize expand dispatch; }
+base
+// {
+  inherit
+    normalize
+    expand
+    dispatch
+    emit
+    ;
+}

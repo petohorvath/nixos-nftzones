@@ -70,12 +70,12 @@ in
       in
       {
         inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        subChainKeys = lib.attrNames bucket.subChains;
       };
     expected = {
       hook = "input";
       priority = "filter";
-      subChainNames = [ "wan-to-local" ];
+      subChainKeys = [ "wan-to-local" ];
     };
   };
 
@@ -99,12 +99,12 @@ in
       in
       {
         inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        subChainKeys = lib.attrNames bucket.subChains;
       };
     expected = {
       hook = "output";
       priority = "filter";
-      subChainNames = [ "local-to-wan" ];
+      subChainKeys = [ "local-to-wan" ];
     };
   };
 
@@ -133,12 +133,12 @@ in
       in
       {
         inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        subChainKeys = lib.attrNames bucket.subChains;
       };
     expected = {
       hook = "forward";
       priority = "filter";
-      subChainNames = [ "lan-to-wan" ];
+      subChainKeys = [ "lan-to-wan" ];
     };
   };
 
@@ -170,12 +170,12 @@ in
       in
       {
         inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        subChainKeys = lib.attrNames bucket.subChains;
       };
     expected = {
       hook = "postrouting";
       priority = "srcnat";
-      subChainNames = [ "lan-to-wan" ];
+      subChainKeys = [ "lan-to-wan" ];
     };
   };
 
@@ -205,7 +205,7 @@ in
       in
       {
         inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        subChainKeys = lib.attrNames bucket.subChains;
         subFields = {
           inherit (sub) from;
           hasTo = sub ? to;
@@ -215,7 +215,7 @@ in
     expected = {
       hook = "prerouting";
       priority = "dstnat";
-      subChainNames = [ "wan" ];
+      subChainKeys = [ "wan" ];
       subFields = {
         from = "wan";
         hasTo = false;
@@ -283,12 +283,12 @@ in
       in
       {
         inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        subChainKeys = lib.attrNames bucket.subChains;
       };
     expected = {
       hook = "prerouting";
       priority = "raw";
-      subChainNames = [ "wan-to-local" ];
+      subChainKeys = [ "wan-to-local" ];
     };
   };
 

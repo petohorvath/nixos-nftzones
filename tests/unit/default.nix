@@ -20,3 +20,4 @@ args@{
 // import ./internal/normalize.nix args
 // import ./internal/expand.nix args
 // import ./internal/dispatch.nix args
+// import ./internal/emit.nix args

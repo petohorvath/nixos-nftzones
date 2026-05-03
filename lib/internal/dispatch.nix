@@ -90,11 +90,15 @@
       …
     };
 
-  Chain bucket keys (`"input-at-filter"`, `"prerouting-at-raw"`,
-  etc.) are decorative — every bucket carries `hook` and `priority`
-  as fields so Phase 4 reads structured data, not parsed strings.
-  Sub-chain keys are likewise decorative; `from` / `to` live on the
-  sub-chain itself.
+  Bucket keys are *base chain names* (`"input-at-filter"`,
+  `"prerouting-at-raw"`, etc.) computed by `baseChainNameOf` from
+  `(hook, priority)`; Phase 4 emits them as the actual nftables
+  base chain names. The `<hook>-at-<priority>` form is a naming
+  convention — every bucket also carries `hook` and `priority` as
+  fields so Phase 4 reads structured data, not parsed strings.
+  Sub-chain keys (`"lan-to-wan"`, `"wan"`, etc.) are likewise
+  decorative within Phase 3; Phase 4 uses them to build the full
+  sub-chain name as `<baseChainName>__<subChainKey>`.
 
   Override + default-chain collision (e.g., user override hits
   `(input, filter)` which is also the default input filter chain)
@@ -184,10 +188,13 @@ let
     else
       defaultGroupChainAttrs.${group};
 
-  # Bucket key for a chain — `"<hook>-at-<priority>"` (e.g.
-  # `"input-at-filter"`). Decorative; bucket carries the structured
-  # `{ hook; priority; }` separately for Phase 4.
-  chainNameOf = chainAttrs: "${chainAttrs.hook}-at-${toString chainAttrs.priority}";
+  # Base chain name — `"<hook>-at-<priority>"` (e.g.
+  # `"input-at-filter"`). Used as the bucket key in `chainBuckets`
+  # *and* as the chain name Phase 4 emits in the nftables output.
+  # The format is a naming convention; bucket carries the
+  # structured `{ hook; priority; }` separately so Phase 4 reads
+  # fields, not parsed strings.
+  baseChainNameOf = chainAttrs: "${chainAttrs.hook}-at-${toString chainAttrs.priority}";
 
   # Classify a cell into one of the three slots within its chain
   # (see "Slot" in the design doc terminology). Field-less policies
@@ -207,7 +214,7 @@ let
   # for bidirectional cells, bare `"<from>"` or `"<to>"` for
   # single-direction. Decorative; sub-chain carries `from` / `to`
   # as fields.
-  subChainNameOf =
+  subChainKeyOf =
     cell:
     if cell ? from && cell ? to then
       "${cell.from}-to-${cell.to}"
@@ -269,7 +276,7 @@ let
     chainAttrs
     // {
       preDispatch = sortMixed (bySlot.preDispatch or [ ]);
-      subChains = lib.mapAttrs (_: subChainOf) (lib.groupBy subChainNameOf (bySlot.subChains or [ ]));
+      subChains = lib.mapAttrs (_: subChainOf) (lib.groupBy subChainKeyOf (bySlot.subChains or [ ]));
       postDispatch = sortMixed (bySlot.postDispatch or [ ]);
     };
 
@@ -283,7 +290,7 @@ let
           ctx.cells              : { <group> = [ <cell> … ]; … }
           → pairWithChain        : { <group> = [ { attrs; cell } … ]; … }
           → concatAttrValues     : [ { attrs; cell } … ]
-          → groupBy chainName    : { <chain> = [ { attrs; cell } … ]; … }
+          → groupBy baseChainName : { <chain> = [ { attrs; cell } … ]; … }
           → coalesce             : { <chain> = { attrs; cells }; … }
         `attrs` ({ hook; priority; }) is computed once per cell and
         carried through so `buildChainBuckets` doesn't recompute it.
@@ -306,7 +313,7 @@ let
       groupedByChain = lib.pipe ctx.cells [
         pairWithChain
         lib.concatAttrValues
-        (lib.groupBy (item: chainNameOf item.attrs))
+        (lib.groupBy (item: baseChainNameOf item.attrs))
         coalesce
       ];
     in
