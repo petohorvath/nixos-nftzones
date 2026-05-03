@@ -2,7 +2,6 @@
 let
   zone = import ./zone.nix { inherit inputs; };
   entry = import ./entry.nix { inherit inputs; };
-  filter = import ./filter.nix { inherit inputs; };
   priority = import ./priority.nix { inherit inputs; };
   node = import ./node.nix { inherit inputs zone; };
 
@@ -15,7 +14,6 @@ let
     inherit
       zone
       entry
-      filter
       priority
       node
       ;

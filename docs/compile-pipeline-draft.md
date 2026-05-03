@@ -345,10 +345,6 @@ lib/
     priority.nix             — resolvePriority (symbol → int),
                                entryPriorities (canonical symbol → int
                                table consumed by Phase 3)
-    filter.nix               — groupCellsByChain (host-position
-                               dispatch) — ORPHAN: superseded by
-                               Phase 3's inline `filterChainHook`;
-                               candidate for removal.
 
     # Phase 4 helpers (TBD)
     emit-sets.nix            — per-zone interface / CIDR sets
@@ -405,7 +401,6 @@ final = lib.pipe (mkInitialState table) [
 
 Next concrete milestones:
 
-1. Phase 4 step 5 — user-object passthrough (`mkUserObjects` + `emitUserObjects` sub-phase, threading `table.objects.<kind>` into the body).
-2. Phase 4 step 6 — `compile.nix` orchestrator + public `mkTable` / `mkRuleset` API. Ships the library.
+1. Phase 4 step 6 — `compile.nix` orchestrator + public `mkTable` / `mkRuleset` API. Ships the library.
+2. `checkSetNameCollisions` Phase 1 validator — catches user `objects.sets.<name>` colliding with auto-generated zone-set names (`<zone>_iifs` / `<zone>_v4` / `<zone>_v6`); see TODO in `internal.emit.assembleOutput`.
 3. Named-object reference validation (open question 3) — Phase 1 validator.
-4. Remove orphan `internal/filter.nix` (superseded by Phase 3's inline `filterChainHook`).
