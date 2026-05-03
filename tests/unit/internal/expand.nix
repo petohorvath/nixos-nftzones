@@ -10,26 +10,7 @@ let
   inherit (nftzones.internal.normalize) normalizeTable;
   inherit (nftzones.internal.expand) expandTable;
 
-  /*
-    Build a realistic `nftzones.types.table` value via evalModules,
-    run Phase 1 + Phase 2, and return the resulting `ctx`. Tests
-    inspect `ctx.cells.<group>` for the expansion's output.
-  */
-  evalTable =
-    body:
-    let
-      cfg = pkgs.lib.evalModules {
-        modules = [
-          {
-            options.fw = pkgs.lib.mkOption {
-              type = nftzones.types.table;
-            };
-          }
-          { config.fw = body; }
-        ];
-      };
-    in
-    cfg.config.fw;
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
 
   runExpand = body: (expandTable (normalizeTable (evalTable body))).ctx;
 in

@@ -1,0 +1,235 @@
+# Unit tests for `lib/internal/compile.nix` (exposed as
+# `nftzones.internal.compile`). Same `testFoo = { expr; expected; }`
+# shape as every other unit test; aggregated by `tests/unit/default.nix`.
+{
+  pkgs,
+  nftzones,
+  nftypes,
+}:
+let
+  inherit (nftzones.internal.compile)
+    compile
+    mkTable
+    mkRuleset
+    ;
+
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
+in
+{
+  # ===== compile — runs all four phases, ctx carries every artifact =====
+
+  testCompileFullCtx = {
+    expr =
+      let
+        ctx =
+          (compile (evalTable {
+            zones.lan = {
+              interfaces = [ "lan0" ];
+            };
+          })).ctx;
+      in
+      {
+        # Phase 1 artifacts
+        hasMergedZones = ctx ? mergedZones;
+        hasAllZoneNames = ctx ? allZoneNames;
+        hasExpandedGroups = ctx ? expandedGroups;
+        hasResolvedPriorities = ctx ? resolvedPriorities;
+        hasZoneRefs = ctx ? zoneRefs;
+        hasErrors = ctx ? errors;
+        # Phase 2 artifact
+        hasCells = ctx ? cells;
+        # Phase 3 artifacts
+        hasGroupedByChain = ctx ? groupedByChain;
+        hasChainBuckets = ctx ? chainBuckets;
+        # Phase 4 artifacts
+        hasZoneSets = ctx ? zoneSets;
+        hasBaseChains = ctx ? baseChains;
+        hasSubChains = ctx ? subChains;
+        hasUserObjects = ctx ? userObjects;
+        hasOutput = ctx ? output;
+      };
+    expected = {
+      hasMergedZones = true;
+      hasAllZoneNames = true;
+      hasExpandedGroups = true;
+      hasResolvedPriorities = true;
+      hasZoneRefs = true;
+      hasErrors = true;
+      hasCells = true;
+      hasGroupedByChain = true;
+      hasChainBuckets = true;
+      hasZoneSets = true;
+      hasBaseChains = true;
+      hasSubChains = true;
+      hasUserObjects = true;
+      hasOutput = true;
+    };
+  };
+
+  # ===== compile — Phase 1 errors propagate as a thrown message =====
+
+  testCompileThrowsOnPhase1Error = {
+    # `from = [ "missing" ]` references an unknown zone — Phase 1's
+    # `checkZoneRefs` flags it; `normalizeTable` aggregates errors
+    # and throws.
+    expr =
+      let
+        attempt = builtins.tryEval (
+          compile (evalTable {
+            zones.lan = {
+              interfaces = [ "lan0" ];
+            };
+            filters.f = {
+              from = [ "missing" ];
+              to = [ "lan" ];
+              rule = [ ];
+            };
+          })
+        );
+      in
+      attempt.success;
+    expected = false;
+  };
+
+  # ===== mkTable — extracts ctx.output =====
+
+  testMkTableExtractsOutput = {
+    # The output is a `nftypes.dsl.table` value, which carries a
+    # marker attribute. Family + name must propagate from the
+    # input table.
+    expr =
+      let
+        out = mkTable (evalTable {
+          family = "ip";
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
+        });
+      in
+      {
+        inherit (out) family name;
+        hasMarker = out ? __nftTable;
+      };
+    expected = {
+      family = "ip";
+      name = "fw";
+      hasMarker = true;
+    };
+  };
+
+  # ===== mkRuleset — wraps mkTable's output in a ruleset envelope =====
+
+  testMkRulesetWrapsTable = {
+    # `nftypes.dsl.ruleset` produces the canonical
+    # `{ nftables = [ <commands>... ]; }` shape. The first command
+    # in our case is the `add table` for our compiled table.
+    expr =
+      let
+        rs = mkRuleset (evalTable {
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
+        });
+        firstCmd = builtins.head rs.nftables;
+      in
+      {
+        hasNftables = rs ? nftables;
+        nftablesIsList = builtins.isList rs.nftables;
+        firstIsAddTable = firstCmd ? add && firstCmd.add ? table;
+      };
+    expected = {
+      hasNftables = true;
+      nftablesIsList = true;
+      firstIsAddTable = true;
+    };
+  };
+
+  # ===== mkRuleset — JSON output contains a table command =====
+
+  testMkRulesetJSONShape = {
+    # End-to-end: the produced ruleset, when rendered, must yield
+    # the canonical `{ nftables = [ ... ] }` shape with at least
+    # one `add table` command.
+    expr =
+      let
+        json = builtins.fromJSON (
+          nftypes.toJSON (
+            mkRuleset (evalTable {
+              zones.lan = {
+                interfaces = [ "lan0" ];
+              };
+            })
+          )
+        );
+        firstCmd = builtins.head json.nftables;
+      in
+      {
+        hasNftables = json ? nftables;
+        firstIsAddTable = firstCmd ? add && firstCmd.add ? table;
+        firstTableName = firstCmd.add.table.name;
+        firstTableFamily = firstCmd.add.table.family;
+      };
+    expected = {
+      hasNftables = true;
+      firstIsAddTable = true;
+      firstTableName = "fw";
+      firstTableFamily = "inet";
+    };
+  };
+
+  # ===== Public API — nftzones.mkTable name body =====
+
+  testPublicMkTableAcceptsRawBody = {
+    # The lib/default.nix wrapper does `evalModules` internally so
+    # users can pass an unevaluated body straight in. Name is a
+    # separate positional arg (mirrors `nftypes.dsl.table`).
+    expr =
+      let
+        out = nftzones.mkTable "fw" {
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
+        };
+      in
+      {
+        inherit (out) family name;
+      };
+    expected = {
+      family = "inet";
+      name = "fw";
+    };
+  };
+
+  # ===== Public API — name argument flows through to output =====
+
+  testPublicMkTableUsesArgName = {
+    # The user's `name` arg becomes the actual nftables table name
+    # in the emitted output. Without the separate name parameter
+    # this would fail (the submodule's `default = name` for the
+    # readOnly field would conflict with any body-set value).
+    expr = (nftzones.mkTable "production-fw" { }).name;
+    expected = "production-fw";
+  };
+
+  # ===== Public API — nftzones.mkRuleset name body =====
+
+  testPublicMkRulesetAcceptsRawBody = {
+    expr =
+      let
+        rs = nftzones.mkRuleset "fw" {
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
+        };
+      in
+      {
+        hasNftables = rs ? nftables;
+        commandCount = builtins.length rs.nftables;
+      };
+    # 2 commands: 1 table declaration + 1 set declaration for lan_iifs.
+    expected = {
+      hasNftables = true;
+      commandCount = 2;
+    };
+  };
+}

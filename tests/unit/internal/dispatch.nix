@@ -11,21 +11,7 @@ let
   inherit (nftzones.internal.expand) expandTable;
   inherit (nftzones.internal.dispatch) dispatchAndSort;
 
-  evalTable =
-    body:
-    let
-      cfg = pkgs.lib.evalModules {
-        modules = [
-          {
-            options.fw = pkgs.lib.mkOption {
-              type = nftzones.types.table;
-            };
-          }
-          { config.fw = body; }
-        ];
-      };
-    in
-    cfg.config.fw;
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
 
   /*
     Run Phase 1 + Phase 2 + Phase 3 against an evalModules-produced

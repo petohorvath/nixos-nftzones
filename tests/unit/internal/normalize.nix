@@ -22,27 +22,7 @@ let
     normalizeTable
     ;
 
-  /*
-    Build a realistic `nftzones.types.table` value via evalModules.
-    The table type fills in submodule defaults for `settings`, rule
-    groups, and `objects`; each test only specifies the fields it
-    cares about.
-  */
-  evalTable =
-    body:
-    let
-      cfg = pkgs.lib.evalModules {
-        modules = [
-          {
-            options.fw = pkgs.lib.mkOption {
-              type = nftzones.types.table;
-            };
-          }
-          { config.fw = body; }
-        ];
-      };
-    in
-    cfg.config.fw;
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
 
   /*
     Minimal table fixture for direct (non-`evalTable`) phase tests.

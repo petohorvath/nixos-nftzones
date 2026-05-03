@@ -26,21 +26,7 @@ let
     ;
   inherit (nftypes.dsl) expr;
 
-  evalTable =
-    body:
-    let
-      cfg = pkgs.lib.evalModules {
-        modules = [
-          {
-            options.fw = pkgs.lib.mkOption {
-              type = nftzones.types.table;
-            };
-          }
-          { config.fw = body; }
-        ];
-      };
-    in
-    cfg.config.fw;
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
 
   /*
     Run Phase 1 → Phase 4 against an evalModules-produced table

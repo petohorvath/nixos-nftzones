@@ -3,12 +3,13 @@ let
   inherit (inputs) lib;
 
   /*
-    Internal building blocks — low-level constructors used to compose
-    the higher-level zone / filter surface. `lib/internal/default.nix`
-    returns one attrset per source module (`zone`, `filter`, …); each
-    module's exports stay under that submodule key, so callers reach
-    functions as `nftzones.internal.<module>.<fn>` (e.g.
-    `nftzones.internal.zone.genMatch`).
+    Internal building blocks — leaf helpers, per-phase orchestrators,
+    and the top-level compile orchestrator. `lib/internal/default.nix`
+    returns one attrset per source module; each module's exports stay
+    under that submodule key, so callers reach functions as
+    `nftzones.internal.<module>.<fn>` (e.g.
+    `nftzones.internal.zone.genMatch`,
+    `nftzones.internal.compile.mkTable`).
   */
   internal = import ./internal { inherit inputs; };
 
@@ -22,10 +23,41 @@ let
   */
   typeModules = import ./types { inherit inputs internal; };
   types = lib.mergeAttrsList (lib.attrValues typeModules);
+
+  /*
+    Validate a raw user `body` (an attrset) against `types.table`
+    by running it through `lib.evalModules`, using `name` as the
+    option attribute key so the table's read-only `name` field
+    derives from the user's chosen value (the submodule's
+    `default = name` mechanism).
+
+    Returns the evaluated `nftzones.types.table` value with all
+    submodule defaults filled in. Internal helper for the public
+    `mkTable` / `mkRuleset` — NixOS-module consumers who already
+    have an evaluated value should reach `internal.compile.mkTable`
+    directly to skip this extra eval (which would conflict with
+    the read-only `name` field).
+  */
+  evalTableBody =
+    name: body:
+    (lib.evalModules {
+      modules = [
+        { options.${name} = lib.mkOption { type = types.table; }; }
+        { config.${name} = body; }
+      ];
+    }).config.${name};
+
+  mkTable = name: body: internal.compile.mkTable (evalTableBody name body);
+  mkRuleset = name: body: internal.compile.mkRuleset (evalTableBody name body);
 in
 {
   # Library version. Bumped manually per release.
   version = "0.1.0";
 
-  inherit internal types;
+  inherit
+    internal
+    types
+    mkTable
+    mkRuleset
+    ;
 }
