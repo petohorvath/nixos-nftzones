@@ -26,9 +26,14 @@
         interfaces    = [ ];
         cidrs         = optional ipv4 "${ipv4}/32"
                      ++ optional ipv6 "${ipv6}/128";
-        matchOverride = { ingress = null; egress = null; };
+        matchOverride = { ingress = { }; egress = { }; };
         comment       = <node.comment>;   # propagated; null if unset
       }
+    The empty per-side attrsets are valid `zoneMatchOverrideSide`
+    values: every section defaults to `null`, and downstream
+    consumers go through `internal.zone.getActiveMatchOverrides`,
+    which filters null/empty sections out — so the all-null shape
+    is indistinguishable from `{ }` for any read.
 
     The output mirrors the zone submodule's defaults so lowered
     nodes can be merged with declared zones (also submodule-
@@ -46,7 +51,7 @@
       parent = "dmz";
       interfaces = [ ];
       cidrs = [ "10.0.0.5/32" "fe80::1/128" ];
-      matchOverride = { ingress = null; egress = null; };
+      matchOverride = { ingress = { }; egress = { }; };
       comment = null;
     }
 */
@@ -78,8 +83,8 @@ let
         comment
         ;
       matchOverride = {
-        ingress = null;
-        egress = null;
+        ingress = { };
+        egress = { };
       };
     };
 in

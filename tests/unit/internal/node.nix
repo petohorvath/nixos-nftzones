@@ -160,8 +160,8 @@ in
       };
     expected = {
       matchOverride = {
-        ingress = null;
-        egress = null;
+        ingress = { };
+        egress = { };
       };
       comment = null;
     };

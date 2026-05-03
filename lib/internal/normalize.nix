@@ -229,13 +229,20 @@
   A zone direction is reachable at hook H if any of:
     - the zone is `localZone` (always wildcard);
     - `zone.cidrs` is non-empty (addr matching always works);
-    - `zone.matchOverride.<ingress|egress>` is non-null (user
-      provided custom expressions; trusted as-is);
+    - `zone.matchOverride.<side>.{ipv4,ipv6,extra}` has a
+      contributing section (always reachable — these sections are
+      hook-agnostic by construction);
+    - `zone.matchOverride.<side>.interfaces` is contributing
+      AND the relevant interface field is valid at H (the
+      interfaces section is treated as iif/oif content by
+      convention);
     - `zone.interfaces` is non-empty AND the relevant interface
       field (`iifname` for `from`, `oifname` for `to`) is valid
       at H. `oifname` validity uses
       `nftypes.compatibility.hooksWithOifname`; `iifname` is
       valid at every hook except `output`.
+
+  "Contributing" means the section is non-null AND non-empty.
 
   Operates on `ctx.expandedGroups` so wildcard expansions like
   `from = [ "all" ]` are checked per resolved zone.
@@ -306,7 +313,7 @@
   `dsl.goto <name>` inside rule bodies. nftzones generates chain
   names internally (`<hook>-at-<priority>__<key>`) and does not
   document them as a stable surface, so manually-written jumps
-  to those names are not validated. See follow-up #2 in
+  to those names are not validated. See follow-up #1 in
   `docs/compile-pipeline-draft.md` for the design discussion.
 
   Resolves names against the union of two namespaces:
@@ -340,7 +347,7 @@
 let
   inherit (inputs) lib nftypes;
   inherit (internal.node) toZone;
-  inherit (internal.zone) genSets;
+  inherit (internal.zone) genSets getActiveMatchOverrides;
 
   /*
     Build the pipeline's initial `{ table; ctx }` from a fresh
@@ -353,6 +360,17 @@ let
     ctx = {
       errors = [ ];
     };
+  };
+
+  /*
+    Maps a group-side direction (`from` / `to`) to the zone's
+    matchOverride side it consults. `from` matches inbound
+    packets → ingress; `to` matches outbound → egress. Used by
+    `checkChainOverridePlacement` and `checkZoneMatchable`.
+  */
+  directionToSide = {
+    from = "ingress";
+    to = "egress";
   };
 
   collectAllZoneNames =
@@ -610,11 +628,6 @@ let
         ];
       oifAvailableAtHook = hook: builtins.elem hook nftypes.compatibility.hooksWithOifname;
 
-      directionToOverrideField = {
-        from = "ingress";
-        to = "egress";
-      };
-
       ifFieldName = direction: if direction == "from" then "iifname" else "oifname";
 
       addrFieldName = direction: if direction == "from" then "saddr" else "daddr";
@@ -624,6 +637,12 @@ let
         matchable at that placement? `localZone` and unknown zones
         are skipped (handled by other validators / wildcard
         sentinel).
+
+        With the structured matchOverride, the sections that always
+        produce a hook-agnostic clause (`ipv4` / `ipv6` / `extra`)
+        make the zone reachable at any hook. The `interfaces`
+        section is treated as iif/oif content by convention, so it
+        still depends on hook validity.
       */
       reachable =
         zoneName: hook: direction:
@@ -632,11 +651,15 @@ let
         else
           let
             zone = mergedZones.${zoneName};
-            overrideField = directionToOverrideField.${direction};
+            side = directionToSide.${direction};
+            active = getActiveMatchOverrides zone side;
             ifAvailable = if direction == "from" then iifAvailableAtHook hook else oifAvailableAtHook hook;
           in
           zone.cidrs != [ ]
-          || zone.matchOverride.${overrideField} != null
+          || active ? ipv4
+          || active ? ipv6
+          || active ? extra
+          || (active ? interfaces && ifAvailable)
           || (zone.interfaces != [ ] && ifAvailable);
 
       /*
@@ -692,15 +715,15 @@ let
       mkError =
         r:
         let
-          matchSide = directionToOverrideField.${r.direction};
+          side = directionToSide.${r.direction};
           addrField = addrFieldName r.direction;
           ifField = ifFieldName r.direction;
           msg =
             "${r.groupName}.${r.entryName}.${r.direction} references zone '${r.zoneName}'"
-            + " which has no ${matchSide} match expressible at chain"
+            + " which has no ${side} match expressible at chain"
             + " (hook=${r.hook}, priority=${toString r.priority})"
-            + " — zone has no ${addrField} CIDRs / matchOverride.${matchSide}"
-            + " and ${ifField} is unavailable in ${r.hook}";
+            + " — zone has no ${addrField} CIDRs and no hook-agnostic matchOverride.${side} sections"
+            + " (ipv4 / ipv6 / extra) set, and ${ifField} is unavailable in ${r.hook}";
         in
         lib.nameValuePair "chainOverrideUnreachable" msg;
 
@@ -724,24 +747,14 @@ let
       inherit (table.settings) localZone;
       inherit (ctx) zoneRefs mergedZones;
 
-      # `from` matches inbound packets → zone's `ingress` direction.
-      # `to`   matches outbound packets → zone's `egress`  direction.
-      directionToMatchSide = {
-        from = "ingress";
-        to = "egress";
-      };
-
       /*
-        A zone is matchable on a given side iff EITHER the user
-        supplied a non-empty `matchOverride.<side>`, OR (in the
+        A zone is matchable on a given side iff EITHER the user set
+        any non-empty override section for that side, OR (in the
         compute path) the zone declares any interfaces or CIDRs.
       */
       isMatchable =
         zone: side:
-        let
-          override = zone.matchOverride.${side};
-        in
-        if override != null then override != [ ] else zone.interfaces != [ ] || zone.cidrs != [ ];
+        getActiveMatchOverrides zone side != { } || zone.interfaces != [ ] || zone.cidrs != [ ];
 
       # Skip refs without a `direction` (node parent refs), refs to
       # the localZone sentinel (no `mergedZones` entry by design),
@@ -753,22 +766,18 @@ let
       unmatchableRefs = builtins.filter (
         r:
         let
-          matchSide = directionToMatchSide.${r.direction};
+          side = directionToSide.${r.direction};
         in
-        !(isMatchable mergedZones.${r.zone} matchSide)
+        !(isMatchable mergedZones.${r.zone} side)
       ) directionBoundRefs;
 
       newErrors = map (
         r:
         let
-          matchSide = directionToMatchSide.${r.direction};
-          override = mergedZones.${r.zone}.matchOverride.${matchSide};
-          reason =
-            if override != null then
-              "matchOverride.${matchSide} is explicitly empty"
-            else
-              "no interfaces, no CIDRs, and no matchOverride.${matchSide}";
-          msg = "${r.path} references zone '${r.zone}' which has no ${matchSide} match (${reason})";
+          side = directionToSide.${r.direction};
+          msg =
+            "${r.path} references zone '${r.zone}' which has no ${side} match"
+            + " (no interfaces, no CIDRs, and no matchOverride sections set on the ${side} side)";
         in
         lib.nameValuePair "zoneNotMatchable" msg
       ) unmatchableRefs;
@@ -863,20 +872,26 @@ let
         );
 
       /*
-        Walk every zone's `matchOverride.{ingress, egress}` (when
-        non-null). Nodes always lower with null overrides, so this
-        only finds content the user wrote on declared zones.
+        Walk every zone's active matchOverride sections via
+        `getActiveMatchOverrides`. Inactive sections (null or
+        empty) carry no refs by definition — filtering at the
+        helper boundary skips them cleanly. Section name is
+        included in the ref's source path so error messages point
+        at the exact field (e.g.
+        `zones.lan.matchOverride.ingress.ipv4`).
       */
       refsFromMatchOverrides = lib.concatLists (
         lib.mapAttrsToList (
           zoneName: zone:
           lib.concatMap (
             dir:
-            let
-              body = zone.matchOverride.${dir};
-            in
-            lib.optionals (body != null) (
-              map (ref: ref // { path = "zones.${zoneName}.matchOverride.${dir}"; }) (extractRefs body)
+            lib.concatLists (
+              lib.mapAttrsToList (
+                section: body:
+                map (ref: ref // {
+                  path = "zones.${zoneName}.matchOverride.${dir}.${section}";
+                }) (extractRefs body)
+              ) (getActiveMatchOverrides zone dir)
             )
           ) [ "ingress" "egress" ]
         ) mergedZones

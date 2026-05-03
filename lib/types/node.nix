@@ -23,7 +23,7 @@
     interfaces    = [ ];
     cidrs         = optional ipv4 "${ipv4}/32"
                  ++ optional ipv6 "${ipv6}/128";
-    matchOverride = { ingress = null; egress = null; };
+    matchOverride = { ingress = { }; egress = { }; };
     comment       = node.comment;
   The lowered values merge directly with declared zones (also
   submodule-evaluated) under one uniform shape — no re-evaluation

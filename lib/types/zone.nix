@@ -7,11 +7,14 @@
     - `zoneParent`        — optional reference to a parent zone
     - `zoneInterfaces`    — list of interface names
     - `zoneCidrs`         — list of CIDR prefixes (mixed v4/v6)
-    - `zoneMatchOverride` — per-direction wholesale match override
-                            (`{ ingress; egress; }` with nullable
-                            sides; `null` means "compute from
-                            interfaces / cidrs"); consumed by
-                            Phase 1's `checkZoneMatchable`
+    - `zoneMatchOverride` — per-direction, per-section match override
+                            (`{ ingress; egress; }` × four sections:
+                            `interfaces`, `ipv4`, `ipv6`, `extra`).
+                            Each section is `nullOr primitives.rule`;
+                            non-null replaces the corresponding
+                            auto-generated clause. Consumed by
+                            Phase 1's `checkZoneMatchable` and
+                            Phase 4's `mkDirectionVariants`.
     - `zoneComment`       — optional free-form comment
 
   Consumers wire the zone type as `lib.mkOption { type =
@@ -60,30 +63,83 @@ let
   zoneComment = primitives.comment;
 
   /*
-    One direction's match: a list of rule-body variants. Different
-    variants become separate rules sharing the same verdict.
+    Per-direction override sections. Each section is `nullOr (listOf
+    statement)`; non-null replaces the corresponding auto-generated
+    clause; `null` (the default) leaves the auto path in charge of
+    that section.
+
+    Section semantics in `mkDirectionVariants`:
+      interfaces — substitutes for `iifname/oifname @<zone>_iifs`.
+                   Hook-validity-checked (treated as iif/oif content
+                   by convention; user landing this section at a hook
+                   without iif/oif gets flagged).
+      ipv4       — substitutes for `ip <addr> @<zone>_v4`. One
+                   variant per non-empty family section; ANDed with
+                   the prefix (interfaces + extra).
+      ipv6       — substitutes for `ip6 <addr> @<zone>_v6`. Same.
+      extra      — family-agnostic clauses ANDed into every variant
+                   (alongside the interfaces section). No auto path —
+                   exists only as a user-supplied prefix. Use for
+                   `meta mark`, `vlan id`, `meta cgroup`, etc.
+
+    Empty list (`[ ]`) is treated as `null` everywhere — both mean
+    "no constraint contributed by this section".
   */
-  zoneMatchVariants = lib.types.listOf primitives.rule;
+  zoneMatchOverrideSide = lib.types.submodule {
+    options = {
+      interfaces = lib.mkOption {
+        type = lib.types.nullOr primitives.rule;
+        default = null;
+        description = ''
+          Override for the iif/oif section. List of statements that
+          replace the auto-generated `<ifField> @<zone>_iifs`
+          prefix. Hook-validity is still enforced — putting non-
+          iif/oif content here works but defeats the check.
+        '';
+      };
+      ipv4 = lib.mkOption {
+        type = lib.types.nullOr primitives.rule;
+        default = null;
+        description = ''
+          Override for the v4 family section. List of statements
+          that replace the auto-generated `ip <addr> @<zone>_v4`
+          family clause. Emitted as one variant per non-empty
+          family section.
+        '';
+      };
+      ipv6 = lib.mkOption {
+        type = lib.types.nullOr primitives.rule;
+        default = null;
+        description = ''
+          Override for the v6 family section. List of statements
+          that replace the auto-generated `ip6 <addr> @<zone>_v6`
+          family clause.
+        '';
+      };
+      extra = lib.mkOption {
+        type = lib.types.nullOr primitives.rule;
+        default = null;
+        description = ''
+          Family-agnostic clauses ANDed into every variant
+          alongside the interfaces section. Use for `meta mark`,
+          `vlan id`, `meta cgroup`, etc. No auto path — exists
+          only as a user-supplied prefix.
+        '';
+      };
+    };
+  };
 
   zoneMatchOverride = lib.types.submodule {
     options = {
       ingress = lib.mkOption {
-        type = lib.types.nullOr zoneMatchVariants;
-        default = null;
-        description = ''
-          Per-direction match override. `null` (the default)
-          means "derive matchability from interfaces / cidrs";
-          a non-null list provides a wholesale replacement.
-        '';
+        type = zoneMatchOverrideSide;
+        default = { };
+        description = "Per-section override for the ingress side.";
       };
       egress = lib.mkOption {
-        type = lib.types.nullOr zoneMatchVariants;
-        default = null;
-        description = ''
-          Per-direction match override. `null` (the default)
-          means "derive matchability from interfaces / cidrs";
-          a non-null list provides a wholesale replacement.
-        '';
+        type = zoneMatchOverrideSide;
+        default = { };
+        description = "Per-section override for the egress side.";
       };
     };
   };
@@ -140,12 +196,20 @@ let
         matchOverride = lib.mkOption {
           type = zoneMatchOverride;
           default = { };
+          example = lib.literalExpression ''
+            {
+              ingress.extra = [ (eq meta.mark 0x100) ];
+              egress.extra  = [ (eq meta.mark 0x100) ];
+            }
+          '';
           description = ''
-            Per-direction match override. Useful for zones whose
-            membership cannot be expressed as a plain interface /
-            CIDR list. `null` on a side keeps the computed
-            matchability (from `interfaces` / `cidrs`); a non-null
-            list provides a wholesale replacement.
+            Per-direction, per-section match override. Useful for zones
+            whose membership cannot be expressed as a plain interface
+            / CIDR list. Each side has four nullable sections —
+            `interfaces` / `ipv4` / `ipv6` / `extra` — that
+            substitute for the corresponding auto-generated clauses
+            in `mkDirectionVariants`. See `zoneMatchOverrideSide` for
+            section semantics.
           '';
         };
 

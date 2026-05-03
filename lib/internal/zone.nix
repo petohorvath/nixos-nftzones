@@ -11,6 +11,15 @@
                   `computeZoneSets` into `ctx.zoneSets`, then
                   consumed by Phase 1 validators (names only)
                   and Phase 4 emit (full bodies).
+    - `getActiveMatchOverrides` — returns the active sections of
+                  a zone's matchOverride for a given side, with
+                  null and empty-list sections filtered out. The
+                  result is an attrset whose keys are the active
+                  section names (`interfaces` / `ipv4` / `ipv6`
+                  / `extra`); callers test presence with `?` or
+                  read with `or` defaults. Consumed by every
+                  validator and emit helper that needs to ask
+                  "which sections did the user override?".
 
   Wired into the surface from `lib/internal/default.nix`.
 
@@ -89,7 +98,21 @@ let
         elements = map (cidrToPrefix false) parsedV6;
       };
     };
+
+  /*
+    Returns the active sections of `zone.matchOverride.<side>` —
+    sections whose value is non-null AND non-empty. Sections set
+    to `null` (default) or `[ ]` (explicitly empty) are filtered
+    out. Both encode "no constraint contributed by this section".
+
+    Result is an attrset keyed by the surviving section names
+    (`interfaces` / `ipv4` / `ipv6` / `extra`). Callers test
+    presence with `?` (`active ? ipv4`) or read with defaults
+    (`active.ipv4 or autoV4`).
+  */
+  getActiveMatchOverrides =
+    zone: side: lib.filterAttrs (_: section: section != null && section != [ ]) zone.matchOverride.${side};
 in
 {
-  inherit genSets;
+  inherit genSets getActiveMatchOverrides;
 }

@@ -122,6 +122,30 @@ The local zone is interpreted by direction:
 
 The wildcard zone is mostly used in policies (`policy all -> all drop`) and broad allow rules (`rule local -> all accept`).
 
+## Zones beyond interfaces and CIDRs
+
+The standard zone model expresses membership as "this set of interfaces plus this set of CIDRs". For zones whose membership is defined differently — fwmark-tagged traffic, VLAN-id-bound flows, cgroup-classified packets — the `matchOverride` field provides per-direction, per-section overrides:
+
+```nix
+zones.vpn-users = {
+  matchOverride.ingress.extra = [ (eq meta.mark 0x100) ];
+  matchOverride.egress.extra  = [ (eq meta.mark 0x100) ];
+};
+```
+
+Each side has four nullable sections:
+
+| Section      | Substitutes for                                          |
+|--------------|----------------------------------------------------------|
+| `interfaces` | the auto `<ifField> @<zone>_iifs` interface clause       |
+| `ipv4`       | the auto `ip <addr> @<zone>_v4` family clause            |
+| `ipv6`       | the auto `ip6 <addr> @<zone>_v6` family clause           |
+| `extra`      | family-agnostic prefix (mark, vlan, cgroup, …); no auto  |
+
+Override sections compose with the auto path section-by-section. Setting `ipv4` only overrides v4; v6 still uses the auto set if the zone has v6 CIDRs. Setting `extra` adds clauses to every variant without disabling the auto path.
+
+The `interfaces` section is hook-gated — it's only emitted at hooks where the relevant `iifname` / `oifname` field is valid (e.g. dropped at `output` for from-direction). The other sections work at any hook.
+
 ## Stateful Traffic
 
 Zones describe direction-keyed *policy*; on their own they say nothing about how reply packets are handled. Two designs are possible:

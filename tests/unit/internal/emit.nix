@@ -56,6 +56,16 @@ let
   };
 
   /*
+    Empty matchOverride for tests probing the auto path. Each
+    zone with no override sections set is a "regular" zone —
+    interfaces and CIDRs come through `zoneSets`, override is
+    inert. `getActiveMatchOverrides` filters null/empty sections,
+    so `{ }` per side is equivalent to the all-null shape.
+  */
+  mockZone = { matchOverride = { ingress = { }; egress = { }; }; };
+  mergedZonesFor = names: pkgs.lib.genAttrs names (_: mockZone);
+
+  /*
     Convenience wrapper: pin family to `"inet"` and default
     settings, with neutral defaults for the jump-related args
     (no sub-chains by default, so `baseChainName` / `zoneSets` are
@@ -67,6 +77,7 @@ let
       settings ? defaultSettings,
       bucket,
       baseChainName ? "test-chain",
+      mergedZones ? { },
       zoneSets ? { },
     }:
     mkBaseChain {
@@ -75,6 +86,7 @@ let
         settings
         bucket
         baseChainName
+        mergedZones
         zoneSets
         ;
     };
@@ -467,6 +479,7 @@ in
         rpfilter = true;
       };
       chainBuckets = { };
+      mergedZones = { };
       zoneSets = { };
     });
     expected = [ "prerouting-at-raw" ];
@@ -479,6 +492,7 @@ in
       family = "inet";
       settings = defaultSettings;
       chainBuckets = { };
+      mergedZones = { };
       zoneSets = { };
     };
     expected = { };
@@ -931,6 +945,7 @@ in
       hook = "input";
       direction = "to";
       zoneName = "local";
+      active = { };
       zoneSets = { };
       localZone = "local";
     };
@@ -944,6 +959,7 @@ in
       hook = "prerouting";
       direction = "to";
       zoneName = null;
+      active = { };
       zoneSets = { };
       localZone = "local";
     };
@@ -957,6 +973,7 @@ in
       hook = "forward";
       direction = "from";
       zoneName = "lan";
+      active = { };
       zoneSets = {
         lan_iifs = {
           type = "ifname";
@@ -981,6 +998,7 @@ in
       hook = "output";
       direction = "from";
       zoneName = "wan";
+      active = { };
       zoneSets = {
         wan_iifs = {
           type = "ifname";
@@ -999,6 +1017,7 @@ in
       hook = "forward";
       direction = "from";
       zoneName = "lan";
+      active = { };
       zoneSets = {
         lan_v4 = {
           type = "ipv4_addr";
@@ -1020,6 +1039,7 @@ in
       hook = "forward";
       direction = "from";
       zoneName = "lan";
+      active = { };
       zoneSets = {
         lan_v4 = {
           type = "ipv4_addr";
@@ -1047,6 +1067,7 @@ in
       hook = "forward";
       direction = "from";
       zoneName = "lan";
+      active = { };
       zoneSets = {
         lan_iifs = {
           type = "ifname";
@@ -1084,6 +1105,7 @@ in
       hook = "forward";
       baseChainName = "forward-at-filter";
       subChains = { };
+      mergedZones = { };
       zoneSets = { };
       localZone = "local";
     };
@@ -1103,6 +1125,7 @@ in
           cells = [ ];
         };
       };
+      mergedZones = mergedZonesFor [ "lan" "wan" ];
       zoneSets = {
         lan_iifs = {
           type = "ifname";
@@ -1136,6 +1159,7 @@ in
           cells = [ ];
         };
       };
+      mergedZones = mergedZonesFor [ "wan" ];
       zoneSets = {
         wan_iifs = {
           type = "ifname";
@@ -1167,6 +1191,7 @@ in
           cells = [ ];
         };
       };
+      mergedZones = mergedZonesFor [ "lan" "wan" ];
       zoneSets = {
         lan_v4 = { };
         lan_v6 = { };
@@ -1452,5 +1477,142 @@ in
         "flowtables"
       ];
     expected = false;
+  };
+
+  # ===== mkDirectionVariants — extra section ANDs into every variant =====
+
+  testMkDirectionVariantsExtraSection = {
+    # Zone has v4 + v6 sets via the auto path AND a `meta mark`
+    # extra clause via the override. Every emitted variant
+    # should carry the mark clause as a prefix.
+    expr = mkDirectionVariants {
+      hook = "forward";
+      direction = "from";
+      zoneName = "vpn-users";
+      active = {
+        extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
+      };
+      zoneSets = {
+        vpn-users_v4 = { };
+        vpn-users_v6 = { };
+      };
+      localZone = "local";
+    };
+    expected = [
+      [
+        (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256)
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "vpn-users_v4"))
+      ]
+      [
+        (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256)
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.set "vpn-users_v6"))
+      ]
+    ];
+  };
+
+  # ===== mkDirectionVariants — extra-only zone (no families, no interfaces) =====
+
+  testMkDirectionVariantsExtraOnly = {
+    # Zone with only an `extra` section and no auto sets emits one
+    # prefix-only variant (single rule with the extra clauses).
+    expr = mkDirectionVariants {
+      hook = "forward";
+      direction = "from";
+      zoneName = "marked";
+      active = {
+        extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
+      };
+      zoneSets = { };
+      localZone = "local";
+    };
+    expected = [
+      [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ]
+    ];
+  };
+
+  # ===== mkDirectionVariants — ipv4 override replaces auto v4 =====
+
+  testMkDirectionVariantsIpv4Override = {
+    # Zone has auto v4 and v6 sets; user overrides v4 with a
+    # custom user set. v6 still uses the auto set.
+    expr = mkDirectionVariants {
+      hook = "forward";
+      direction = "from";
+      zoneName = "lan";
+      active = {
+        ipv4 = [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "user-v4")) ];
+      };
+      zoneSets = {
+        lan_v4 = { };
+        lan_v6 = { };
+      };
+      localZone = "local";
+    };
+    expected = [
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "user-v4")) ]
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.set "lan_v6")) ]
+    ];
+  };
+
+  # ===== mkDirectionVariants — interfaces override is hook-gated =====
+
+  testMkDirectionVariantsInterfacesGatedByHook = {
+    # Override interfaces section at `output` hook (where iifname
+    # isn't valid for `from`) → section dropped, fall back to auto v4.
+    expr = mkDirectionVariants {
+      hook = "output";
+      direction = "from";
+      zoneName = "lan";
+      active = {
+        interfaces = [
+          (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.set "user-iifs"))
+        ];
+      };
+      zoneSets = {
+        lan_v4 = { };
+      };
+      localZone = "local";
+    };
+    expected = [
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "lan_v4")) ]
+    ];
+  };
+
+  # ===== mkJumpRules — override on one zone composes with auto on the other =====
+
+  testMkJumpRulesOverrideComposesWithAuto = {
+    # `lan` (from) has v4 auto; `vpn` (to) has only an `extra`
+    # mark-based override. The jump rule combines them.
+    expr = mkJumpRules {
+      hook = "forward";
+      baseChainName = "forward-at-filter";
+      subChains = {
+        "lan-to-vpn" = {
+          from = "lan";
+          to = "vpn";
+          cells = [ ];
+        };
+      };
+      mergedZones = {
+        lan = mockZone;
+        vpn = {
+          matchOverride = {
+            ingress = { };
+            egress = {
+              extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
+            };
+          };
+        };
+      };
+      zoneSets = { lan_v4 = { }; };
+      localZone = "local";
+    };
+    expected = [
+      [
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "lan_v4"))
+        (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256)
+        (nftypes.dsl.jump "forward-at-filter__lan-to-vpn")
+      ]
+    ];
   };
 }

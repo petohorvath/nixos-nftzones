@@ -135,8 +135,8 @@ in
         "fe80::1/128"
       ];
       matchOverride = {
-        ingress = null;
-        egress = null;
+        ingress = { };
+        egress = { };
       };
       comment = null;
     };
@@ -1229,6 +1229,8 @@ in
   # ===== checkZoneMatchable — matchOverride on both sides is matchable =====
 
   testCheckZoneMatchableOverrideBoth = {
+    # An `extra` section with a `meta mark` clause makes the zone
+    # matchable on both sides without any interfaces / cidrs.
     expr =
       (runEvalPipeline
         [
@@ -1240,8 +1242,8 @@ in
           name = "fw";
           zones.custom = {
             matchOverride = {
-              ingress = [ [ ] ];
-              egress = [ [ ] ];
+              ingress.extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
+              egress.extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
             };
           };
           filters.f = {
@@ -1284,7 +1286,7 @@ in
         name = "zoneNotMatchable";
         value =
           "filters.f.from[0] references zone 'empty' which has no ingress match"
-          + " (no interfaces, no CIDRs, and no matchOverride.ingress)";
+          + " (no interfaces, no CIDRs, and no matchOverride sections set on the ingress side)";
       }
     ];
   };
@@ -1319,7 +1321,7 @@ in
         name = "zoneNotMatchable";
         value =
           "filters.f.to[0] references zone 'empty' which has no egress match"
-          + " (no interfaces, no CIDRs, and no matchOverride.egress)";
+          + " (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
       }
     ];
   };
@@ -1327,8 +1329,8 @@ in
   # ===== checkZoneMatchable — asymmetric override flags only the missing side =====
 
   testCheckZoneMatchableAsymmetricOverride = {
-    # Zone has only `ingress` populated. Used as `from` (ingress) → no
-    # error. Used as `to` (egress) → flagged.
+    # Zone has only `ingress` populated (via the `extra` section). Used as
+    # `from` (ingress) → no error. Used as `to` (egress) → flagged.
     expr =
       (runEvalPipeline
         [
@@ -1339,7 +1341,7 @@ in
         {
           name = "fw";
           zones.partial = {
-            matchOverride.ingress = [ [ ] ];
+            matchOverride.ingress.extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
           };
           filters.from-ok = {
             from = [ "partial" ];
@@ -1353,17 +1355,18 @@ in
         name = "zoneNotMatchable";
         value =
           "filters.from-ok.to[0] references zone 'partial' which has no egress match"
-          + " (no interfaces, no CIDRs, and no matchOverride.egress)";
+          + " (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
       }
     ];
   };
 
-  # ===== checkZoneMatchable — explicit empty override flagged with distinct reason =====
+  # ===== checkZoneMatchable — empty list section doesn't count as contributing =====
 
-  testCheckZoneMatchableExplicitEmptyOverride = {
-    # User explicitly killed the egress side via
-    # `matchOverride.egress = [ ]`. Distinct error reason from the
-    # null-override / nothing-declared case.
+  testCheckZoneMatchableEmptySectionDoesntCount = {
+    # `matchOverride.egress.extra = [ ]` (empty list) is treated
+    # the same as `null` — both mean "no constraint contributed".
+    # Zone has no interfaces / cidrs / other sections → unmatchable
+    # on egress.
     expr =
       (runEvalPipeline
         [
@@ -1373,23 +1376,30 @@ in
         ]
         {
           name = "fw";
-          zones.killed-egress = {
-            interfaces = [ "x0" ];
-            matchOverride.egress = [ ];
+          zones.empty-section = {
+            matchOverride.egress.extra = [ ];
           };
           filters.f = {
-            from = [ "killed-egress" ];
-            to = [ "killed-egress" ];
+            from = [ "empty-section" ];
+            to = [ "empty-section" ];
             rule = [ ];
           };
         }
       ).errors;
+    # Both directions are unmatchable (empty-section has nothing). Two
+    # errors: ingress (the from side) and egress (the to side).
     expected = [
       {
         name = "zoneNotMatchable";
         value =
-          "filters.f.to[0] references zone 'killed-egress' which has no egress match"
-          + " (matchOverride.egress is explicitly empty)";
+          "filters.f.from[0] references zone 'empty-section' which has no ingress match"
+          + " (no interfaces, no CIDRs, and no matchOverride sections set on the ingress side)";
+      }
+      {
+        name = "zoneNotMatchable";
+        value =
+          "filters.f.to[0] references zone 'empty-section' which has no egress match"
+          + " (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
       }
     ];
   };
@@ -1621,8 +1631,8 @@ in
         value =
           "filters.early-drop.to references zone 'host' which has no egress match expressible at chain"
           + " (hook=prerouting, priority=raw)"
-          + " — zone has no daddr CIDRs / matchOverride.egress"
-          + " and oifname is unavailable in prerouting";
+          + " — zone has no daddr CIDRs and no hook-agnostic matchOverride.egress sections"
+          + " (ipv4 / ipv6 / extra) set, and oifname is unavailable in prerouting";
       }
     ];
   };
@@ -1658,12 +1668,12 @@ in
     expected = [ ];
   };
 
-  # ===== checkChainOverridePlacement — matchOverride trusted as-is =====
+  # ===== checkChainOverridePlacement — hook-agnostic matchOverride section makes the zone reachable =====
 
   testCheckChainOverridePlacementMatchOverrideTrusted = {
-    # `host` has `matchOverride.egress` non-null → trusted; the
-    # validator doesn't introspect what's inside. No error even
-    # at restrictive hook.
+    # `host` has a hook-agnostic `matchOverride.egress.extra`
+    # section → reachable at any hook. No error even at restrictive
+    # `prerouting` (where `oifname` is unavailable).
     expr =
       (runEvalPipeline
         [
@@ -1679,7 +1689,7 @@ in
             };
             host = {
               interfaces = [ "lo" ];
-              matchOverride.egress = [ [ ] ];
+              matchOverride.egress.extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
             };
           };
           filters.f = {
@@ -1738,8 +1748,8 @@ in
         value =
           "filters.f.to references zone 'host' which has no egress match expressible at chain"
           + " (hook=prerouting, priority=raw)"
-          + " — zone has no daddr CIDRs / matchOverride.egress"
-          + " and oifname is unavailable in prerouting";
+          + " — zone has no daddr CIDRs and no hook-agnostic matchOverride.egress sections"
+          + " (ipv4 / ipv6 / extra) set, and oifname is unavailable in prerouting";
       }
     ];
   };
@@ -2391,12 +2401,10 @@ in
               name = "fw";
               zones.lan = {
                 interfaces = [ "lan0" ];
-                matchOverride.ingress = [
-                  [
-                    (dsl.inSet
-                      nftypes.dsl.fields.ip.saddr
-                      (dsl.expr.set "ghost-set"))
-                  ]
+                matchOverride.ingress.ipv4 = [
+                  (dsl.inSet
+                    nftypes.dsl.fields.ip.saddr
+                    (dsl.expr.set "ghost-set"))
                 ];
               };
             }
@@ -2404,7 +2412,7 @@ in
       in
       {
         count = builtins.length errors;
-        path = pkgs.lib.hasInfix "zones.lan.matchOverride.ingress" (builtins.head errors).value;
+        path = pkgs.lib.hasInfix "zones.lan.matchOverride.ingress.ipv4" (builtins.head errors).value;
         kind = pkgs.lib.hasInfix "sets" (builtins.head errors).value;
         nm = pkgs.lib.hasInfix "ghost-set" (builtins.head errors).value;
       };
@@ -2539,12 +2547,10 @@ in
           name = "fw";
           zones.lan = {
             interfaces = [ "lan0" ];
-            matchOverride.egress = [
-              [
-                (dsl.inSet
-                  nftypes.dsl.fields.ip.daddr
-                  (dsl.expr.set "blocklist"))
-              ]
+            matchOverride.egress.ipv4 = [
+              (dsl.inSet
+                nftypes.dsl.fields.ip.daddr
+                (dsl.expr.set "blocklist"))
             ];
           };
           objects.sets.blocklist = {

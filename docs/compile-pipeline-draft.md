@@ -105,7 +105,7 @@ Lowered zones merge into `table.zones`; `table.nodes` is cleared. After this ste
 
 ### 1.2 Wildcard resolution
 
-Phase 1 substitutes the wildcard zone (default `"all"`) in every rule's `from` / `to` list with the full set of in-scope zones (declared zones plus `settings.localZone`). The substitution + dedup is inlined inside `internal.normalize.expandWildcardZones` since it has no other consumer:
+Phase 1 substitutes the wildcard zone (default `"all"`) in every entry's `from` / `to` list with the full set of in-scope zones (declared zones plus `settings.localZone`). The substitution + dedup is inlined inside `internal.normalize.expandWildcardZones` since it has no other consumer:
 
 ```
 wildcard = "all"
@@ -251,11 +251,37 @@ Verbose but unambiguous: each name is a literal concat of `chainBuckets` keys, s
 
 ### 4.4 Jumps
 
-In each base chain, emit one or more jumps per non-empty sub-chain in that bucket's `subChains`. Match conditions select packets belonging to the `(from, to)` pair using per-zone sets from §4.1; verdict is `jump <sub-chain-name>`.
+In each base chain, emit one or more jumps per non-empty sub-chain in that bucket's `subChains`. Match conditions select packets belonging to the `(from, to)` pair using per-zone sets from §4.1 — or via `zone.matchOverride.<side>` slot content where the user supplied an override — and the verdict is `jump <sub-chain-name>`.
 
-**Per-direction variants — *not* a single ANDed clause list.** In `inet` family, `ip <addr>` and `ip6 <addr>` clauses cannot be ANDed in the same rule: a v4 packet hitting `ip6 saddr ...` skips the rule entirely (and vice versa). So each direction emits **one variant per address family** that has a non-empty set, plus the optional interface prefix when the hook allows it.
+**Per-direction variants — *not* a single ANDed clause list.** In `inet` family, `ip <addr>` and `ip6 <addr>` clauses cannot be ANDed in the same rule: a v4 packet hitting `ip6 saddr ...` skips the rule entirely (and vice versa). So each direction emits **one variant per address family** that has a non-empty contribution, plus the optional interface prefix when the hook allows it, plus any `extra` section content the user supplied.
 
-The variant table covers 8 cases, with named-set references in place of inline lists:
+**Section resolution.** `mkDirectionVariants` resolves four sections per direction, in this order: override wins if contributing, else fall back to the auto path.
+
+| Section      | Auto path                              | Override path                  |
+|--------------|----------------------------------------|--------------------------------|
+| `interfaces` | `inSet <ifField> @<zone>_iifs`         | `override.<side>.interfaces`   |
+| `ipv4`       | `inSet <addrField> @<zone>_v4`         | `override.<side>.ipv4`         |
+| `ipv6`       | `inSet ip6.<addr> @<zone>_v6`          | `override.<side>.ipv6`         |
+| `extra`      | (none — no auto path)                  | `override.<side>.extra`        |
+
+A section "contributes" when it's non-null AND non-empty. Empty list (`[ ]`) and `null` are equivalent — both mean "no constraint here" and let the auto path take over.
+
+The `interfaces` section is **hook-gated**: dropped when the relevant `iifname` / `oifname` field isn't valid at the hook (defense; `checkChainOverridePlacement` should have caught it). The other sections are hook-agnostic.
+
+> Note — *section* here is unrelated to the *bucket slot* concept defined in the Terminology section above. Bucket slots (`preDispatch` / `subChains` / `postDispatch`) are Phase 3 cell placements within a chain bucket; override sections are per-direction match-clause containers within `matchOverride`. Different concepts, same generic vocabulary; they never appear together in code.
+
+**Variant construction.**
+
+```
+prefix   = ifsAtHook ++ extraSection
+variants = optional (v4Section ≠ [ ]) (prefix ++ v4Section)
+        ++ optional (v6Section ≠ [ ]) (prefix ++ v6Section)
+result   = if variants ≠ [ ] then variants
+           else if prefix ≠ [ ] then [ prefix ]
+           else [ ]
+```
+
+The 8-case auto-path table (section-resolution simplified to "no override anywhere"):
 
 | Zone has        | Variants emitted (per direction) |
 |---|---|
@@ -268,7 +294,7 @@ The variant table covers 8 cases, with named-set references in place of inline l
 | iface + v6      | 1 variant — iface prefix + v6 |
 | iface + v4 + v6 | 2 variants — each with iface prefix |
 
-Where `<ifField>` is `iifname` (from-direction) or `oifname` (to-direction), and `<addrField>` is `saddr` / `daddr` likewise.
+Where `<ifField>` is `iifname` (from-direction) or `oifname` (to-direction), and `<addrField>` is `saddr` / `daddr` likewise. With overrides in play, every cell can be replaced by user content; `extra` adds an extra family-agnostic prefix to every variant (e.g. `meta mark @<zone>_marks` for fwmark-defined zone membership).
 
 **Cartesian product across directions.** For each sub-chain, take the cartesian product of `from`-variants and `to`-variants. Each pair becomes one jump rule:
 
@@ -460,5 +486,4 @@ nftzones.mkRuleset name body  →  { nftables = [ ... ]; } (ready for `nft -f -j
 
 Pending follow-ups:
 
-1. Honor `zone.matchOverride` in Phase 4 emit. Today `mkDirectionVariants` builds set references (`@<zone>_iifs` / `_v4` / `_v6`) unconditionally from raw `interfaces` / `cidrs`, ignoring any user-supplied override. A user setting `matchOverride.ingress = [ … ]` gets their content silently discarded at emit time even though Phase 1 (`checkObjectRefs`) now validates the refs inside it. Either: (a) fold the override into the variant construction in `internal.emit.mkDirectionVariants`, or (b) deprecate `matchOverride` and document interfaces / CIDRs as the only supported zone-membership inputs. Decide before the next release.
-2. Validate chain references in rule bodies. `checkObjectRefs` covers named-object refs (counter / set / map / etc.) but does NOT validate `dsl.jump <name>` / `dsl.goto <name>` targets. Two reasons today: (i) the chain-name surface in nftzones is internal (`<hook>-at-<priority>__<key>`) and not part of the public API, so users writing raw jumps to those names are working off-script; (ii) chains are synthesized in Phase 4, so Phase 1 doesn't yet know which names exist. Options if/when this matters: (a) add a Phase 4 post-emit validator that walks emitted rules and checks every `jump` / `goto` against the synthesized chain set, or (b) provide a public chain-name builder helper and validate at Phase 1 against that. Defer until a real consumer needs raw chain jumps.
+1. Validate chain references in rule bodies. `checkObjectRefs` covers named-object refs (counter / set / map / etc.) but does NOT validate `dsl.jump <name>` / `dsl.goto <name>` targets. Two reasons today: (i) the chain-name surface in nftzones is internal (`<hook>-at-<priority>__<key>`) and not part of the public API, so users writing raw jumps to those names are working off-script; (ii) chains are synthesized in Phase 4, so Phase 1 doesn't yet know which names exist. Options if/when this matters: (a) add a Phase 4 post-emit validator that walks emitted rules and checks every `jump` / `goto` against the synthesized chain set, or (b) provide a public chain-name builder helper and validate at Phase 1 against that. Defer until a real consumer needs raw chain jumps.

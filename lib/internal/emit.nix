@@ -271,6 +271,7 @@ let
     ip6
     ;
   inherit (nftypes.compatibility) priorityIntsDefault;
+  inherit (internal.zone) getActiveMatchOverrides;
 
   /*
     Resolve a chain priority value (int or symbol) to its int
@@ -415,24 +416,44 @@ let
     So one variant per address family that has a non-empty set,
     plus the optional interface prefix when the hook allows it.
 
+    Section resolution (`active` is the user's active override
+    sections from `internal.zone.getActiveMatchOverrides`):
+      - `interfaces` section: `active.interfaces` if the user
+        provided it, else auto `inSet <ifField> @<zone>_iifs`.
+        Hook-gated — only included when `iifname` / `oifname`
+        is valid at the hook.
+      - `ipv4` / `ipv6` sections: user override if present, else
+        auto `inSet <addrField> @<zone>_<v4|v6>`. Always valid
+        at any hook.
+      - `extra` section: family-agnostic user clauses (mark,
+        vlan, cgroup, …); no auto path. Joined into the prefix
+        when present.
+
+    Variant construction:
+      - prefix       = ifsAtHook ++ extraSection
+      - one variant per non-empty family-specific section:
+          [ prefix ++ v4Section ], [ prefix ++ v6Section ]
+      - if no family sections contribute but prefix is non-empty →
+        single prefix-only variant (interface/extra-only zone).
+
     Special cases:
       - `zoneName == null` (single-direction sub-chain — dnat /
         sroute have no `to`, droute has no `from`)         → `[ [ ] ]`.
       - `zoneName == localZone` (sentinel; never matchable as a
         zone — the chain dispatch already used it)         → `[ [ ] ]`.
 
-    Phase 1's `checkChainOverridePlacement` guarantees a referenced
-    zone has at least one matchable variant at its hook, so the
-    `[ ]` empty-result branch shouldn't fire for non-localZone
-    refs. If it does (defense), the cartesian product in
-    `mkJumpRules` drops the entire jump for that sub-chain — the
-    sub-chain becomes unreachable rather than over-permissive.
+    Phase 1's `checkChainOverridePlacement` and `checkZoneMatchable`
+    guarantee a referenced zone has at least one matchable section at
+    its hook, so the `[ ]` empty-result branch shouldn't fire for
+    non-localZone refs. If it does (defense), the cartesian product
+    in `mkJumpRules` drops the entire jump for that sub-chain.
   */
   mkDirectionVariants =
     {
       hook,
       direction,
       zoneName,
+      active,
       zoneSets,
       localZone,
     }:
@@ -458,20 +479,31 @@ let
         v4Name = "${zoneName}_v4";
         v6Name = "${zoneName}_v6";
 
-        hasIf = ifAvailable && (zoneSets ? ${iifsName});
-        hasV4 = zoneSets ? ${v4Name};
-        hasV6 = zoneSets ? ${v6Name};
+        autoIfs = lib.optional (zoneSets ? ${iifsName}) (inSet ifField (expr.set iifsName));
+        autoV4 = lib.optional (zoneSets ? ${v4Name}) (inSet addrFieldV4 (expr.set v4Name));
+        autoV6 = lib.optional (zoneSets ? ${v6Name}) (inSet addrFieldV6 (expr.set v6Name));
 
-        ifClause = inSet ifField (expr.set iifsName);
-        v4Clause = inSet addrFieldV4 (expr.set v4Name);
-        v6Clause = inSet addrFieldV6 (expr.set v6Name);
+        # Active section wins if present; else fall back to auto.
+        ifsSection = active.interfaces or autoIfs;
+        v4Section = active.ipv4 or autoV4;
+        v6Section = active.ipv6 or autoV6;
+        extraSection = active.extra or [ ];
 
-        ifPrefix = lib.optional hasIf ifClause;
+        # Interfaces section is hook-gated: drop it when the relevant
+        # iif/oif field isn't valid at the hook. checkChainOverride‑
+        # Placement should have flagged this case, so this is defensive.
+        ifsAtHook = if ifAvailable then ifsSection else [ ];
+
+        prefix = ifsAtHook ++ extraSection;
+
+        variants =
+          lib.optional (v4Section != [ ]) (prefix ++ v4Section)
+          ++ lib.optional (v6Section != [ ]) (prefix ++ v6Section);
       in
-      if hasV4 || hasV6 then
-        lib.optional hasV4 (ifPrefix ++ [ v4Clause ]) ++ lib.optional hasV6 (ifPrefix ++ [ v6Clause ])
-      else if hasIf then
-        [ [ ifClause ] ]
+      if variants != [ ] then
+        variants
+      else if prefix != [ ] then
+        [ prefix ]
       else
         [ ];
 
@@ -492,22 +524,38 @@ let
       hook,
       baseChainName,
       subChains,
+      mergedZones,
       zoneSets,
       localZone,
     }:
     let
+      # Look up the active matchOverride sections for one zone
+      # reference. Returns `{ }` for the null-direction sentinel
+      # (single-direction sub-chain) and for the localZone
+      # (which has no mergedZones entry).
+      activeFor =
+        zoneName: side:
+        if zoneName == null || zoneName == localZone then
+          { }
+        else
+          getActiveMatchOverrides mergedZones.${zoneName} side;
+
       mkJumpsForSubChain =
         subChainKey: subChain:
         let
+          fromZone = subChain.from or null;
+          toZone = subChain.to or null;
           fromVariants = mkDirectionVariants {
             inherit hook zoneSets localZone;
             direction = "from";
-            zoneName = subChain.from or null;
+            zoneName = fromZone;
+            active = activeFor fromZone "ingress";
           };
           toVariants = mkDirectionVariants {
             inherit hook zoneSets localZone;
             direction = "to";
-            zoneName = subChain.to or null;
+            zoneName = toZone;
+            active = activeFor toZone "egress";
           };
           jumpStmt = jump (subChainNameOf baseChainName subChainKey);
         in
@@ -526,6 +574,7 @@ let
       settings,
       bucket,
       baseChainName,
+      mergedZones,
       zoneSets,
     }:
     let
@@ -550,7 +599,7 @@ let
       postDispatchRules = map mkRuleBody bucket.postDispatch;
       jumpRules = mkJumpRules {
         inherit (bucket) hook;
-        inherit baseChainName zoneSets localZone;
+        inherit baseChainName mergedZones zoneSets localZone;
         subChains = bucket.subChains;
       };
 
@@ -579,6 +628,7 @@ let
       family,
       settings,
       chainBuckets,
+      mergedZones,
       zoneSets,
     }:
     let
@@ -590,6 +640,7 @@ let
             settings
             bucket
             baseChainName
+            mergedZones
             zoneSets
             ;
         }
@@ -607,7 +658,7 @@ let
       };
       rpfilterAddition = lib.optionalAttrs needsRpfilter {
         "prerouting-at-raw" = mkBaseChain {
-          inherit family settings zoneSets;
+          inherit family settings mergedZones zoneSets;
           bucket = synthesizedRpfilterBucket;
           baseChainName = "prerouting-at-raw";
         };
@@ -630,7 +681,7 @@ let
       ctx = ctx // {
         baseChains = mkBaseChains {
           inherit (table) family settings;
-          inherit (ctx) chainBuckets zoneSets;
+          inherit (ctx) chainBuckets mergedZones zoneSets;
         };
       };
     };
