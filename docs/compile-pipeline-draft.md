@@ -14,11 +14,12 @@ The pipeline (and the surrounding code) names the data-model levels consistently
 
 - **Group** — one of the rule-bearing collections on a table: `filters`, `policies`, `snats`, `dnats`, `sroutes`, `droutes`. Each group is `attrsOf <kind-submodule>`. *Not* used for `zones` and `nodes` — those are zone-level declarations and have their own terminology ("zone declaration", "node declaration").
 - **Entry** — one item inside a group, keyed by name. `table.filters.allow-ssh` is an entry; the body field on it (`entry.rule`, the list of nftypes statements) is unambiguous because the wrapper is an *entry*, not a *rule*.
-- **Direction** — `from` or `to`, the zone-name fields on an entry. Some groups are bidirectional (filters, policies, snats — both `from` and `to`); others are single-direction (`dnats`, `sroutes` have only `from`; `droutes` only `to`).
+- **Direction** — `from` or `to`, the zone-name fields on an entry. Some groups are bidirectional (filters, policies, snats — both `from` and `to`); others are single-direction (`dnats`, `sroutes` have only `from`; `droutes` only `to`). Direction is the *entry's* perspective on the source/destination axis.
+- **Side** — `ingress` or `egress`, the per-axis match fields on a zone (`zone.matchOverride.<side>`). Side is the *zone's* perspective on the same axis: a packet entering the firewall matches a zone's `ingress` side; a packet leaving matches its `egress` side. Mapped from direction via `internal.normalize.directionToSide`: `from → ingress`, `to → egress`. Two terms exist because each reads naturally only in its native frame ("entry's from-direction" / "zone's ingress side"); collapsing produces awkward constructs like "the to side" or "the egress direction".
 - **Cell** — a concrete `(from, to)` instance of an entry produced by Phase 2's cartesian product. Same shape as the entry but with the listed directions as scalars instead of lists. An entry with `from = [ "lan" "guest" ]; to = [ "wan" "vpn" ]` produces four cells. For single-direction groups, a cell has only the relevant scalar (e.g., a `dnat` cell has `from = "wan"` and no `to`).
 - **Slot** — one of three positions a cell occupies within its chain bucket, decided by the cell's resolved priority: `preDispatch` (emit in the base chain *before* the per-pair dispatch jumps), `subChains` (emit inside a per-`(from, to)` sub-chain — the default), or `postDispatch` (emit in the base chain *after* the dispatch jumps). Phase 3 buckets cells by `(chain, slot)`; Phase 4 emits each slot in order.
 - **Bucket** — Phase 3 container holding all cells destined for one `(hook, priority)` placement, organized by slot. `ctx.chainBuckets.<baseChainName> = { hook; priority; preDispatch; subChains; postDispatch; }`. Phase 4 emits one base chain per bucket.
-- **Variant** — one match-clause list within a `matchOverride.<ingress|egress>` direction (or in a Phase 4 jump rule). Multiple variants → multiple emitted rules. `internal.emit.mkDirectionVariants` documents the 8-case variant table for jump-match construction.
+- **Variant** — one match-clause list within a `matchOverride.<side>` (or in a Phase 4 jump rule). Multiple variants → multiple emitted rules. `internal.emit.mkDirectionVariants` documents the 8-case variant table for jump-match construction.
 
 ### nftables vocabulary
 
@@ -405,8 +406,13 @@ Each internal module has a unit-test file under `tests/unit/internal/<module>.ni
 
 ## Open questions
 
-1. **DSL helpers vs hand-rolled nftypes shapes.** Use `nftypes.dsl.*` builders (with marker validation) or construct nftypes-typed attrs directly? DSL is cleaner; hand-roll gives more control. Lean DSL.
-2. **Chain naming convention.** Sketched above (`fwd-<from>-to-<to>`, `in-<from>`, etc.); bikeshed before implementation lands.
+1. **DSL helpers vs hand-rolled nftypes shapes.** Use `nftypes.dsl.*` builders (with marker validation) or construct nftypes-typed attrs directly? DSL is cleaner; hand-roll gives more control.
+
+   **Decision: DSL helpers only.** All rule-body / statement construction goes through `nftypes.dsl.*`; hand-rolled libnftables-json shapes like `{ match = …; }` / `{ accept = null; }` are forbidden. Tests enforce this via the shapes they generate.
+
+2. **Chain naming convention.** Sketched as `fwd-<from>-to-<to>`, `in-<from>` etc. in the original draft; bikeshed before implementation landed.
+
+   **Decision: `<hook>-at-<priority>` for base chains, `<base>__<key>` for sub-chains.** See "Naming convention for chain identifiers" in the Terminology section above. The original sketch (`fwd-…`) was abandoned — the `<hook>-at-<priority>` form generalizes across hooks (filter / nat / route / mangle / raw / security) and matches the bucket key in `chainBuckets`.
 3. **Cross-reference walking.** Named-object reference validation requires walking statement trees (counter / limit / quota / ct-helper / ct-timeout / ct-expectation / secmark / synproxy / tunnel references inside `entry.rule` bodies, plus set / map lookups inside `match` expressions). Two paths:
 
    - **Special-case extractor** — pattern-match on the ~12 statement variants that can carry named-object refs, plus the expression-level set/map lookups inside matches. Smaller surface; brittle to nftypes adding variants.

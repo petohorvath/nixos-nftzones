@@ -1387,7 +1387,7 @@ in
         }
       ).errors;
     # Both directions are unmatchable (empty-section has nothing). Two
-    # errors: ingress (the from side) and egress (the to side).
+    # errors: ingress (mapped from `from`) and egress (mapped from `to`).
     expected = [
       {
         name = "zoneNotMatchable";
