@@ -253,6 +253,34 @@ in
     };
   };
 
+  # ===== expandTable — wildcard de-duplicates when explicit zones overlap =====
+  # `expandWildcardZones` calls `lib.unique` after expansion. If a
+  # user writes `from = [ "all" "lan" ]`, "lan" appears once.
+
+  testExpandWildcardDeduplication = {
+    expr = pkgs.lib.sort (a: b: a < b) (
+      map (c: c.from) (
+        (runExpand {
+          name = "fw";
+          zones = {
+            lan.interfaces = [ "lan0" ];
+            wan.interfaces = [ "wan0" ];
+          };
+          filters.f = {
+            from = [ "all" "lan" ];
+            to = [ "wan" ];
+            rule = [ ];
+          };
+        }).cells.filters
+      )
+    );
+    expected = [
+      "lan"
+      "local"
+      "wan"
+    ];
+  };
+
   # ===== expandTable — original table left untouched =====
 
   testExpandTableUntouched = {

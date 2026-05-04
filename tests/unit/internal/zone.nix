@@ -65,21 +65,61 @@ in
     };
   };
 
-  # ===== genSets — full dual-stack zone gets all three suffixes =====
+  # ===== genSets — v6-only CIDR zone gets `_v6` only =====
+
+  testGenSetsV6Only = {
+    expr = genSets "lan" {
+      interfaces = [ ];
+      cidrs = [ cidrV6 ];
+    };
+    expected = {
+      lan_v6 = {
+        type = "ipv6_addr";
+        flags = [ "interval" ];
+        elements = [ (expr.prefix "2001:db8::" 32) ];
+      };
+    };
+  };
+
+  # ===== genSets — multiple CIDRs of the same family preserve order =====
+
+  testGenSetsMultipleSameFamily = {
+    expr = (genSets "lan" {
+      interfaces = [ ];
+      cidrs = [ "10.0.0.0/24" "192.168.0.0/16" ];
+    }).lan_v4.elements;
+    expected = [
+      (expr.prefix "10.0.0.0" 24)
+      (expr.prefix "192.168.0.0" 16)
+    ];
+  };
+
+  # ===== genSets — full dual-stack zone gets all three suffixes (full bodies) =====
 
   testGenSetsAll = {
-    expr = pkgs.lib.attrNames (genSets "lan" {
+    expr = genSets "lan" {
       interfaces = ifs;
       cidrs = [
         cidrV4
         cidrV6
       ];
-    });
-    expected = [
-      "lan_iifs"
-      "lan_v4"
-      "lan_v6"
-    ];
+    };
+    expected = {
+      lan_iifs = {
+        type = "ifname";
+        elements = ifs;
+      };
+      lan_v4 = {
+        type = "ipv4_addr";
+        flags = [ "interval" ];
+        elements = [ (expr.prefix "10.0.0.0" 24) ];
+      };
+      lan_v6 = {
+        type = "ipv6_addr";
+        flags = [ "interval" ];
+        elements = [ (expr.prefix "2001:db8::" 32) ];
+      };
+    };
   };
 
   # ===== genSets — set names always carry the zone-name prefix =====

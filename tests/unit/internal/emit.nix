@@ -303,6 +303,34 @@ in
     expected = "nat";
   };
 
+  testChainTypeOfIntFilter = {
+    # priorityIntsDefault.filter == 0 → filter
+    expr = chainTypeOf {
+      hook = "forward";
+      priority = 0;
+    };
+    expected = "filter";
+  };
+
+  testChainTypeOfIntRoute = {
+    # priorityIntsDefault.mangle == -150 on output → route
+    expr = chainTypeOf {
+      hook = "output";
+      priority = -150;
+    };
+    expected = "route";
+  };
+
+  testChainTypeOfIntRaw = {
+    # priorityIntsDefault.raw == -300 → filter (raw isn't srcnat /
+    # dstnat / mangle, so falls through to filter).
+    expr = chainTypeOf {
+      hook = "prerouting";
+      priority = -300;
+    };
+    expected = "filter";
+  };
+
   # ===== mkBaseChain — filter input gets stateful + loopback =====
 
   testMkBaseChainFilterInput = {
@@ -414,6 +442,60 @@ in
     };
   };
 
+  # ===== mkBaseChain — sroute (prerouting/mangle → route) =====
+
+  testMkBaseChainSroute = {
+    expr =
+      let
+        c = mkChain {
+          bucket = {
+            hook = "prerouting";
+            priority = "mangle";
+            preDispatch = [ ];
+            subChains = { };
+            postDispatch = [ ];
+          };
+        };
+      in
+      {
+        inherit (c) type hook prio;
+        hasPolicy = c ? policy;
+      };
+    expected = {
+      type = "route";
+      hook = "prerouting";
+      prio = -150;
+      hasPolicy = false;
+    };
+  };
+
+  # ===== mkBaseChain — dnat (type nat, no policy) =====
+
+  testMkBaseChainDnat = {
+    expr =
+      let
+        c = mkChain {
+          bucket = {
+            hook = "prerouting";
+            priority = "dstnat";
+            preDispatch = [ ];
+            subChains = { };
+            postDispatch = [ ];
+          };
+        };
+      in
+      {
+        inherit (c) type hook prio;
+        hasPolicy = c ? policy;
+      };
+    expected = {
+      type = "nat";
+      hook = "prerouting";
+      prio = -100;
+      hasPolicy = false;
+    };
+  };
+
   # ===== mkBaseChain — droute (type route) =====
 
   testMkBaseChainDroute = {
@@ -497,6 +579,49 @@ in
       zoneSets = { };
     };
     expected = { };
+  };
+
+  # ===== mkBaseChains — one chain per bucket key =====
+  # Many buckets in → many base chains out. Pin the per-bucket
+  # contract so emit cannot accidentally collapse two into one.
+
+  testMkBaseChainsPerBucket = {
+    expr = pkgs.lib.sort (a: b: a < b) (
+      builtins.attrNames (mkBaseChains {
+        family = "inet";
+        settings = defaultSettings;
+        chainBuckets = {
+          "input-at-filter" = {
+            hook = "input";
+            priority = "filter";
+            preDispatch = [ ];
+            subChains = { };
+            postDispatch = [ ];
+          };
+          "forward-at-filter" = {
+            hook = "forward";
+            priority = "filter";
+            preDispatch = [ ];
+            subChains = { };
+            postDispatch = [ ];
+          };
+          "postrouting-at-srcnat" = {
+            hook = "postrouting";
+            priority = "srcnat";
+            preDispatch = [ ];
+            subChains = { };
+            postDispatch = [ ];
+          };
+        };
+        mergedZones = { };
+        zoneSets = { };
+      })
+    );
+    expected = [
+      "forward-at-filter"
+      "input-at-filter"
+      "postrouting-at-srcnat"
+    ];
   };
 
   # ===== emitTable — base chain + per-pair sub-chain land in output.chains =====
@@ -1344,6 +1469,62 @@ in
     expected = {
       counters.web = { };
       quotas = { };
+    };
+  };
+
+  # ===== emitTable — droute lands in output@mangle base chain =====
+  # Validates the default chain placement for `droutes`: per
+  # dispatch.nix, droute → output / mangle (route type).
+
+  testEmitTableDrouteChain = {
+    expr =
+      let
+        chains =
+          (runEmit {
+            zones.lan.interfaces = [ "lan0" ];
+            droutes.mark-lan = {
+              to = [ "lan" ];
+              rule = [ ];
+            };
+          }).output.chains;
+      in
+      {
+        keys = pkgs.lib.sort (a: b: a < b) (builtins.attrNames chains);
+        baseType = chains."output-at-mangle".type;
+      };
+    expected = {
+      keys = [
+        "output-at-mangle"
+        "output-at-mangle__lan"
+      ];
+      baseType = "route";
+    };
+  };
+
+  # ===== emitTable — sroute lands in prerouting@mangle base chain =====
+
+  testEmitTableSrouteChain = {
+    expr =
+      let
+        chains =
+          (runEmit {
+            zones.wan.interfaces = [ "wan0" ];
+            sroutes.mark-wan = {
+              from = [ "wan" ];
+              rule = [ ];
+            };
+          }).output.chains;
+      in
+      {
+        keys = pkgs.lib.sort (a: b: a < b) (builtins.attrNames chains);
+        baseType = chains."prerouting-at-mangle".type;
+      };
+    expected = {
+      keys = [
+        "prerouting-at-mangle"
+        "prerouting-at-mangle__wan"
+      ];
+      baseType = "route";
     };
   };
 

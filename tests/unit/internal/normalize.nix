@@ -257,6 +257,47 @@ in
     };
   };
 
+  # ===== convertNodesToZones — node name overlapping a zone silently overwrites =====
+  # `mergedZones = zones // mapAttrs toZone nodes` — node lowering
+  # always wins on collision. The collision is *separately* flagged
+  # by `checkNameCollisions`; this test pins the lowering's
+  # last-write-wins semantics so that contract is explicit.
+
+  testConvertNodesToZonesNodeOverwritesZone = {
+    expr =
+      let
+        merged =
+          (runPhase convertNodesToZones (
+            emptyTable
+            // {
+              zones.web = {
+                interfaces = [ "manual0" ];
+              };
+              nodes.web = {
+                name = "web";
+                zone = "lan";
+                address = {
+                  ipv4 = "10.0.0.5";
+                  ipv6 = null;
+                };
+              };
+            }
+          )).mergedZones;
+      in
+      {
+        # Lowered node overwrote the declared zone — `interfaces`
+        # comes from the node, not from `manual0`.
+        interfaces = merged.web.interfaces;
+        cidrs = merged.web.cidrs;
+        parent = merged.web.parent;
+      };
+    expected = {
+      interfaces = [ ];
+      cidrs = [ "10.0.0.5/32" ];
+      parent = "lan";
+    };
+  };
+
   # ===== convertNodesToZones — table left untouched =====
 
   testConvertNodesToZonesTableUntouched = {
@@ -354,6 +395,62 @@ in
         name = "zoneNameCollision";
         value = "name collision: 'c' is declared as both a zone and a node";
       }
+    ];
+  };
+
+  # ===== collectAllZoneNames — declared zones + lowered nodes + localZone =====
+  # Pins the in-scope set computed for wildcard expansion and
+  # zone-ref validation. Note: `wildcardZone` is intentionally NOT
+  # in the result — `expandWildcardZones` substitutes it before
+  # checking against this list.
+
+  testCollectAllZoneNamesShape = {
+    expr = pkgs.lib.sort (a: b: a < b) (
+      (runPipeline [
+        convertNodesToZones
+        collectAllZoneNames
+      ] (
+        emptyTable
+        // {
+          zones = {
+            lan = { };
+            wan = { };
+          };
+          nodes.web = {
+            zone = "lan";
+            address.ipv4 = "10.0.0.5";
+          };
+        }
+      )).allZoneNames
+    );
+    expected = [
+      "lan"
+      "local"
+      "wan"
+      "web"
+    ];
+  };
+
+  # ===== collectAllZoneNames — custom localZone joins the scope =====
+
+  testCollectAllZoneNamesCustomLocal = {
+    expr =
+      (runPipeline [
+        convertNodesToZones
+        collectAllZoneNames
+      ] (
+        emptyTable
+        // {
+          settings = {
+            wildcardZone = "all";
+            localZone = "host";
+          };
+          zones.lan = { };
+        }
+      )).allZoneNames;
+    expected = [
+      "lan"
+      "host"
     ];
   };
 
@@ -800,6 +897,23 @@ in
       in
       result.table == input;
     expected = true;
+  };
+
+  # ===== resolvePriorities — policies group is excluded =====
+  # Policies don't carry a `priority` field; resolvePriorities
+  # operates on filters / snats / dnats / sroutes / droutes only.
+  # Locks the contract so Phase 3 can rely on `cell ? priority` to
+  # distinguish policies from priority-bearing kinds.
+
+  testResolvePrioritiesExcludesPolicies = {
+    expr = builtins.attrNames (runPhase resolvePriorities emptyTable).resolvedPriorities;
+    expected = [
+      "dnats"
+      "droutes"
+      "filters"
+      "snats"
+      "sroutes"
+    ];
   };
 
   # ===== resolvePriorities — empty groups =====
@@ -2583,6 +2697,62 @@ in
       in
       attempt.success;
     expected = false;
+  };
+
+  # ===== normalizeTable — multiple validators failing aggregate into one throw =====
+  # Phase 1 is fail-aggregating: when multiple validators detect
+  # problems, normalizeTable throws ONCE with all messages, not
+  # validator-by-validator. The throw must mention every failing
+  # category so the user sees the full picture in one shot.
+
+  testNormalizeMultipleErrorsAggregated = {
+    expr =
+      let
+        attempt = builtins.tryEval (
+          normalizeTable (evalTable {
+            name = "fw";
+            # Triggers checkNameCollisions: zone+node share "web"
+            zones.web = { };
+            nodes.web = {
+              zone = "lan";
+              address.ipv4 = "1.1.1.1";
+            };
+            # Triggers checkZoneRefs: "missing" is unknown
+            filters.f = {
+              from = [ "missing" ];
+              to = [ "web" ];
+              rule = [ ];
+            };
+          })
+        );
+      in
+      attempt.success;
+    expected = false;
+  };
+
+  # ===== normalizeTable — full ctx shape after the pipeline =====
+  # Pin the keys Phase 2 / 3 / 4 read from `ctx`. A silent rename
+  # would cascade into downstream phase failures; this test traps
+  # that at the contract boundary.
+
+  testNormalizeCtxShape = {
+    expr =
+      pkgs.lib.sort (a: b: a < b) (
+        builtins.attrNames
+          (normalizeTable (evalTable {
+            name = "fw";
+            zones.lan.interfaces = [ "lan0" ];
+          })).ctx
+      );
+    expected = [
+      "allZoneNames"
+      "errors"
+      "expandedGroups"
+      "mergedZones"
+      "resolvedPriorities"
+      "zoneRefs"
+      "zoneSets"
+    ];
   };
 
   # ===== normalizeTable — declared zones survive intact in mergedZones =====

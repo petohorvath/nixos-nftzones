@@ -515,6 +515,135 @@ in
     };
   };
 
+  # ===== dispatchAndSort — chain override + default land in same bucket =====
+  # An explicit chain override like `{ hook = "forward"; priority =
+  # "filter"; }` must merge into the existing default-chain bucket
+  # rather than creating a duplicate. Documented in dispatch.nix.
+
+  testDispatchOverrideMergesWithDefault = {
+    expr =
+      let
+        bucket =
+          (runDispatch {
+            name = "fw";
+            zones = {
+              lan.interfaces = [ "lan0" ];
+              wan.interfaces = [ "wan0" ];
+            };
+            filters = {
+              # Default for lan→wan: forward@filter.
+              regular = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+                rule = [ ];
+              };
+              # Explicit override for the same chain coordinates.
+              override = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+                rule = [ ];
+                chain = {
+                  hook = "forward";
+                  priority = "filter";
+                };
+              };
+            };
+          }).chainBuckets."forward-at-filter";
+      in
+      lib.sort (a: b: a < b) (map (c: c.name) bucket.subChains."lan-to-wan".cells);
+    expected = [
+      "override"
+      "regular"
+    ];
+  };
+
+  # ===== dispatchAndSort — pre + sub + post slots populate independently =====
+  # Single chain receives one cell per slot; verifies the bucketing
+  # routes each cell by `slotFor` without leakage.
+
+  testDispatchAllSlotsPopulated = {
+    expr =
+      let
+        bucket =
+          (runDispatch {
+            name = "fw";
+            zones = {
+              lan.interfaces = [ "lan0" ];
+              wan.interfaces = [ "wan0" ];
+            };
+            filters = {
+              early = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+                rule = [ ];
+                priority = "preDispatch";
+              };
+              regular = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+                rule = [ ];
+              };
+              late = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+                rule = [ ];
+                priority = "last";
+              };
+            };
+          }).chainBuckets."forward-at-filter";
+      in
+      {
+        preNames = map (c: c.name) bucket.preDispatch;
+        subNames = map (c: c.name) bucket.subChains."lan-to-wan".cells;
+        postNames = map (c: c.name) bucket.postDispatch;
+      };
+    expected = {
+      preNames = [ "early" ];
+      subNames = [ "regular" ];
+      postNames = [ "late" ];
+    };
+  };
+
+  # ===== dispatchAndSort — policy fan-out spans multiple sub-chains =====
+  # One policy with `from = [ "lan" "guest" ]; to = [ "wan" ]` must
+  # land in two distinct sub-chains, both as tail rules.
+
+  testDispatchPolicyFanOut = {
+    expr =
+      let
+        subChains =
+          (runDispatch {
+            name = "fw";
+            zones = {
+              lan.interfaces = [ "lan0" ];
+              guest.interfaces = [ "guest0" ];
+              wan.interfaces = [ "wan0" ];
+            };
+            policies.deny-out = {
+              from = [
+                "lan"
+                "guest"
+              ];
+              to = [ "wan" ];
+              verdict = "drop";
+            };
+          }).chainBuckets."forward-at-filter".subChains;
+      in
+      {
+        keys = lib.sort (a: b: a < b) (lib.attrNames subChains);
+        guestCellName = (builtins.head subChains."guest-to-wan".cells).name;
+        lanCellName = (builtins.head subChains."lan-to-wan".cells).name;
+      };
+    expected = {
+      keys = [
+        "guest-to-wan"
+        "lan-to-wan"
+      ];
+      guestCellName = "deny-out";
+      lanCellName = "deny-out";
+    };
+  };
+
   # ===== dispatchAndSort — bucket carries hook + priority as fields =====
 
   testDispatchBucketFields = {

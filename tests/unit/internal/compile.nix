@@ -235,4 +235,80 @@ in
       commandCount = 2;
     };
   };
+
+  # ===== Multi-table composition — two mkTable values in one ruleset =====
+  # The README documents `dsl.ruleset [ tableA tableB ]` as the
+  # multi-table path. Verify both tables appear in the rendered
+  # output with their declared families intact.
+
+  testMkTableMultiTableComposition = {
+    expr =
+      let
+        v4 = nftzones.mkTable "fw-v4" {
+          family = "ip";
+          zones.lan.interfaces = [ "lan0" ];
+        };
+        v6 = nftzones.mkTable "fw-v6" {
+          family = "ip6";
+          zones.lan.interfaces = [ "lan0" ];
+        };
+        rs = nftypes.dsl.ruleset [
+          v4
+          v6
+        ];
+        json = builtins.fromJSON (nftypes.toJson rs);
+        tableCommands = builtins.filter (
+          c: c ? add && c.add ? table
+        ) json.nftables;
+        tableTuples = map (c: {
+          inherit (c.add.table) name family;
+        }) tableCommands;
+      in
+      pkgs.lib.sort (a: b: a.name < b.name) tableTuples;
+    expected = [
+      {
+        name = "fw-v4";
+        family = "ip";
+      }
+      {
+        name = "fw-v6";
+        family = "ip6";
+      }
+    ];
+  };
+
+  # ===== mkRuleset — chain commands appear when there are filter rules =====
+  # The "2 commands" counted in `testPublicMkRulesetAcceptsRawBody`
+  # is the empty case. With actual rules, the ruleset must also emit
+  # add-chain commands per base + sub-chain. This catches a regression
+  # where chain wiring drops out of the ruleset.
+
+  testMkRulesetEmitsChainCommands = {
+    expr =
+      let
+        json = builtins.fromJSON (
+          nftypes.toJson (nftzones.mkRuleset "fw" {
+            zones = {
+              lan.interfaces = [ "lan0" ];
+              wan.interfaces = [ "wan0" ];
+            };
+            filters.f = {
+              from = [ "lan" ];
+              to = [ "wan" ];
+              rule = [ ];
+            };
+          })
+        );
+        chainNames = pkgs.lib.sort (a: b: a < b) (
+          map (c: c.add.chain.name) (
+            builtins.filter (c: c ? add && c.add ? chain) json.nftables
+          )
+        );
+      in
+      chainNames;
+    expected = [
+      "forward-at-filter"
+      "forward-at-filter__lan-to-wan"
+    ];
+  };
 }

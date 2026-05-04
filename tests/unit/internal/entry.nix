@@ -174,4 +174,39 @@ in
       }
     ];
   };
+
+  # ===== toCells — empty direction list collapses the product to zero cells =====
+  # `from = [ ]` is "direction present but empty" — distinct from
+  # "direction absent" — and `mapCartesianProduct` correctly emits
+  # no cells for the empty side.
+
+  testToCellsEmptyFrom = {
+    expr = toCells (baseEntry // { from = [ ]; });
+    expected = [ ];
+  };
+
+  testToCellsEmptyTo = {
+    expr = toCells (baseEntry // { to = [ ]; });
+    expected = [ ];
+  };
+
+  # ===== toCells — entry with no direction fields yields one pass-through cell =====
+  # When neither `from` nor `to` is present, the cartesian product
+  # over an empty attrset is `[ { } ]`, so the entry passes through
+  # as a single cell with no direction fields added.
+
+  testToCellsNoDirectionFields = {
+    expr = toCells {
+      name = "global";
+      rule = "dummy";
+      priority = 0;
+    };
+    expected = [
+      {
+        name = "global";
+        rule = "dummy";
+        priority = 0;
+      }
+    ];
+  };
 }

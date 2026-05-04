@@ -10,7 +10,7 @@
   ...
 }:
 let
-  inherit (nftzones.internal.priority) resolvePriority;
+  inherit (nftzones.internal.priority) resolvePriority entryPriorities;
 in
 {
   # ===== resolvePriority — every symbol resolves to its int =====
@@ -50,6 +50,30 @@ in
   testResolveIntZero = {
     expr = resolvePriority 0;
     expected = 0;
+  };
+
+  testResolveIntNegative = {
+    # nftables priorities legitimately accept negatives
+    # (e.g. raw-prerouting at -300). Pass-through must not coerce.
+    expr = resolvePriority (-300);
+    expected = -300;
+  };
+
+  # ===== entryPriorities — canonical symbol → int table consumed by Phase 3 =====
+
+  testEntryPrioritiesShape = {
+    # Phase 3's `bucketOf` reads `entryPriorities.postDispatch` as
+    # the cutoff between sub-chain and post-dispatch slots. A
+    # silent rename here would break dispatch in subtle ways; pin
+    # the full canonical table.
+    expr = entryPriorities;
+    expected = {
+      first = 1;
+      preDispatch = 50;
+      postDispatch = 100;
+      default = 500;
+      last = 999;
+    };
   };
 
   # ===== pre-dispatch cutoff — symbols below 100 emit before per-zone jumps =====

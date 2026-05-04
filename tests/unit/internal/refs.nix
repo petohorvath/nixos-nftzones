@@ -333,4 +333,61 @@ in
       }
     ];
   };
+
+  # ===== extractRefs — singleton-only contract: extra keys disqualify =====
+  # A statement attrset with a `counter` key but additional sibling
+  # keys is NOT the singleton form `dsl.counter.ref` produces, so
+  # the walker must NOT treat it as a named-ref.
+
+  testRefsSingletonOnly = {
+    expr = extractRefs [
+      {
+        counter = "looks-named";
+        unrelated = "sibling";
+      }
+    ];
+    expected = [ ];
+  };
+
+  # ===== extractRefs — duplicate refs not deduplicated =====
+  # The walker reports every occurrence; dedup (if needed) is the
+  # caller's job. Locks in the contract so callers don't accidentally
+  # rely on dedup that isn't there.
+
+  testRefsDuplicatesPreserved = {
+    expr = sortRefs (extractRefs [
+      (dsl.counter.ref "hits")
+      (dsl.counter.ref "hits")
+    ]);
+    expected = [
+      {
+        kind = "counters";
+        name = "hits";
+      }
+      {
+        kind = "counters";
+        name = "hits";
+      }
+    ];
+  };
+
+  # ===== extractRefs — deeply nested ref via several attrset levels =====
+  # The walker must traverse arbitrary attrset depth, not just the
+  # one or two levels the common rule shapes use.
+
+  testRefsDeeplyNested = {
+    expr = extractRefs {
+      outer = {
+        middle = {
+          inner = [ (dsl.counter.ref "deep-hits") ];
+        };
+      };
+    };
+    expected = [
+      {
+        kind = "counters";
+        name = "deep-hits";
+      }
+    ];
+  };
 }

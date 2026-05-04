@@ -167,4 +167,20 @@ in
       comment = null;
     };
   };
+
+  # ===== toZone — non-null comment propagates onto the lowered zone =====
+
+  testCommentPropagation = {
+    expr =
+      (toZone {
+        name = "web";
+        zone = "dmz";
+        address = {
+          ipv4 = "10.0.0.5";
+          ipv6 = null;
+        };
+        comment = "primary web host";
+      }).comment;
+    expected = "primary web host";
+  };
 }

@@ -2,7 +2,7 @@
 
 Compile zone-based firewall configurations into nftables rulesets, in Nix.
 
-> **Pre-release** (`0.1.0`, no tagged release yet). 246 unit tests pass; real-kernel VM tests are still deferred. Expect API tweaks before 1.0.
+> **Pre-release** (`0.1.0`, no tagged release yet). 278 unit tests pass; real-kernel VM tests are still deferred. Expect API tweaks before 1.0.
 
 Most nftables configs hardwire interfaces and addresses into every rule. nftzones describes zone membership once — "lan is `eth1` plus `10.0.0.0/24`", "wan is `eth0`" — and expresses rules between **zones** instead. The library compiles a zone-keyed config into a vanilla nftables ruleset; the underlying nftables knows nothing about zones. See [`docs/zone-based-firewall.md`](docs/zone-based-firewall.md) for the model and [`docs/compile-pipeline-draft.md`](docs/compile-pipeline-draft.md) for the four-phase pipeline.
 

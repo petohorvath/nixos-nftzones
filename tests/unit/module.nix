@@ -152,6 +152,55 @@ in
     };
   };
 
+  # ===== module — pretty option is actually wired through to content =====
+  # The bypass-evaluation test above proves the renderers behave
+  # differently. This one proves the module's `pretty` option
+  # actually selects between them — same body, two real
+  # evaluations, content must differ.
+
+  testModulePrettyWiring = {
+    expr =
+      let
+        body.fw = {
+          zones.lan.interfaces = [ "lan0" ];
+          zones.wan.interfaces = [ "wan0" ];
+          filters.allow-ssh = {
+            from = [ "wan" ];
+            to = [ "local" ];
+            rule = [ ];
+          };
+        };
+        compact =
+          (evalSystem {
+            networking.nftables.enable = true;
+            networking.nftzones = {
+              enable = true;
+              pretty = false;
+              tables = body;
+            };
+          }).networking.nftables.tables.fw.content;
+        pretty =
+          (evalSystem {
+            networking.nftables.enable = true;
+            networking.nftzones = {
+              enable = true;
+              pretty = true;
+              tables = body;
+            };
+          }).networking.nftables.tables.fw.content;
+      in
+      {
+        differ = compact != pretty;
+        prettyLonger =
+          lib.length (lib.splitString "\n" pretty)
+          > lib.length (lib.splitString "\n" compact);
+      };
+    expected = {
+      differ = true;
+      prettyLonger = true;
+    };
+  };
+
   # ===== module — multi-table produces an entry per name =====
 
   testModuleMultipleTables = {
