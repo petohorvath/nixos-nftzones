@@ -155,7 +155,7 @@ in
     expr =
       let
         json = builtins.fromJSON (
-          nftypes.toJSON (
+          nftypes.toJson (
             mkRuleset (evalTable {
               zones.lan = {
                 interfaces = [ "lan0" ];
