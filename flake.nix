@@ -38,12 +38,22 @@
           };
         };
 
+      nftzonesModule =
+        { pkgs, ... }:
+        {
+          imports = [ ./modules/nftzones.nix ];
+          _module.args = {
+            nftzones = mkLib pkgs;
+            nftypes = nftypes.lib;
+          };
+        };
+
       mkChecks =
         pkgs:
         let
-          nftzones = mkLib pkgs;
           testArgs = {
-            inherit pkgs nftzones;
+            inherit pkgs nftzonesModule;
+            nftzones = mkLib pkgs;
             nftypes = nftypes.lib;
           };
           runner = import ./tests/unit/runner.nix { inherit pkgs; };
@@ -58,5 +68,6 @@
       lib = forAllSystems mkLib;
       formatter = forAllSystems (pkgs: pkgs.nixfmt-tree);
       checks = forAllSystems mkChecks;
+      nixosModules.default = nftzonesModule;
     };
 }

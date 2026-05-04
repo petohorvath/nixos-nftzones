@@ -7,6 +7,7 @@
   pkgs,
   nftzones,
   nftypes,
+  ...
 }:
 let
   inherit (nftypes.dsl) eq accept;

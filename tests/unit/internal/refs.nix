@@ -11,6 +11,7 @@
   pkgs,
   nftzones,
   nftypes,
+  ...
 }:
 let
   inherit (nftzones.internal.refs) extractRefs;
