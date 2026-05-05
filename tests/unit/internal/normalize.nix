@@ -2400,7 +2400,7 @@ in
                   match = [
                     (dsl.inSet
                       nftypes.dsl.fields.ip.saddr
-                      (dsl.expr.set "ghost-set"))
+                      (dsl.expr.setRef "ghost-set"))
                   ];
                   action.dnat = {
                     addr = "10.0.0.5";
@@ -2452,7 +2452,7 @@ in
             rule = [
               (dsl.inSet
                 nftypes.dsl.fields.ip.saddr
-                (dsl.expr.set "lan_v4"))
+                (dsl.expr.setRef "lan_v4"))
               dsl.accept
             ];
           };
@@ -2486,7 +2486,7 @@ in
                 rule = [
                   (dsl.inSet
                     nftypes.dsl.fields.ip6.saddr
-                    (dsl.expr.set "wan_v6"))
+                    (dsl.expr.setRef "wan_v6"))
                   dsl.accept
                 ];
               };
@@ -2519,7 +2519,7 @@ in
                 matchOverride.ingress.ipv4 = [
                   (dsl.inSet
                     nftypes.dsl.fields.ip.saddr
-                    (dsl.expr.set "ghost-set"))
+                    (dsl.expr.setRef "ghost-set"))
                 ];
               };
             }
@@ -2665,7 +2665,7 @@ in
             matchOverride.egress.ipv4 = [
               (dsl.inSet
                 nftypes.dsl.fields.ip.daddr
-                (dsl.expr.set "blocklist"))
+                (dsl.expr.setRef "blocklist"))
             ];
           };
           objects.sets.blocklist = {

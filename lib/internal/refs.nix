@@ -69,6 +69,14 @@ let
     refs (sub-statements, sub-expressions) are picked up by the
     recursive `walkValue` over the attrset's values.
   */
+  # Named-reference strings in expression position carry a leading
+  # `@` per libnftables-JSON convention (e.g. `{ set = "@blocklist"; }`).
+  # Statement-form names are bare. Strip the prefix uniformly so
+  # refs match `table.objects.<kind>.<name>` keys regardless of
+  # which DSL form produced them. `removePrefix` is a no-op when
+  # the prefix is absent, so no guard is needed.
+  stripAt = lib.removePrefix "@";
+
   refsAtAttrs =
     v:
     let
@@ -96,14 +104,14 @@ let
           [
             {
               kind = "sets";
-              name = body;
+              name = stripAt body;
             }
           ]
         else if builtins.isAttrs body && body ? set then
           [
             {
               kind = "sets";
-              name = body.set;
+              name = stripAt body.set;
             }
           ]
         else
@@ -123,14 +131,14 @@ let
           [
             {
               kind = "maps";
-              name = body.map;
+              name = stripAt body.map;
             }
           ]
         else if (body ? data) && builtins.isString body.data then
           [
             {
               kind = "maps";
-              name = body.data;
+              name = stripAt body.data;
             }
           ]
         else
@@ -147,7 +155,7 @@ let
           && builtins.isString body.data
         ) {
           kind = "maps";
-          name = body.data;
+          name = stripAt body.data;
         };
 
       flowRef =
@@ -158,7 +166,7 @@ let
           isSingleton "flow" && builtins.isAttrs body && (body ? flowtable)
         ) {
           kind = "flowtables";
-          name = body.flowtable;
+          name = stripAt body.flowtable;
         };
     in
     lib.concatLists [

@@ -1109,7 +1109,7 @@ in
       localZone = "local";
     };
     expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.set "lan_iifs")) ]
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs")) ]
     ];
   };
 
@@ -1154,7 +1154,7 @@ in
       localZone = "local";
     };
     expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "lan_v4")) ]
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4")) ]
     ];
   };
 
@@ -1181,8 +1181,8 @@ in
       localZone = "local";
     };
     expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "lan_v4")) ]
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.set "lan_v6")) ]
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4")) ]
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6")) ]
     ];
   };
 
@@ -1214,12 +1214,12 @@ in
     };
     expected = [
       [
-        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.set "lan_iifs"))
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "lan_v4"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4"))
       ]
       [
-        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.set "lan_iifs"))
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.set "lan_v6"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6"))
       ]
     ];
   };
@@ -1266,8 +1266,8 @@ in
     };
     expected = [
       [
-        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.set "lan_iifs"))
-        (nftypes.dsl.inSet nftypes.dsl.fields.meta.oifname (nftypes.dsl.expr.set "wan_iifs"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.meta.oifname (nftypes.dsl.expr.setRef "wan_iifs"))
         (nftypes.dsl.jump "forward-at-filter__lan-to-wan")
       ]
     ];
@@ -1296,17 +1296,20 @@ in
     };
     expected = [
       [
-        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.set "wan_iifs"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "wan_iifs"))
         (nftypes.dsl.jump "prerouting-at-dstnat__wan")
       ]
     ];
   };
 
-  # ===== mkJumpRules — cartesian product of multi-variant directions =====
+  # ===== mkJumpRules — cartesian product drops cross-family pairs =====
 
   testMkJumpRulesCartesian = {
-    # `lan` has v4 + v6, `wan` has v4 + v6 → 4 jump rules
-    # (incl. 2 family-mismatched ones; harmless, see docstring).
+    # `lan` has v4 + v6, `wan` has v4 + v6 → only matched-family
+    # pairs survive: (v4-from, v4-to) + (v6-from, v6-to). The
+    # cross-family pairs ((v4-from, v6-to) and (v6-from, v4-to))
+    # are dropped — nft rejects them with "conflicting network
+    # layer protocols specified" in `inet` tables.
     expr = builtins.length (mkJumpRules {
       hook = "forward";
       baseChainName = "forward-at-filter";
@@ -1326,7 +1329,43 @@ in
       };
       localZone = "local";
     });
-    expected = 4;
+    expected = 2;
+  };
+
+  # ===== mkJumpRules — interface-only side composes with both families =====
+
+  testMkJumpRulesIfsByFamily = {
+    # Family-agnostic variants (interface-only, extra-only, empty)
+    # match `null` against any concrete family — they compose with
+    # both v4 and v6 variants on the opposite side. This is the
+    # contract that lets `compatibleFamilies` keep the `null` rows
+    # of the cartesian product instead of dropping them with the
+    # cross-family pairs.
+    #
+    # Setup: `lan` has v4 + v6 (two variants); `wan` has only iifs
+    # (one agnostic variant). 2 from-variants × 1 to-variant = 2.
+    expr = builtins.length (mkJumpRules {
+      hook = "forward";
+      baseChainName = "forward-at-filter";
+      subChains = {
+        "lan-to-wan" = {
+          from = "lan";
+          to = "wan";
+          cells = [ ];
+        };
+      };
+      mergedZones = mergedZonesFor [ "lan" "wan" ];
+      zoneSets = {
+        lan_v4 = { };
+        lan_v6 = { };
+        wan_iifs = {
+          type = "ifname";
+          elements = [ "wan0" ];
+        };
+      };
+      localZone = "local";
+    });
+    expected = 2;
   };
 
   # ===== emitTable — jump rule lands in base chain =====
@@ -1356,8 +1395,8 @@ in
       in
       jumpRule;
     expected = [
-      (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.set "lan_iifs"))
-      (nftypes.dsl.inSet nftypes.dsl.fields.meta.oifname (nftypes.dsl.expr.set "wan_iifs"))
+      (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
+      (nftypes.dsl.inSet nftypes.dsl.fields.meta.oifname (nftypes.dsl.expr.setRef "wan_iifs"))
       (nftypes.dsl.jump "forward-at-filter__lan-to-wan")
     ];
   };
@@ -1387,7 +1426,7 @@ in
       in
       builtins.head baseRules;
     expected = [
-      (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.set "wan_iifs"))
+      (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "wan_iifs"))
       (nftypes.dsl.jump "prerouting-at-dstnat__wan")
     ];
   };
@@ -1414,7 +1453,7 @@ in
       in
       jumpRule;
     expected = [
-      (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.set "wan_iifs"))
+      (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "wan_iifs"))
       (nftypes.dsl.jump "input-at-filter__wan-to-local")
     ];
   };
@@ -1683,11 +1722,11 @@ in
     expected = [
       [
         (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256)
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "vpn-users_v4"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "vpn-users_v4"))
       ]
       [
         (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256)
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.set "vpn-users_v6"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "vpn-users_v6"))
       ]
     ];
   };
@@ -1722,7 +1761,7 @@ in
       direction = "from";
       zoneName = "lan";
       active = {
-        ipv4 = [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "user-v4")) ];
+        ipv4 = [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "user-v4")) ];
       };
       zoneSets = {
         lan_v4 = { };
@@ -1731,8 +1770,8 @@ in
       localZone = "local";
     };
     expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "user-v4")) ]
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.set "lan_v6")) ]
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "user-v4")) ]
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6")) ]
     ];
   };
 
@@ -1747,7 +1786,7 @@ in
       zoneName = "lan";
       active = {
         interfaces = [
-          (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.set "user-iifs"))
+          (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "user-iifs"))
         ];
       };
       zoneSets = {
@@ -1756,7 +1795,7 @@ in
       localZone = "local";
     };
     expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "lan_v4")) ]
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4")) ]
     ];
   };
 
@@ -1791,7 +1830,7 @@ in
     };
     expected = [
       [
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.set "lan_v4"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4"))
         (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256)
         (nftypes.dsl.jump "forward-at-filter__lan-to-vpn")
       ]

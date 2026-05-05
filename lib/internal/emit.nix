@@ -479,9 +479,9 @@ let
         v4Name = "${zoneName}_v4";
         v6Name = "${zoneName}_v6";
 
-        autoIfs = lib.optional (zoneSets ? ${iifsName}) (inSet ifField (expr.set iifsName));
-        autoV4 = lib.optional (zoneSets ? ${v4Name}) (inSet addrFieldV4 (expr.set v4Name));
-        autoV6 = lib.optional (zoneSets ? ${v6Name}) (inSet addrFieldV6 (expr.set v6Name));
+        autoIfs = lib.optional (zoneSets ? ${iifsName}) (inSet ifField (expr.setRef iifsName));
+        autoV4 = lib.optional (zoneSets ? ${v4Name}) (inSet addrFieldV4 (expr.setRef v4Name));
+        autoV6 = lib.optional (zoneSets ? ${v6Name}) (inSet addrFieldV6 (expr.setRef v6Name));
 
         # Active section wins if present; else fall back to auto.
         ifsSection = active.interfaces or autoIfs;
@@ -508,16 +508,25 @@ let
         [ ];
 
   /*
+    Classify a variant (list of match statements) by network-layer
+    family in a single fold: `"ip"` / `"ip6"` if any statement
+    carries that payload protocol, `null` (family-agnostic) for
+    interface-only, extra-only, or empty variants. Used by
+    `mkJumpRules` to drop cross-family cartesian-product pairs that
+    nft rejects with "conflicting network layer protocols specified".
+  */
+  variantFamily =
+    variant:
+    builtins.foldl' (
+      acc: stmt: if acc != null then acc else stmt.match.left.payload.protocol or null
+    ) null variant;
+
+  /*
     Build the jump rules for one base chain bucket. For each
     sub-chain, computes the from/to direction variants and emits
-    one jump per variant pair (cartesian product).
-
-    Family-mismatch waste: in `inet` with both v4 and v6 sets on
-    each side, the cartesian product produces (v4-from, v6-to) and
-    (v6-from, v4-to) jumps in addition to the matched-family
-    pairs. They're harmless (skip on family mismatch) but bloat
-    the chain. Optimization deferred — see the Phase 4 design
-    notes in `docs/compile-pipeline-draft.md` §4.4.
+    one jump per variant pair, dropping cross-family combinations
+    (e.g. v4-from × v6-to) that nft refuses to compile in `inet`
+    tables.
   */
   mkJumpRules =
     {
@@ -540,30 +549,42 @@ let
         else
           getActiveMatchOverrides mergedZones.${zoneName} side;
 
+      tagFamily = variant: {
+        inherit variant;
+        family = variantFamily variant;
+      };
+
       mkJumpsForSubChain =
         subChainKey: subChain:
         let
           fromZone = subChain.from or null;
           toZone = subChain.to or null;
-          fromVariants = mkDirectionVariants {
+          # Pre-classify each variant by family once; the cartesian
+          # filter then reads cached `from.family` / `to.family`
+          # rather than re-walking the variants per pair.
+          fromVariants = map tagFamily (mkDirectionVariants {
             inherit hook zoneSets localZone;
             direction = "from";
             zoneName = fromZone;
             active = activeFor fromZone "ingress";
-          };
-          toVariants = mkDirectionVariants {
+          });
+          toVariants = map tagFamily (mkDirectionVariants {
             inherit hook zoneSets localZone;
             direction = "to";
             zoneName = toZone;
             active = activeFor toZone "egress";
-          };
+          });
           jumpStmt = jump (subChainNameOf baseChainName subChainKey);
         in
-        map ({ from, to }: from ++ to ++ [ jumpStmt ]) (
-          lib.cartesianProduct {
-            from = fromVariants;
-            to = toVariants;
-          }
+        map ({ from, to }: from.variant ++ to.variant ++ [ jumpStmt ]) (
+          builtins.filter (
+            { from, to }: from.family == null || to.family == null || from.family == to.family
+          ) (
+            lib.cartesianProduct {
+              from = fromVariants;
+              to = toVariants;
+            }
+          )
         );
     in
     lib.concatLists (lib.mapAttrsToList mkJumpsForSubChain subChains);

@@ -187,11 +187,14 @@ in
   # ===== extractRefs — flow statement (flowtable ref) =====
 
   testRefsFlow = {
+    # The walker strips the `@` prefix from named-reference strings
+    # (per libnftables-JSON convention) so refs match
+    # `objects.flowtables.<name>` keys.
     expr = extractRefs [ (dsl.flow { flowtable = "@offload"; }) ];
     expected = [
       {
         kind = "flowtables";
-        name = "@offload";
+        name = "offload";
       }
     ];
   };
@@ -199,7 +202,7 @@ in
   # ===== extractRefs — set-lookup expression nested in match.right =====
 
   testRefsSetLookupInMatch = {
-    expr = extractRefs [ (dsl.inSet fields.ip.saddr (dsl.expr.set "blocklist")) ];
+    expr = extractRefs [ (dsl.inSet fields.ip.saddr (dsl.expr.setRef "blocklist")) ];
     expected = [
       {
         kind = "sets";
@@ -252,7 +255,7 @@ in
 
   testRefsMultipleInRule = {
     expr = sortRefs (extractRefs [
-      (dsl.inSet fields.ip.saddr (dsl.expr.set "blocklist"))
+      (dsl.inSet fields.ip.saddr (dsl.expr.setRef "blocklist"))
       (dsl.counter.ref "drops")
       (dsl.limit.ref "burst-1")
       dsl.drop
