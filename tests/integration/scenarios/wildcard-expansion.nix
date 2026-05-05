@@ -15,7 +15,7 @@ in
     wan.interfaces = [ "wan0" ];
   };
 
-  # `all` resolves to lan, guest, wan, local — five cells against `to = local`.
+  # `all` resolves to lan, guest, wan, local — four cells against `to = local`.
   filters.allow-ssh = {
     from = [ "all" ];
     to = [ "local" ];

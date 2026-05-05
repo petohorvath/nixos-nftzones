@@ -1,11 +1,16 @@
 /*
   Named-objects scenario — rule body references a counter and a
-  set declared in `objects`. Exercises Phase 1's `checkObjectRefs`
-  + Phase 4's `mkUserObjects` pass-through into the rendered table.
+  set declared in `objects`. Exercises object-ref validation and
+  user-object pass-through into the rendered table.
 */
 { nftypes }:
 let
-  inherit (nftypes.dsl) inSet counter accept expr;
+  inherit (nftypes.dsl)
+    inSet
+    counter
+    accept
+    expr
+    ;
   inherit (nftypes.dsl.fields) ip;
 in
 {

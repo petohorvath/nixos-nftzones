@@ -7,54 +7,36 @@
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;
+
+  mkBody = family: lanCidr: wanCidr: {
+    inherit family;
+    zones = {
+      lan = {
+        interfaces = [ "lan0" ];
+        cidrs = [ lanCidr ];
+      };
+      wan = {
+        interfaces = [ "wan0" ];
+        cidrs = [ wanCidr ];
+      };
+    };
+    filters.allow-https = {
+      from = [ "lan" ];
+      to = [ "wan" ];
+      rule = [
+        (eq tcp.dport 443)
+        accept
+      ];
+    };
+  };
 in
 [
   {
     name = "fw-v4";
-    body = {
-      family = "ip";
-      zones = {
-        lan = {
-          interfaces = [ "lan0" ];
-          cidrs = [ "10.0.0.0/24" ];
-        };
-        wan = {
-          interfaces = [ "wan0" ];
-          cidrs = [ "203.0.113.0/24" ];
-        };
-      };
-      filters.allow-https = {
-        from = [ "lan" ];
-        to = [ "wan" ];
-        rule = [
-          (eq tcp.dport 443)
-          accept
-        ];
-      };
-    };
+    body = mkBody "ip" "10.0.0.0/24" "203.0.113.0/24";
   }
   {
     name = "fw-v6";
-    body = {
-      family = "ip6";
-      zones = {
-        lan = {
-          interfaces = [ "lan0" ];
-          cidrs = [ "fd00::/8" ];
-        };
-        wan = {
-          interfaces = [ "wan0" ];
-          cidrs = [ "2000::/3" ];
-        };
-      };
-      filters.allow-https = {
-        from = [ "lan" ];
-        to = [ "wan" ];
-        rule = [
-          (eq tcp.dport 443)
-          accept
-        ];
-      };
-    };
+    body = mkBody "ip6" "fd00::/8" "2000::/3";
   }
 ]

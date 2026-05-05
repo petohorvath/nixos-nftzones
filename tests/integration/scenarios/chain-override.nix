@@ -1,8 +1,8 @@
 /*
   Chain-override scenario — filter rule routed to prerouting@raw
   (an early-drop slot) instead of the default forward@filter.
-  Exercises Phase 3's chain-override dispatch and Phase 4's
-  base-chain wiring at non-default coordinates.
+  Exercises chain-override dispatch and base-chain wiring at
+  non-default coordinates.
 */
 { nftypes }:
 let

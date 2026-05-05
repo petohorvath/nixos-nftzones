@@ -33,14 +33,10 @@ let
   */
   renderScenario =
     name: body:
-    let
-      tables =
-        if builtins.isList body then
-          map (entry: nftzones.mkTable entry.name entry.body) body
-        else
-          [ (nftzones.mkTable name body) ];
-    in
-    nftypes.toJson (nftypes.dsl.ruleset tables);
+    if builtins.isList body then
+      nftypes.toJson (nftypes.dsl.ruleset (map (entry: nftzones.mkTable entry.name entry.body) body))
+    else
+      nftypes.toJson (nftzones.mkRuleset name body);
 
   /*
     Run `nft -j --check` on a rendered ruleset inside the sandbox.
@@ -49,8 +45,7 @@ let
   mkScenarioCheck =
     name: body:
     let
-      rendered = renderScenario name body;
-      rulesetFile = builtins.toFile "${name}.json" rendered;
+      rulesetFile = builtins.toFile "${name}.json" (renderScenario name body);
     in
     pkgs.runCommand "nftzones-integration-${name}"
       {
@@ -59,12 +54,10 @@ let
           pkgs.buildPackages.libredirect
           pkgs.buildPackages.lklWithFirewall
         ];
-        passthru = { inherit rendered; };
       }
       ''
-        cp ${rulesetFile} ruleset.json
         LD_PRELOAD="${pkgs.buildPackages.libredirect}/lib/libredirect.so ${pkgs.buildPackages.lklWithFirewall.lib}/lib/liblkl-hijack.so" \
-          nft -j --check --file ruleset.json
+          nft -j --check --file ${rulesetFile}
         touch $out
       '';
 in

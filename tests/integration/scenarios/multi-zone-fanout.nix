@@ -1,7 +1,7 @@
 /*
   Cartesian-product scenario — `from = [ lan guest ] × to = [ wan vpn ]`
   produces four sub-chains, all sharing the same rule body.
-  Exercises Phase 2's `toCells` cartesian over both directions.
+  Exercises the cartesian expansion over both directions.
 */
 { nftypes }:
 let

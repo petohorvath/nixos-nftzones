@@ -1,8 +1,8 @@
 /*
   matchOverride scenario — a zone matched by a `meta mark` clause
   in the `extra` section, with no interfaces or CIDRs of its own.
-  Exercises Phase 4's `mkDirectionVariants` `extra`-only path
-  (single prefix-only variant produced).
+  Exercises the `extra`-only direction-variant path (single
+  prefix-only variant produced).
 */
 { nftypes }:
 let

@@ -1,7 +1,7 @@
 /*
   Policy scenario — filter rule plus default policy (drop). The
   policy must land as the tail rule of the same sub-chain, after
-  the filter rule. Exercises Phase 3's policy-as-tail-rule sort
+  the filter rule. Exercises the policy-as-tail-rule sort
   contract.
 */
 { nftypes }:
