@@ -1058,7 +1058,9 @@ let
       );
 
       body =
-        lib.optionalAttrs (allSets != { }) { sets = allSets; }
+        lib.optionalAttrs (table.flags != [ ]) { inherit (table) flags; }
+        // lib.optionalAttrs (table.comment != null) { inherit (table) comment; }
+        // lib.optionalAttrs (allSets != { }) { sets = allSets; }
         // lib.optionalAttrs (allChains != { }) { chains = allChains; }
         // otherUserObjectKinds;
     in
