@@ -375,8 +375,14 @@ let
   policyVerdictStmts = { inherit accept drop; };
 
   /*
-    Emit the rule-body statement list for one cell. Dispatches on
-    cell shape (no explicit group arg needed):
+    Emit one cell's rule entry. Dispatches on cell shape to build
+    the statement list (`stmts`); when the cell carries a non-null
+    `comment`, the result is wrapped as `{ expr; comment; }` so
+    the comment surfaces on the rendered rule. Otherwise the bare
+    statement list is returned (chainBody.rules accepts both
+    shapes per nftypes' `dsl/structure/table.nix`).
+
+    Cell shape dispatch (no explicit group arg needed):
       - `cell ? verdict`            → policy
       - `cell.rule ? snat`          → snat with address translation
       - `cell.rule ? masquerade`    → snat masquerade
@@ -385,19 +391,29 @@ let
   */
   mkRuleBody =
     cell:
-    if cell ? verdict then
-      [ policyVerdictStmts.${cell.verdict} ]
-    else if cell.rule ? snat then
-      [ (snat cell.rule.snat) ]
-    else if cell.rule ? masquerade then
-      [ (masquerade cell.rule.masquerade) ]
-    else if cell.rule ? action then
-      cell.rule.match
-      ++ [
-        (if cell.rule.action ? dnat then dnat cell.rule.action.dnat else redirect cell.rule.action.redirect)
-      ]
+    let
+      stmts =
+        if cell ? verdict then
+          [ policyVerdictStmts.${cell.verdict} ]
+        else if cell.rule ? snat then
+          [ (snat cell.rule.snat) ]
+        else if cell.rule ? masquerade then
+          [ (masquerade cell.rule.masquerade) ]
+        else if cell.rule ? action then
+          cell.rule.match
+          ++ [
+            (if cell.rule.action ? dnat then dnat cell.rule.action.dnat else redirect cell.rule.action.redirect)
+          ]
+        else
+          cell.rule;
+    in
+    if cell ? comment && cell.comment != null then
+      {
+        expr = stmts;
+        inherit (cell) comment;
+      }
     else
-      cell.rule;
+      stmts;
 
   /*
     Build the full nftables sub-chain name from a base chain name
