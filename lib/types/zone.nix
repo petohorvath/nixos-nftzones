@@ -164,10 +164,24 @@ let
           default = null;
           example = "lan";
           description = ''
-            Name of this zone's parent zone, or `null` for a top-level
-            zone. The referenced zone must exist in the same `zones`
-            attrset; that check is enforced at module level, not by
-            the type.
+            Name of this zone's parent zone, or `null` for a
+            top-level (root) zone. Establishes hierarchical
+            from-side dispatch: traffic enters via the parent's
+            sub-chain and is dispatched into this zone's sub-chain
+            on a match of this zone's from-side expression. Rules
+            attached to the parent (with `from = [ "<parent>" ]`)
+            run as fallbacks if this zone's sub-chain returns
+            without a verdict.
+
+            The referenced zone must exist in the same `zones`
+            attrset (or as a node, which lowers to a zone). The
+            `localZone` sentinel may not be a parent. Cycles are
+            rejected. These checks live in
+            `internal.normalize.checkParentRefs` /
+            `checkParentCycles`.
+
+            Hierarchy applies to the **from**-side only; the
+            to-side stays a flat per-pair match.
           '';
         };
 

@@ -267,7 +267,10 @@ in
             wan.interfaces = [ "wan0" ];
           };
           filters.f = {
-            from = [ "all" "lan" ];
+            from = [
+              "all"
+              "lan"
+            ];
             to = [ "wan" ];
             rule = [ ];
           };

@@ -102,12 +102,31 @@ in {
 
 `mkTable` returns an `nftypes.dsl.table` value; `mkRuleset name body` is a shortcut that wraps a single table in `nftypes.dsl.ruleset`. Either is renderable to JSON (`toJson`) for `nft -j -f`, or to text (`toText`) for `nft -f`.
 
+### Hierarchical zones
+
+Zones can declare a `parent` (and a node's `zone` field becomes its lowered child's parent). Traffic dispatches into the most-specific child sub-chain via the parent's chain; rules attached to the parent run as fallbacks if no child handles the packet first. See [`docs/specs/zone-parent.md`](docs/specs/zone-parent.md) for semantics.
+
+```nix
+zones.dmz = { interfaces = [ "dmz0" ]; cidrs = [ "10.0.0.0/24" ]; };
+nodes.web-server = { zone = "dmz"; address.ipv4 = "10.0.0.5"; };
+
+filters.dmz-rate-limit = {
+  from = [ "dmz" ]; to = [ "local" ];
+  rule = [ (eq tcp.dport 22) (limit "100/second") accept ];
+};
+filters.web-server-http = {
+  from = [ "web-server" ]; to = [ "local" ];
+  rule = [ (eq tcp.dport 80) accept ];
+};
+```
+
 ## Documentation
 
 | File | Audience |
 |---|---|
 | [`docs/zone-based-firewall.md`](docs/zone-based-firewall.md) | Newcomers to the zone-based firewall model. |
 | [`docs/compile-pipeline-draft.md`](docs/compile-pipeline-draft.md) | Integrators, debuggers, contributors. |
+| [`docs/specs/zone-parent.md`](docs/specs/zone-parent.md) | Zone hierarchy semantics, dispatch model, prior art. |
 
 ## Requirements
 

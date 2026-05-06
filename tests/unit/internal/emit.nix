@@ -21,7 +21,11 @@ let
     mkSubChain
     mkSubChains
     mkDirectionVariants
-    mkJumpRules
+    mkRootJumpRules
+    mkChildDispatchJumpRules
+    isRootFrom
+    mkSubChainKey
+    buildEffectiveSubChains
     mkUserObjects
     assembleTable
     emitTable
@@ -54,6 +58,7 @@ let
     loopback = true;
     rpfilter = false;
     chainPolicy = "drop";
+    localZone = "local";
   };
 
   /*
@@ -63,7 +68,13 @@ let
     inert. `getActiveMatchOverrides` filters null/empty sections,
     so `{ }` per side is equivalent to the all-null shape.
   */
-  mockZone = { matchOverride = { ingress = { }; egress = { }; }; };
+  mockZone = {
+    matchOverride = {
+      ingress = { };
+      egress = { };
+    };
+    parent = null;
+  };
   mergedZonesFor = names: pkgs.lib.genAttrs names (_: mockZone);
 
   /*
@@ -78,6 +89,7 @@ let
       settings ? defaultSettings,
       bucket,
       baseChainName ? "test-chain",
+      effectiveSubChains ? { },
       mergedZones ? { },
       zoneSets ? { },
     }:
@@ -87,17 +99,22 @@ let
         settings
         bucket
         baseChainName
+        effectiveSubChains
         mergedZones
         zoneSets
         ;
     };
+
+  # Empty bucket (no cells): just hook+priority+empty subChains.
+  emptyBucket = hook: priority: {
+    inherit hook priority;
+    subChains = { };
+  };
 in
 {
   # ===== emitTable — empty table assembles a table marker =====
 
   testEmitTableEmpty = {
-    # No zones → output is a `nftypes.dsl.table` value with name +
-    # family but no body. Marker presence proves dsl.table was used.
     expr =
       let
         out = (runEmit { }).output;
@@ -142,9 +159,6 @@ in
   # ===== emitTable — lowered nodes contribute v4/v6 sets via cidrs =====
 
   testEmitTableNodeAddressBecomesSet = {
-    # A node lowers to a zone with `cidrs = [ "<ipv4>/32" "<ipv6>/128" ]`.
-    # Phase 4 should produce v4 and v6 sets containing those /32 and /128
-    # prefixes.
     expr =
       let
         out =
@@ -191,10 +205,6 @@ in
   # ===== assembleTable — thin wrapper around nftypes.dsl.table =====
 
   testAssembleTableShape = {
-    # Pin the contract: `assembleTable { family; name; body; }`
-    # equals `nftypes.dsl.table family name body`. Marker presence
-    # + the four pass-through fields proves the wrapper isn't
-    # reshaping anything.
     expr =
       let
         body = {
@@ -234,8 +244,6 @@ in
     expected = "filter";
   };
 
-  # ===== chainTypeOf — nat (srcnat / dstnat priorities) =====
-
   testChainTypeOfSrcnat = {
     expr = chainTypeOf {
       hook = "postrouting";
@@ -251,8 +259,6 @@ in
     };
     expected = "nat";
   };
-
-  # ===== chainTypeOf — route (mangle on prerouting / output) =====
 
   testChainTypeOfRouteOnPrerouting = {
     expr = chainTypeOf {
@@ -270,19 +276,13 @@ in
     expected = "route";
   };
 
-  # ===== chainTypeOf — mangle on non-route hook → filter =====
-
   testChainTypeOfMangleOnInput = {
-    # Non-canonical placement; classify as filter (caller's
-    # problem if they want type=route at input).
     expr = chainTypeOf {
       hook = "input";
       priority = "mangle";
     };
     expected = "filter";
   };
-
-  # ===== chainTypeOf — chain override at raw priority → filter =====
 
   testChainTypeOfRpfilterOverride = {
     expr = chainTypeOf {
@@ -292,10 +292,7 @@ in
     expected = "filter";
   };
 
-  # ===== chainTypeOf — int priority resolves correctly =====
-
   testChainTypeOfIntSrcnat = {
-    # priorityIntsDefault.srcnat == 100
     expr = chainTypeOf {
       hook = "postrouting";
       priority = 100;
@@ -304,7 +301,6 @@ in
   };
 
   testChainTypeOfIntFilter = {
-    # priorityIntsDefault.filter == 0 → filter
     expr = chainTypeOf {
       hook = "forward";
       priority = 0;
@@ -313,7 +309,6 @@ in
   };
 
   testChainTypeOfIntRoute = {
-    # priorityIntsDefault.mangle == -150 on output → route
     expr = chainTypeOf {
       hook = "output";
       priority = -150;
@@ -322,8 +317,6 @@ in
   };
 
   testChainTypeOfIntRaw = {
-    # priorityIntsDefault.raw == -300 → filter (raw isn't srcnat /
-    # dstnat / mangle, so falls through to filter).
     expr = chainTypeOf {
       hook = "prerouting";
       priority = -300;
@@ -331,20 +324,173 @@ in
     expected = "filter";
   };
 
+  # ===== mkSubChainKey — bidirectional =====
+
+  testSubChainKeyForBidirectional = {
+    expr = mkSubChainKey "lan" "wan";
+    expected = "lan-to-wan";
+  };
+
+  # ===== mkSubChainKey — from-only =====
+
+  testSubChainKeyForFromOnly = {
+    expr = mkSubChainKey "wan" null;
+    expected = "wan";
+  };
+
+  # ===== mkSubChainKey — to-only =====
+
+  testSubChainKeyForToOnly = {
+    expr = mkSubChainKey null "vpn";
+    expected = "vpn";
+  };
+
+  # ===== isRootFrom — null parent → root =====
+
+  testIsRootFromNullParent = {
+    expr = isRootFrom { lan = mockZone; } "local" "lan";
+    expected = true;
+  };
+
+  # ===== isRootFrom — non-null parent → not root =====
+
+  testIsRootFromWithParent = {
+    expr = isRootFrom {
+      dmz = mockZone;
+      web = mockZone // {
+        parent = "dmz";
+      };
+    } "local" "web";
+    expected = false;
+  };
+
+  # ===== isRootFrom — localZone → root =====
+
+  testIsRootFromLocalZone = {
+    expr = isRootFrom { } "local" "local";
+    expected = true;
+  };
+
+  # ===== isRootFrom — unknown zone → root (defensive) =====
+
+  testIsRootFromUnknown = {
+    expr = isRootFrom { } "local" "ghost";
+    expected = true;
+  };
+
+  # ===== buildEffectiveSubChains — direct only (no hierarchy) =====
+
+  testBuildEffectiveSubChainsDirect = {
+    # No descendants → no synthetic intermediates. Direct sub-chain
+    # passes through unchanged.
+    expr =
+      let
+        bucket = {
+          subChains = {
+            "lan-to-wan" = {
+              from = "lan";
+              to = "wan";
+              preChildCells = [ ];
+              postChildCells = [ { name = "x"; } ];
+            };
+          };
+        };
+        mergedZones = mergedZonesFor [
+          "lan"
+          "wan"
+        ];
+        eff = buildEffectiveSubChains bucket mergedZones;
+      in
+      builtins.attrNames eff;
+    expected = [ "lan-to-wan" ];
+  };
+
+  # ===== buildEffectiveSubChains — descendant synthesizes intermediate parent =====
+
+  testBuildEffectiveSubChainsIntermediate = {
+    # web-server (parent dmz) has cells; dmz has no cells of its
+    # own. An intermediate `dmz-to-local` chain must be synthesized
+    # so the base chain has somewhere to dispatch into.
+    expr =
+      let
+        bucket = {
+          subChains = {
+            "web-server-to-local" = {
+              from = "web-server";
+              to = "local";
+              preChildCells = [ ];
+              postChildCells = [ { name = "allow-http"; } ];
+            };
+          };
+        };
+        mergedZones = {
+          dmz = mockZone;
+          web-server = mockZone // {
+            parent = "dmz";
+          };
+        };
+        eff = buildEffectiveSubChains bucket mergedZones;
+        intermediate = eff."dmz-to-local";
+      in
+      {
+        keys = pkgs.lib.sort (a: b: a < b) (builtins.attrNames eff);
+        intermediateIsEmpty = intermediate.preChildCells == [ ] && intermediate.postChildCells == [ ];
+        intermediateFrom = intermediate.from;
+        intermediateTo = intermediate.to;
+      };
+    expected = {
+      keys = [
+        "dmz-to-local"
+        "web-server-to-local"
+      ];
+      intermediateIsEmpty = true;
+      intermediateFrom = "dmz";
+      intermediateTo = "local";
+    };
+  };
+
+  # ===== buildEffectiveSubChains — direct wins over synthetic =====
+
+  testBuildEffectiveSubChainsDirectOverridesSynthetic = {
+    # If both parent (dmz) AND child (web-server) have cells,
+    # bucket.subChains has both. The intermediate synthesis would
+    # generate `dmz-to-local` empty; the direct entry must win.
+    expr =
+      let
+        bucket = {
+          subChains = {
+            "dmz-to-local" = {
+              from = "dmz";
+              to = "local";
+              preChildCells = [ ];
+              postChildCells = [ { name = "dmz-rate"; } ];
+            };
+            "web-server-to-local" = {
+              from = "web-server";
+              to = "local";
+              preChildCells = [ ];
+              postChildCells = [ { name = "allow-http"; } ];
+            };
+          };
+        };
+        mergedZones = {
+          dmz = mockZone;
+          web-server = mockZone // {
+            parent = "dmz";
+          };
+        };
+        eff = buildEffectiveSubChains bucket mergedZones;
+      in
+      builtins.length eff."dmz-to-local".postChildCells;
+    expected = 1;
+  };
+
   # ===== mkBaseChain — filter input gets stateful + loopback =====
 
   testMkBaseChainFilterInput = {
     expr =
       let
-        c = mkChain {
-          bucket = {
-            hook = "input";
-            priority = "filter";
-            preDispatch = [ ];
-            subChains = { };
-            postDispatch = [ ];
-          };
-        };
+        c = mkChain { bucket = emptyBucket "input" "filter"; };
       in
       {
         inherit (c)
@@ -364,20 +510,10 @@ in
     };
   };
 
-  # ===== mkBaseChain — filter forward: stateful only, no loopback =====
-
   testMkBaseChainFilterForward = {
     expr =
       let
-        c = mkChain {
-          bucket = {
-            hook = "forward";
-            priority = "filter";
-            preDispatch = [ ];
-            subChains = { };
-            postDispatch = [ ];
-          };
-        };
+        c = mkChain { bucket = emptyBucket "forward" "filter"; };
       in
       {
         inherit (c) type hook;
@@ -390,8 +526,6 @@ in
     };
   };
 
-  # ===== mkBaseChain — boilerplate disabled by settings =====
-
   testMkBaseChainBoilerplateDisabled = {
     expr =
       let
@@ -400,33 +534,17 @@ in
             stateful = false;
             loopback = false;
           };
-          bucket = {
-            hook = "input";
-            priority = "filter";
-            preDispatch = [ ];
-            subChains = { };
-            postDispatch = [ ];
-          };
+          bucket = emptyBucket "input" "filter";
         };
       in
       builtins.length c.rules;
     expected = 0;
   };
 
-  # ===== mkBaseChain — snat (type nat, no policy field) =====
-
   testMkBaseChainSnat = {
     expr =
       let
-        c = mkChain {
-          bucket = {
-            hook = "postrouting";
-            priority = "srcnat";
-            preDispatch = [ ];
-            subChains = { };
-            postDispatch = [ ];
-          };
-        };
+        c = mkChain { bucket = emptyBucket "postrouting" "srcnat"; };
       in
       {
         inherit (c) type hook prio;
@@ -442,20 +560,10 @@ in
     };
   };
 
-  # ===== mkBaseChain — sroute (prerouting/mangle → route) =====
-
   testMkBaseChainSroute = {
     expr =
       let
-        c = mkChain {
-          bucket = {
-            hook = "prerouting";
-            priority = "mangle";
-            preDispatch = [ ];
-            subChains = { };
-            postDispatch = [ ];
-          };
-        };
+        c = mkChain { bucket = emptyBucket "prerouting" "mangle"; };
       in
       {
         inherit (c) type hook prio;
@@ -469,20 +577,10 @@ in
     };
   };
 
-  # ===== mkBaseChain — dnat (type nat, no policy) =====
-
   testMkBaseChainDnat = {
     expr =
       let
-        c = mkChain {
-          bucket = {
-            hook = "prerouting";
-            priority = "dstnat";
-            preDispatch = [ ];
-            subChains = { };
-            postDispatch = [ ];
-          };
-        };
+        c = mkChain { bucket = emptyBucket "prerouting" "dstnat"; };
       in
       {
         inherit (c) type hook prio;
@@ -496,20 +594,10 @@ in
     };
   };
 
-  # ===== mkBaseChain — droute (type route) =====
-
   testMkBaseChainDroute = {
     expr =
       let
-        c = mkChain {
-          bucket = {
-            hook = "output";
-            priority = "mangle";
-            preDispatch = [ ];
-            subChains = { };
-            postDispatch = [ ];
-          };
-        };
+        c = mkChain { bucket = emptyBucket "output" "mangle"; };
       in
       {
         inherit (c) type hook prio;
@@ -523,8 +611,6 @@ in
     };
   };
 
-  # ===== mkBaseChain — rpfilter chain gets the fib drop rule =====
-
   testMkBaseChainRpfilter = {
     expr =
       let
@@ -532,13 +618,7 @@ in
           settings = defaultSettings // {
             rpfilter = true;
           };
-          bucket = {
-            hook = "prerouting";
-            priority = "raw";
-            preDispatch = [ ];
-            subChains = { };
-            postDispatch = [ ];
-          };
+          bucket = emptyBucket "prerouting" "raw";
         };
       in
       {
@@ -562,28 +642,24 @@ in
         rpfilter = true;
       };
       chainBuckets = { };
+      effectiveSubChainsByBucket = { };
       mergedZones = { };
       zoneSets = { };
     });
     expected = [ "prerouting-at-raw" ];
   };
 
-  # ===== mkBaseChains — rpfilter false produces no chains from empty =====
-
   testMkBaseChainsEmpty = {
     expr = mkBaseChains {
       family = "inet";
       settings = defaultSettings;
       chainBuckets = { };
+      effectiveSubChainsByBucket = { };
       mergedZones = { };
       zoneSets = { };
     };
     expected = { };
   };
-
-  # ===== mkBaseChains — one chain per bucket key =====
-  # Many buckets in → many base chains out. Pin the per-bucket
-  # contract so emit cannot accidentally collapse two into one.
 
   testMkBaseChainsPerBucket = {
     expr = pkgs.lib.sort (a: b: a < b) (
@@ -591,27 +667,14 @@ in
         family = "inet";
         settings = defaultSettings;
         chainBuckets = {
-          "input-at-filter" = {
-            hook = "input";
-            priority = "filter";
-            preDispatch = [ ];
-            subChains = { };
-            postDispatch = [ ];
-          };
-          "forward-at-filter" = {
-            hook = "forward";
-            priority = "filter";
-            preDispatch = [ ];
-            subChains = { };
-            postDispatch = [ ];
-          };
-          "postrouting-at-srcnat" = {
-            hook = "postrouting";
-            priority = "srcnat";
-            preDispatch = [ ];
-            subChains = { };
-            postDispatch = [ ];
-          };
+          "input-at-filter" = emptyBucket "input" "filter";
+          "forward-at-filter" = emptyBucket "forward" "filter";
+          "postrouting-at-srcnat" = emptyBucket "postrouting" "srcnat";
+        };
+        effectiveSubChainsByBucket = {
+          "input-at-filter" = { };
+          "forward-at-filter" = { };
+          "postrouting-at-srcnat" = { };
         };
         mergedZones = { };
         zoneSets = { };
@@ -650,8 +713,6 @@ in
     ];
   };
 
-  # ===== emitTable — chain header carries type/hook/prio/policy =====
-
   testEmitTableChainHeader = {
     expr =
       let
@@ -688,13 +749,7 @@ in
     };
   };
 
-  # ===== emitTable — chain override flows to the right base chain =====
-
   testEmitTableChainOverride = {
-    # A filter rule with `chain = { hook = "prerouting"; priority = "raw"; }`
-    # should produce a `prerouting-at-raw` base chain at type=filter,
-    # WITHOUT the `policy` field (raw is not the canonical filter
-    # priority that gets the chain-level fallback).
     expr =
       let
         chains =
@@ -730,8 +785,6 @@ in
       hasPolicy = false;
     };
   };
-
-  # ===== emitTable — settings.rpfilter adds the rpfilter chain =====
 
   testEmitTableRpfilterEnabled = {
     expr =
@@ -778,8 +831,6 @@ in
     ];
   };
 
-  # ===== mkRuleBody — snat with address translation =====
-
   testMkRuleBodySnatAddr = {
     expr = mkRuleBody {
       rule.snat = {
@@ -795,16 +846,12 @@ in
     ];
   };
 
-  # ===== mkRuleBody — snat masquerade =====
-
   testMkRuleBodySnatMasquerade = {
     expr = mkRuleBody {
       rule.masquerade = { };
     };
     expected = [ (nftypes.dsl.masquerade { }) ];
   };
-
-  # ===== mkRuleBody — dnat (match clauses + dnat action) =====
 
   testMkRuleBodyDnat = {
     expr = mkRuleBody {
@@ -825,8 +872,6 @@ in
     ];
   };
 
-  # ===== mkRuleBody — dnat with redirect action =====
-
   testMkRuleBodyDnatRedirect = {
     expr = mkRuleBody {
       rule = {
@@ -839,10 +884,7 @@ in
     expected = [ (nftypes.dsl.redirect { port = 22; }) ];
   };
 
-  # ===== mkRuleBody — sroute / droute (rule is a list of mangle stmts) =====
-
   testMkRuleBodySroute = {
-    # sroute and droute look identical to filter at this layer.
     expr = mkRuleBody {
       rule = [
         (nftypes.dsl.mangle nftypes.dsl.fields.meta.mark 100)
@@ -853,28 +895,37 @@ in
     ];
   };
 
-  # ===== mkRuleBody — policy accept =====
-
   testMkRuleBodyPolicyAccept = {
     expr = mkRuleBody { verdict = "accept"; };
     expected = [ nftypes.dsl.accept ];
   };
-
-  # ===== mkRuleBody — policy drop =====
 
   testMkRuleBodyPolicyDrop = {
     expr = mkRuleBody { verdict = "drop"; };
     expected = [ nftypes.dsl.drop ];
   };
 
-  # ===== mkSubChain — produces a chain body with rules =====
+  # ===== mkSubChain — single cell, no children =====
 
   testMkSubChainSingleCell = {
-    expr = mkSubChain [
-      {
-        rule = [ nftypes.dsl.accept ];
-      }
-    ];
+    expr = mkSubChain {
+      hook = "forward";
+      subChain = {
+        from = "lan";
+        to = "wan";
+        preChildCells = [ ];
+        postChildCells = [ { rule = [ nftypes.dsl.accept ]; } ];
+      };
+      baseChainName = "forward-at-filter";
+      childrenOf = { };
+      effectiveSubChains = { };
+      mergedZones = mergedZonesFor [
+        "lan"
+        "wan"
+      ];
+      zoneSets = { };
+      localZone = "local";
+    };
     expected = {
       rules = [
         [ nftypes.dsl.accept ]
@@ -882,52 +933,105 @@ in
     };
   };
 
+  # ===== mkSubChain — pre-child cells emit before child dispatch =====
+
+  testMkSubChainOrder = {
+    # preChildCells (priority < 100) emit first, then child-dispatch
+    # jumps, then postChildCells (priority >= 100) — in this test
+    # there are no children, so just pre then post.
+    expr = mkSubChain {
+      hook = "forward";
+      subChain = {
+        from = "lan";
+        to = "wan";
+        preChildCells = [ { rule = [ nftypes.dsl.accept ]; } ];
+        postChildCells = [ { rule = [ nftypes.dsl.drop ]; } ];
+      };
+      baseChainName = "forward-at-filter";
+      childrenOf = { };
+      effectiveSubChains = { };
+      mergedZones = mergedZonesFor [
+        "lan"
+        "wan"
+      ];
+      zoneSets = { };
+      localZone = "local";
+    };
+    expected = {
+      rules = [
+        [ nftypes.dsl.accept ]
+        [ nftypes.dsl.drop ]
+      ];
+    };
+  };
+
   # ===== mkSubChains — empty input =====
 
   testMkSubChainsEmpty = {
-    expr = mkSubChains { };
+    expr = mkSubChains {
+      chainBuckets = { };
+      effectiveSubChainsByBucket = { };
+      childrenOf = { };
+      mergedZones = { };
+      zoneSets = { };
+      localZone = "local";
+    };
     expected = { };
   };
 
-  # ===== mkSubChains — bidirectional sub-chain naming =====
-
   testMkSubChainsBidirectional = {
-    # Naming convention: <baseChainName>__<subChainKey>
-    expr = builtins.attrNames (mkSubChains {
-      "forward-at-filter" = {
-        hook = "forward";
-        priority = "filter";
-        preDispatch = [ ];
-        postDispatch = [ ];
-        subChains = {
-          "lan-to-wan" = {
-            from = "lan";
-            to = "wan";
-            cells = [ { rule = [ nftypes.dsl.accept ]; } ];
+    expr =
+      let
+        bucket = {
+          hook = "forward";
+          priority = "filter";
+          subChains = {
+            "lan-to-wan" = {
+              from = "lan";
+              to = "wan";
+              preChildCells = [ ];
+              postChildCells = [ { rule = [ nftypes.dsl.accept ]; } ];
+            };
           };
         };
-      };
-    });
+      in
+      builtins.attrNames (mkSubChains {
+        chainBuckets."forward-at-filter" = bucket;
+        effectiveSubChainsByBucket."forward-at-filter" = bucket.subChains;
+        childrenOf = { };
+        mergedZones = mergedZonesFor [
+          "lan"
+          "wan"
+        ];
+        zoneSets = { };
+        localZone = "local";
+      });
     expected = [ "forward-at-filter__lan-to-wan" ];
   };
 
-  # ===== mkSubChains — single-direction sub-chain (dnat-style) =====
-
   testMkSubChainsSingleDirection = {
-    expr = builtins.attrNames (mkSubChains {
-      "prerouting-at-dstnat" = {
-        hook = "prerouting";
-        priority = "dstnat";
-        preDispatch = [ ];
-        postDispatch = [ ];
-        subChains = {
-          "wan" = {
-            from = "wan";
-            cells = [ ];
+    expr =
+      let
+        bucket = {
+          hook = "prerouting";
+          priority = "dstnat";
+          subChains = {
+            "wan" = {
+              from = "wan";
+              preChildCells = [ ];
+              postChildCells = [ ];
+            };
           };
         };
-      };
-    });
+      in
+      builtins.attrNames (mkSubChains {
+        chainBuckets."prerouting-at-dstnat" = bucket;
+        effectiveSubChainsByBucket."prerouting-at-dstnat" = bucket.subChains;
+        childrenOf = { };
+        mergedZones = mergedZonesFor [ "wan" ];
+        zoneSets = { };
+        localZone = "local";
+      });
     expected = [ "prerouting-at-dstnat__wan" ];
   };
 
@@ -959,9 +1063,12 @@ in
     ];
   };
 
-  # ===== emitTable — preDispatch cells land in base chain, NOT sub-chain =====
+  # ===== emitTable — preDispatch-priority cells land in sub-chain pre slot =====
 
-  testEmitTablePreDispatchInBaseChain = {
+  testEmitTablePreDispatchInSubChain = {
+    # Under the new model, priority="first" (1 < 100) lands in the
+    # sub-chain's preChildCells — NOT in the base chain pre slot.
+    # Base chain only carries boilerplate + jumps now.
     expr =
       let
         out =
@@ -982,25 +1089,23 @@ in
             };
           }).output;
         baseChain = out.chains."forward-at-filter";
+        subChain = out.chains."forward-at-filter__lan-to-wan";
       in
       {
-        # Expect the rule in base chain (after stateful prelude).
+        # Base chain: stateful (2) + jump (1).
         baseRuleCount = builtins.length baseChain.rules;
-        # Expect NO sub-chain (cell didn't go to subChains slot).
-        hasSubChain = out.chains ? "forward-at-filter__lan-to-wan";
+        # Sub-chain: the early rule (priority < 100 → pre slot).
+        subRuleCount = builtins.length subChain.rules;
       };
     expected = {
-      baseRuleCount = 3; # 2 stateful + 1 early (preDispatch slot)
-      hasSubChain = false;
+      baseRuleCount = 3;
+      subRuleCount = 1;
     };
   };
 
   # ===== emitTable — filter + policy in same pair: policy is tail rule =====
 
   testEmitTableFilterAndPolicyInSubChain = {
-    # Phase 3 sorts cells with priority first, then policies (no
-    # priority) appended as tail rules. Sub-chain body should
-    # reflect that order.
     expr =
       let
         sub =
@@ -1027,7 +1132,6 @@ in
       in
       {
         ruleCount = builtins.length sub.rules;
-        # Last rule should be the policy verdict (drop).
         lastRuleStmt = builtins.head (builtins.elemAt sub.rules 1);
       };
     expected = {
@@ -1035,8 +1139,6 @@ in
       lastRuleStmt = nftypes.dsl.drop;
     };
   };
-
-  # ===== emitTable — snat masquerade lands in postrouting sub-chain =====
 
   testEmitTableSnatSubChain = {
     expr =
@@ -1078,8 +1180,6 @@ in
     expected = [ [ ] ];
   };
 
-  # ===== mkDirectionVariants — null direction (single-direction sub-chain) =====
-
   testMkDirectionVariantsNullDirection = {
     expr = mkDirectionVariants {
       hook = "prerouting";
@@ -1091,8 +1191,6 @@ in
     };
     expected = [ [ ] ];
   };
-
-  # ===== mkDirectionVariants — interface-only zone at hook with iif valid =====
 
   testMkDirectionVariantsInterfaceOnly = {
     expr = mkDirectionVariants {
@@ -1113,13 +1211,7 @@ in
     ];
   };
 
-  # ===== mkDirectionVariants — iif unavailable + no addrs → empty =====
-
   testMkDirectionVariantsUnreachable = {
-    # `output` hook makes `iifname` unavailable for `from` matching;
-    # zone has no addr sets → no variants. Phase 1 should normally
-    # catch this; defensive empty result causes the cartesian
-    # product to drop the entire jump.
     expr = mkDirectionVariants {
       hook = "output";
       direction = "from";
@@ -1135,8 +1227,6 @@ in
     };
     expected = [ ];
   };
-
-  # ===== mkDirectionVariants — v4 only =====
 
   testMkDirectionVariantsV4Only = {
     expr = mkDirectionVariants {
@@ -1157,8 +1247,6 @@ in
       [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4")) ]
     ];
   };
-
-  # ===== mkDirectionVariants — v4 + v6 (one variant per family) =====
 
   testMkDirectionVariantsV4AndV6 = {
     expr = mkDirectionVariants {
@@ -1185,8 +1273,6 @@ in
       [ (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6")) ]
     ];
   };
-
-  # ===== mkDirectionVariants — iif + v4 + v6 (each variant carries iif prefix) =====
 
   testMkDirectionVariantsIfPlusV4V6 = {
     expr = mkDirectionVariants {
@@ -1224,13 +1310,13 @@ in
     ];
   };
 
-  # ===== mkJumpRules — empty subChains =====
+  # ===== mkRootJumpRules — empty =====
 
-  testMkJumpRulesEmpty = {
-    expr = mkJumpRules {
+  testMkRootJumpRulesEmpty = {
+    expr = mkRootJumpRules {
       hook = "forward";
       baseChainName = "forward-at-filter";
-      subChains = { };
+      effectiveSubChains = { };
       mergedZones = { };
       zoneSets = { };
       localZone = "local";
@@ -1238,20 +1324,23 @@ in
     expected = [ ];
   };
 
-  # ===== mkJumpRules — bidirectional sub-chain produces one jump =====
-
-  testMkJumpRulesBidirectional = {
-    expr = mkJumpRules {
+  testMkRootJumpRulesBidirectional = {
+    # Root from-zone (lan with parent==null) → emits a base-chain jump.
+    expr = mkRootJumpRules {
       hook = "forward";
       baseChainName = "forward-at-filter";
-      subChains = {
+      effectiveSubChains = {
         "lan-to-wan" = {
           from = "lan";
           to = "wan";
-          cells = [ ];
+          preChildCells = [ ];
+          postChildCells = [ ];
         };
       };
-      mergedZones = mergedZonesFor [ "lan" "wan" ];
+      mergedZones = mergedZonesFor [
+        "lan"
+        "wan"
+      ];
       zoneSets = {
         lan_iifs = {
           type = "ifname";
@@ -1273,16 +1362,15 @@ in
     ];
   };
 
-  # ===== mkJumpRules — single-direction sub-chain (dnat from-only) =====
-
-  testMkJumpRulesSingleDirection = {
-    expr = mkJumpRules {
+  testMkRootJumpRulesSingleDirection = {
+    expr = mkRootJumpRules {
       hook = "prerouting";
       baseChainName = "prerouting-at-dstnat";
-      subChains = {
+      effectiveSubChains = {
         "wan" = {
           from = "wan";
-          cells = [ ];
+          preChildCells = [ ];
+          postChildCells = [ ];
         };
       };
       mergedZones = mergedZonesFor [ "wan" ];
@@ -1302,25 +1390,75 @@ in
     ];
   };
 
-  # ===== mkJumpRules — cartesian product drops cross-family pairs =====
+  # ===== mkRootJumpRules — non-root from-zone is skipped =====
 
-  testMkJumpRulesCartesian = {
-    # `lan` has v4 + v6, `wan` has v4 + v6 → only matched-family
-    # pairs survive: (v4-from, v4-to) + (v6-from, v6-to). The
-    # cross-family pairs ((v4-from, v6-to) and (v6-from, v4-to))
-    # are dropped — nft rejects them with "conflicting network
-    # layer protocols specified" in `inet` tables.
-    expr = builtins.length (mkJumpRules {
+  testMkRootJumpRulesNonRootSkipped = {
+    # web-server (parent dmz) is not a root → no base-chain jump.
+    # Only `dmz-to-wan` (root) emits one.
+    expr = mkRootJumpRules {
       hook = "forward";
       baseChainName = "forward-at-filter";
-      subChains = {
+      effectiveSubChains = {
+        "dmz-to-wan" = {
+          from = "dmz";
+          to = "wan";
+          preChildCells = [ ];
+          postChildCells = [ ];
+        };
+        "web-server-to-wan" = {
+          from = "web-server";
+          to = "wan";
+          preChildCells = [ ];
+          postChildCells = [ ];
+        };
+      };
+      mergedZones = {
+        dmz = mockZone;
+        web-server = mockZone // {
+          parent = "dmz";
+        };
+        wan = mockZone;
+      };
+      zoneSets = {
+        dmz_iifs = {
+          type = "ifname";
+          elements = [ "dmz0" ];
+        };
+        web-server_v4 = { };
+        wan_iifs = {
+          type = "ifname";
+          elements = [ "wan0" ];
+        };
+      };
+      localZone = "local";
+    };
+    expected = [
+      [
+        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "dmz_iifs"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.meta.oifname (nftypes.dsl.expr.setRef "wan_iifs"))
+        (nftypes.dsl.jump "forward-at-filter__dmz-to-wan")
+      ]
+    ];
+  };
+
+  # ===== mkRootJumpRules — cartesian product drops cross-family pairs =====
+
+  testMkRootJumpRulesCartesian = {
+    expr = builtins.length (mkRootJumpRules {
+      hook = "forward";
+      baseChainName = "forward-at-filter";
+      effectiveSubChains = {
         "lan-to-wan" = {
           from = "lan";
           to = "wan";
-          cells = [ ];
+          preChildCells = [ ];
+          postChildCells = [ ];
         };
       };
-      mergedZones = mergedZonesFor [ "lan" "wan" ];
+      mergedZones = mergedZonesFor [
+        "lan"
+        "wan"
+      ];
       zoneSets = {
         lan_v4 = { };
         lan_v6 = { };
@@ -1332,40 +1470,72 @@ in
     expected = 2;
   };
 
-  # ===== mkJumpRules — interface-only side composes with both families =====
+  # ===== mkChildDispatchJumpRules — emits jumps for matching children =====
 
-  testMkJumpRulesIfsByFamily = {
-    # Family-agnostic variants (interface-only, extra-only, empty)
-    # match `null` against any concrete family — they compose with
-    # both v4 and v6 variants on the opposite side. This is the
-    # contract that lets `compatibleFamilies` keep the `null` rows
-    # of the cartesian product instead of dropping them with the
-    # cross-family pairs.
-    #
-    # Setup: `lan` has v4 + v6 (two variants); `wan` has only iifs
-    # (one agnostic variant). 2 from-variants × 1 to-variant = 2.
-    expr = builtins.length (mkJumpRules {
-      hook = "forward";
-      baseChainName = "forward-at-filter";
-      subChains = {
-        "lan-to-wan" = {
-          from = "lan";
-          to = "wan";
-          cells = [ ];
+  testMkChildDispatchJumpsBasic = {
+    # parent dmz with one child web-server. Child's from-side
+    # variant becomes the jump rule's match.
+    expr = mkChildDispatchJumpRules {
+      hook = "input";
+      parentFromZone = "dmz";
+      toZone = "local";
+      baseChainName = "input-at-filter";
+      childrenOf.dmz = [ "web-server" ];
+      effectiveSubChains = {
+        "dmz-to-local" = {
+          from = "dmz";
+          to = "local";
+          preChildCells = [ ];
+          postChildCells = [ ];
+        };
+        "web-server-to-local" = {
+          from = "web-server";
+          to = "local";
+          preChildCells = [ ];
+          postChildCells = [ ];
         };
       };
-      mergedZones = mergedZonesFor [ "lan" "wan" ];
-      zoneSets = {
-        lan_v4 = { };
-        lan_v6 = { };
-        wan_iifs = {
-          type = "ifname";
-          elements = [ "wan0" ];
+      mergedZones = {
+        dmz = mockZone;
+        web-server = mockZone // {
+          parent = "dmz";
         };
+      };
+      zoneSets = {
+        web-server_v4 = { };
       };
       localZone = "local";
-    });
-    expected = 2;
+    };
+    expected = [
+      [
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "web-server_v4"))
+        (nftypes.dsl.jump "input-at-filter__web-server-to-local")
+      ]
+    ];
+  };
+
+  # ===== mkChildDispatchJumpRules — child without effective sub-chain is skipped =====
+
+  testMkChildDispatchJumpsNoTarget = {
+    # web-server is a child but has no entry in effectiveSubChains
+    # for this (baseChainName, toZone). No jump emitted.
+    expr = mkChildDispatchJumpRules {
+      hook = "input";
+      parentFromZone = "dmz";
+      toZone = "local";
+      baseChainName = "input-at-filter";
+      childrenOf.dmz = [ "web-server" ];
+      effectiveSubChains = { };
+      mergedZones = {
+        dmz = mockZone;
+        web-server = mockZone // {
+          parent = "dmz";
+        };
+      };
+      zoneSets = { };
+      localZone = "local";
+    };
+    expected = [ ];
   };
 
   # ===== emitTable — jump rule lands in base chain =====
@@ -1390,7 +1560,7 @@ in
             };
           }).output;
         baseRules = out.chains."forward-at-filter".rules;
-        # Last rule should be the jump (after stateful boilerplate).
+        # After stateful (2 rules), the jump.
         jumpRule = builtins.elemAt baseRules 2;
       in
       jumpRule;
@@ -1400,8 +1570,6 @@ in
       (nftypes.dsl.jump "forward-at-filter__lan-to-wan")
     ];
   };
-
-  # ===== emitTable — dnat: from-side-only jump =====
 
   testEmitTableDnatJump = {
     expr =
@@ -1431,8 +1599,6 @@ in
     ];
   };
 
-  # ===== emitTable — filter to localZone: from-side-only jump =====
-
   testEmitTableJumpToLocalZone = {
     expr =
       let
@@ -1458,12 +1624,12 @@ in
     ];
   };
 
-  # ===== emitTable — full base-chain rule order =====
+  # ===== emitTable — base chain rule order =====
 
   testEmitTableBaseChainRuleOrder = {
-    # Rule order: stateful → loopback → preDispatch → jumps → postDispatch.
-    # input chain with default + first + last priority cells:
-    #   stateful (2) + loopback (1) + preDispatch (1) + jump (1) + postDispatch (1) = 6
+    # Under the new model, base chain has only:
+    #   stateful (2) + loopback (1) + jump (1) = 4 rules.
+    # The early/normal/late cells all live inside the sub-chain.
     expr =
       let
         out =
@@ -1482,7 +1648,6 @@ in
                 from = [ "wan" ];
                 to = [ "local" ];
                 rule = [ ];
-                # default priority → subChains slot
               };
               late = {
                 from = [ "wan" ];
@@ -1493,12 +1658,17 @@ in
             };
           }).output;
         baseRules = out.chains."input-at-filter".rules;
+        subRules = out.chains."input-at-filter__wan-to-local".rules;
       in
-      builtins.length baseRules;
-    expected = 6;
+      {
+        baseRuleCount = builtins.length baseRules;
+        subRuleCount = builtins.length subRules;
+      };
+    expected = {
+      baseRuleCount = 4; # stateful (2) + loopback (1) + jump (1)
+      subRuleCount = 3; # early, normal, late
+    };
   };
-
-  # ===== mkUserObjects — identity passthrough =====
 
   testMkUserObjectsIdentity = {
     expr = mkUserObjects {
@@ -1510,10 +1680,6 @@ in
       quotas = { };
     };
   };
-
-  # ===== emitTable — droute lands in output@mangle base chain =====
-  # Validates the default chain placement for `droutes`: per
-  # dispatch.nix, droute → output / mangle (route type).
 
   testEmitTableDrouteChain = {
     expr =
@@ -1540,8 +1706,6 @@ in
     };
   };
 
-  # ===== emitTable — sroute lands in prerouting@mangle base chain =====
-
   testEmitTableSrouteChain = {
     expr =
       let
@@ -1567,8 +1731,6 @@ in
     };
   };
 
-  # ===== emitTable — empty table.objects → no extra body kinds =====
-
   testEmitTableEmptyObjects = {
     expr =
       let
@@ -1580,10 +1742,6 @@ in
           }).output;
       in
       pkgs.lib.attrNames out;
-    # `family` and `name` are always present; `sets` for the zone;
-    # `__nftTable` is the marker added by `nftypes.dsl.table`. No
-    # other body kinds because all 12 `table.objects.<kind>`
-    # default to `{}` and are filtered out.
     expected = [
       "__nftTable"
       "family"
@@ -1591,8 +1749,6 @@ in
       "sets"
     ];
   };
-
-  # ===== emitTable — counter passes through to body.counters =====
 
   testEmitTableCounterPassthrough = {
     expr =
@@ -1603,13 +1759,8 @@ in
           }).output;
       in
       pkgs.lib.attrNames out.counters;
-    # Counter body fields (`bytes` / `comment` / `packets`) come
-    # from the type defaults; we only assert the entry shows up
-    # under the right name.
     expected = [ "web-hits" ];
   };
-
-  # ===== emitTable — multiple kinds flow through =====
 
   testEmitTableMultipleKinds = {
     expr =
@@ -1645,8 +1796,6 @@ in
     ];
   };
 
-  # ===== emitTable — user-defined set merges with zone sets =====
-
   testEmitTableUserSetMergesWithZoneSets = {
     expr =
       let
@@ -1662,18 +1811,13 @@ in
           }).output;
       in
       pkgs.lib.sort (a: b: a < b) (pkgs.lib.attrNames out.sets);
-    # Both zone-generated and user-defined sets share `body.sets`.
     expected = [
       "blocklist_v4"
       "lan_iifs"
     ];
   };
 
-  # ===== emitTable — empty user-object kinds are skipped =====
-
   testEmitTableEmptyKindsSkipped = {
-    # `objects.counters = {}` (default) shouldn't add a `counters`
-    # field to the output body.
     expr =
       let
         out =
@@ -1681,7 +1825,6 @@ in
             zones.lan = {
               interfaces = [ "lan0" ];
             };
-            # all 12 kinds default to {}
           }).output;
       in
       builtins.any (k: builtins.elem k (pkgs.lib.attrNames out)) [
@@ -1700,12 +1843,7 @@ in
     expected = false;
   };
 
-  # ===== mkDirectionVariants — extra section ANDs into every variant =====
-
   testMkDirectionVariantsExtraSection = {
-    # Zone has v4 + v6 sets via the auto path AND a `meta mark`
-    # extra clause via the override. Every emitted variant
-    # should carry the mark clause as a prefix.
     expr = mkDirectionVariants {
       hook = "forward";
       direction = "from";
@@ -1731,11 +1869,7 @@ in
     ];
   };
 
-  # ===== mkDirectionVariants — extra-only zone (no families, no interfaces) =====
-
   testMkDirectionVariantsExtraOnly = {
-    # Zone with only an `extra` section and no auto sets emits one
-    # prefix-only variant (single rule with the extra clauses).
     expr = mkDirectionVariants {
       hook = "forward";
       direction = "from";
@@ -1751,11 +1885,7 @@ in
     ];
   };
 
-  # ===== mkDirectionVariants — ipv4 override replaces auto v4 =====
-
   testMkDirectionVariantsIpv4Override = {
-    # Zone has auto v4 and v6 sets; user overrides v4 with a
-    # custom user set. v6 still uses the auto set.
     expr = mkDirectionVariants {
       hook = "forward";
       direction = "from";
@@ -1775,11 +1905,7 @@ in
     ];
   };
 
-  # ===== mkDirectionVariants — interfaces override is hook-gated =====
-
   testMkDirectionVariantsInterfacesGatedByHook = {
-    # Override interfaces section at `output` hook (where iifname
-    # isn't valid for `from`) → section dropped, fall back to auto v4.
     expr = mkDirectionVariants {
       hook = "output";
       direction = "from";
@@ -1799,41 +1925,70 @@ in
     ];
   };
 
-  # ===== mkJumpRules — override on one zone composes with auto on the other =====
+  # ===== emitTable — parent hierarchy: child sub-chain receives jump from parent =====
 
-  testMkJumpRulesOverrideComposesWithAuto = {
-    # `lan` (from) has v4 auto; `vpn` (to) has only an `extra`
-    # mark-based override. The jump rule combines them.
-    expr = mkJumpRules {
-      hook = "forward";
-      baseChainName = "forward-at-filter";
-      subChains = {
-        "lan-to-vpn" = {
-          from = "lan";
-          to = "vpn";
-          cells = [ ];
-        };
-      };
-      mergedZones = {
-        lan = mockZone;
-        vpn = {
-          matchOverride = {
-            ingress = { };
-            egress = {
-              extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
+  testEmitTableParentBasic = {
+    # web-server (node, parent dmz) has its own rule. The dmz
+    # sub-chain is synthesized as a transparent dispatcher; base
+    # chain jumps only to dmz; dmz jumps to web-server.
+    expr =
+      let
+        out =
+          (runEmit {
+            zones.dmz = {
+              interfaces = [ "dmz0" ];
+              cidrs = [ "10.0.0.0/24" ];
             };
-          };
-        };
+            nodes.web-server = {
+              zone = "dmz";
+              address.ipv4 = "10.0.0.5";
+            };
+            filters.allow-http = {
+              from = [ "web-server" ];
+              to = [ "local" ];
+              rule = [
+                (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 80)
+                nftypes.dsl.accept
+              ];
+            };
+          }).output;
+        chains = out.chains;
+      in
+      {
+        chainKeys = pkgs.lib.sort (a: b: a < b) (builtins.attrNames chains);
+        # Base chain (input-at-filter): stateful (2) + loopback (1) +
+        # jump-to-dmz (multiple variants if iifs+v4) = 5 rules.
+        # The base chain only jumps to root from-zones (dmz), not
+        # web-server.
+        baseRulesCount = builtins.length chains."input-at-filter".rules;
+        # dmz transparent dispatcher: only the child-dispatch jump
+        # to web-server.
+        dmzRules = chains."input-at-filter__dmz-to-local".rules;
+        # web-server sub-chain: the actual rule.
+        webRules = chains."input-at-filter__web-server-to-local".rules;
       };
-      zoneSets = { lan_v4 = { }; };
-      localZone = "local";
+    expected = {
+      chainKeys = [
+        "input-at-filter"
+        "input-at-filter__dmz-to-local"
+        "input-at-filter__web-server-to-local"
+      ];
+      # 2 stateful + 1 loopback + 1 dmz jump (iif AND v4 ANDed in
+      # one variant; to-side is localZone → empty variant) = 4.
+      baseRulesCount = 4;
+      # One child-dispatch jump (web-server has only v4, not iifs).
+      dmzRules = [
+        [
+          (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "web-server_v4"))
+          (nftypes.dsl.jump "input-at-filter__web-server-to-local")
+        ]
+      ];
+      webRules = [
+        [
+          (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 80)
+          nftypes.dsl.accept
+        ]
+      ];
     };
-    expected = [
-      [
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4"))
-        (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256)
-        (nftypes.dsl.jump "forward-at-filter__lan-to-vpn")
-      ]
-    ];
   };
 }

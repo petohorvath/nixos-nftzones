@@ -13,6 +13,10 @@ let
   inherit (nftzones.internal.normalize)
     convertNodesToZones
     computeZoneSets
+    checkParentRefs
+    checkParentCycles
+    computeChildrenOf
+    computeRootZoneNames
     checkNameCollisions
     checkPolicyUniqueness
     checkSettings
@@ -406,22 +410,25 @@ in
 
   testCollectAllZoneNamesShape = {
     expr = pkgs.lib.sort (a: b: a < b) (
-      (runPipeline [
-        convertNodesToZones
-        collectAllZoneNames
-      ] (
-        emptyTable
-        // {
-          zones = {
-            lan = { };
-            wan = { };
-          };
-          nodes.web = {
-            zone = "lan";
-            address.ipv4 = "10.0.0.5";
-          };
-        }
-      )).allZoneNames
+      (runPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              lan = { };
+              wan = { };
+            };
+            nodes.web = {
+              zone = "lan";
+              address.ipv4 = "10.0.0.5";
+            };
+          }
+        )
+      ).allZoneNames
     );
     expected = [
       "lan"
@@ -435,19 +442,22 @@ in
 
   testCollectAllZoneNamesCustomLocal = {
     expr =
-      (runPipeline [
-        convertNodesToZones
-        collectAllZoneNames
-      ] (
-        emptyTable
-        // {
-          settings = {
-            wildcardZone = "all";
-            localZone = "host";
-          };
-          zones.lan = { };
-        }
-      )).allZoneNames;
+      (runPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+        ]
+        (
+          emptyTable
+          // {
+            settings = {
+              wildcardZone = "all";
+              localZone = "host";
+            };
+            zones.lan = { };
+          }
+        )
+      ).allZoneNames;
     expected = [
       "lan"
       "host"
@@ -565,6 +575,7 @@ in
     expr =
       (runPipeline [
         convertNodesToZones
+        computeRootZoneNames
         collectAllZoneNames
         expandWildcardZones
         checkPolicyUniqueness
@@ -579,6 +590,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeRootZoneNames
           collectAllZoneNames
           expandWildcardZones
           checkPolicyUniqueness
@@ -611,6 +623,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeRootZoneNames
           collectAllZoneNames
           expandWildcardZones
           checkPolicyUniqueness
@@ -652,6 +665,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeRootZoneNames
           collectAllZoneNames
           expandWildcardZones
           checkPolicyUniqueness
@@ -698,6 +712,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeRootZoneNames
           collectAllZoneNames
           expandWildcardZones
           checkPolicyUniqueness
@@ -741,6 +756,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeRootZoneNames
           collectAllZoneNames
           expandWildcardZones
         ]
@@ -775,6 +791,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeRootZoneNames
           collectAllZoneNames
           expandWildcardZones
         ]
@@ -819,6 +836,7 @@ in
           runPipeline
             [
               convertNodesToZones
+              computeRootZoneNames
               collectAllZoneNames
               expandWildcardZones
             ]
@@ -891,6 +909,7 @@ in
             }
             [
               convertNodesToZones
+              computeRootZoneNames
               collectAllZoneNames
               expandWildcardZones
             ];
@@ -1222,6 +1241,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeRootZoneNames
           collectAllZoneNames
           expandWildcardZones
           collectZoneRefs
@@ -1255,6 +1275,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeRootZoneNames
           collectAllZoneNames
           expandWildcardZones
           collectZoneRefs
@@ -1831,6 +1852,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeRootZoneNames
           collectAllZoneNames
           expandWildcardZones
           checkChainOverridePlacement
@@ -1921,9 +1943,13 @@ in
     };
   };
 
-  # ===== normalizeTable — wildcard resolved across declared + lowered + local =====
+  # ===== normalizeTable — from-wildcard expands to roots only =====
 
   testNormalizeResolvesWildcards = {
+    # Under hierarchy, `from = [ "all" ]` expands to root zones
+    # only — descendants ride into the chain via parent dispatch.
+    # The `web` node (parent `lan`) is NOT a root, so it doesn't
+    # appear in the expansion.
     expr =
       let
         out = normalizeTable (evalTable {
@@ -1952,7 +1978,6 @@ in
       "lan"
       "local"
       "wan"
-      "web"
     ];
   };
 
@@ -2094,13 +2119,10 @@ in
 
   testComputeZoneSetsEmpty = {
     expr =
-      (runEvalPipeline
-        [
-          convertNodesToZones
-          computeZoneSets
-        ]
-        { name = "fw"; }
-      ).zoneSets;
+      (runEvalPipeline [
+        convertNodesToZones
+        computeZoneSets
+      ] { name = "fw"; }).zoneSets;
     expected = { };
   };
 
@@ -2398,9 +2420,7 @@ in
                 from = [ "wan" ];
                 rule = {
                   match = [
-                    (dsl.inSet
-                      nftypes.dsl.fields.ip.saddr
-                      (dsl.expr.setRef "ghost-set"))
+                    (dsl.inSet nftypes.dsl.fields.ip.saddr (dsl.expr.setRef "ghost-set"))
                   ];
                   action.dnat = {
                     addr = "10.0.0.5";
@@ -2450,9 +2470,7 @@ in
             from = [ "lan" ];
             to = [ "lan" ];
             rule = [
-              (dsl.inSet
-                nftypes.dsl.fields.ip.saddr
-                (dsl.expr.setRef "lan_v4"))
+              (dsl.inSet nftypes.dsl.fields.ip.saddr (dsl.expr.setRef "lan_v4"))
               dsl.accept
             ];
           };
@@ -2484,9 +2502,7 @@ in
                 from = [ "wan" ];
                 to = [ "wan" ];
                 rule = [
-                  (dsl.inSet
-                    nftypes.dsl.fields.ip6.saddr
-                    (dsl.expr.setRef "wan_v6"))
+                  (dsl.inSet nftypes.dsl.fields.ip6.saddr (dsl.expr.setRef "wan_v6"))
                   dsl.accept
                 ];
               };
@@ -2517,9 +2533,7 @@ in
               zones.lan = {
                 interfaces = [ "lan0" ];
                 matchOverride.ingress.ipv4 = [
-                  (dsl.inSet
-                    nftypes.dsl.fields.ip.saddr
-                    (dsl.expr.setRef "ghost-set"))
+                  (dsl.inSet nftypes.dsl.fields.ip.saddr (dsl.expr.setRef "ghost-set"))
                 ];
               };
             }
@@ -2562,7 +2576,10 @@ in
             };
             sets.blocklist = {
               type = "ipv4_addr";
-              elem = [ "1.2.3.4" "5.6.7.8" ];
+              elem = [
+                "1.2.3.4"
+                "5.6.7.8"
+              ];
             };
           };
         }
@@ -2663,9 +2680,7 @@ in
           zones.lan = {
             interfaces = [ "lan0" ];
             matchOverride.egress.ipv4 = [
-              (dsl.inSet
-                nftypes.dsl.fields.ip.daddr
-                (dsl.expr.setRef "blocklist"))
+              (dsl.inSet nftypes.dsl.fields.ip.daddr (dsl.expr.setRef "blocklist"))
             ];
           };
           objects.sets.blocklist = {
@@ -2736,20 +2751,21 @@ in
   # that at the contract boundary.
 
   testNormalizeCtxShape = {
-    expr =
-      pkgs.lib.sort (a: b: a < b) (
-        builtins.attrNames
-          (normalizeTable (evalTable {
-            name = "fw";
-            zones.lan.interfaces = [ "lan0" ];
-          })).ctx
-      );
+    expr = pkgs.lib.sort (a: b: a < b) (
+      builtins.attrNames
+        (normalizeTable (evalTable {
+          name = "fw";
+          zones.lan.interfaces = [ "lan0" ];
+        })).ctx
+    );
     expected = [
       "allZoneNames"
+      "childrenOf"
       "errors"
       "expandedGroups"
       "mergedZones"
       "resolvedPriorities"
+      "rootZoneNames"
       "zoneRefs"
       "zoneSets"
     ];
@@ -2776,5 +2792,281 @@ in
       interfaces = [ "eth1" ];
       cidrs = [ "10.0.0.0/24" ];
     };
+  };
+
+  # ===== checkParentRefs — null parent passes =====
+
+  testCheckParentRefsNullPasses = {
+    expr =
+      (runPipeline [
+        convertNodesToZones
+        checkParentRefs
+      ] emptyTable).errors;
+    expected = [ ];
+  };
+
+  # ===== checkParentRefs — known parent passes =====
+
+  testCheckParentRefsKnownPasses = {
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          checkParentRefs
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              dmz = {
+                interfaces = [ "dmz0" ];
+              };
+              web = {
+                parent = "dmz";
+                cidrs = [ "10.0.0.5/32" ];
+              };
+            };
+          }
+        )
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkParentRefs — unknown parent flagged =====
+
+  testCheckParentRefsUnknown = {
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          checkParentRefs
+        ]
+        (
+          emptyTable
+          // {
+            zones.web = {
+              parent = "ghost";
+              cidrs = [ "10.0.0.5/32" ];
+            };
+          }
+        )
+      ).errors;
+    expected = [
+      {
+        name = "zoneParentUnknown";
+        value = "zones.web.parent references unknown zone 'ghost'";
+      }
+    ];
+  };
+
+  # ===== checkParentRefs — localZone as parent flagged =====
+
+  testCheckParentRefsLocalZone = {
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          checkParentRefs
+        ]
+        (
+          emptyTable
+          // {
+            zones.web = {
+              parent = "local";
+              cidrs = [ "10.0.0.5/32" ];
+            };
+          }
+        )
+      ).errors;
+    expected = [
+      {
+        name = "zoneParentLocalZone";
+        value = "zones.web.parent is 'local' (the localZone sentinel) — localZone cannot be a parent";
+      }
+    ];
+  };
+
+  # ===== checkParentRefs — node lowering propagates parent for validation =====
+
+  testCheckParentRefsNodeLowered = {
+    # A node lowers to a zone with `parent = node.zone`. If
+    # node.zone is unknown, validator flags it.
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          checkParentRefs
+        ]
+        (
+          emptyTable
+          // {
+            nodes.web = {
+              name = "web";
+              zone = "ghost";
+              address = {
+                ipv4 = "10.0.0.5";
+                ipv6 = null;
+              };
+            };
+          }
+        )
+      ).errors;
+    expected = [
+      {
+        name = "zoneParentUnknown";
+        value = "zones.web.parent references unknown zone 'ghost'";
+      }
+    ];
+  };
+
+  # ===== checkParentCycles — no cycle =====
+
+  testCheckParentCyclesNone = {
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          checkParentCycles
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              a = { };
+              b = {
+                parent = "a";
+              };
+              c = {
+                parent = "b";
+              };
+            };
+          }
+        )
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkParentCycles — simple cycle flagged =====
+
+  testCheckParentCyclesSimple = {
+    expr =
+      let
+        errs =
+          (runPipeline
+            [
+              convertNodesToZones
+              checkParentCycles
+            ]
+            (
+              emptyTable
+              // {
+                zones = {
+                  a = {
+                    parent = "b";
+                  };
+                  b = {
+                    parent = "a";
+                  };
+                };
+              }
+            )
+          ).errors;
+      in
+      # `lib.unique` may leave rotated duplicates; we only assert
+      # that *at least one* cycle error was emitted.
+      builtins.length errs >= 1 && builtins.all (e: e.name == "zoneParentCycle") errs;
+    expected = true;
+  };
+
+  # ===== computeChildrenOf — empty parent set =====
+
+  testComputeChildrenOfEmpty = {
+    expr =
+      (runPipeline [
+        convertNodesToZones
+        computeChildrenOf
+      ] emptyTable).childrenOf;
+    expected = { };
+  };
+
+  # ===== computeChildrenOf — inverse map of parent =====
+
+  testComputeChildrenOfBasic = {
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          computeChildrenOf
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              dmz = { };
+              web = {
+                parent = "dmz";
+              };
+              api = {
+                parent = "dmz";
+              };
+              standalone = { };
+            };
+          }
+        )
+      ).childrenOf;
+    # Children sorted alphabetically. `standalone` (no parent) is
+    # not a key in childrenOf.
+    expected = {
+      dmz = [
+        "api"
+        "web"
+      ];
+    };
+  };
+
+  # ===== computeRootZoneNames — only localZone when no zones =====
+
+  testComputeRootZoneNamesEmpty = {
+    expr =
+      (runPipeline [
+        convertNodesToZones
+        computeRootZoneNames
+      ] emptyTable).rootZoneNames;
+    expected = [ "local" ];
+  };
+
+  # ===== computeRootZoneNames — roots only + localZone =====
+
+  testComputeRootZoneNamesBasic = {
+    # `dmz` is a root (no parent); `web` (parent dmz) is not.
+    # `localZone` always appears as a root.
+    expr =
+      let
+        out =
+          (runPipeline
+            [
+              convertNodesToZones
+              computeRootZoneNames
+            ]
+            (
+              emptyTable
+              // {
+                zones = {
+                  dmz = { };
+                  web = {
+                    parent = "dmz";
+                  };
+                  wan = { };
+                };
+              }
+            )
+          ).rootZoneNames;
+      in
+      pkgs.lib.sort (a: b: a < b) out;
+    expected = [
+      "dmz"
+      "local"
+      "wan"
+    ];
   };
 }

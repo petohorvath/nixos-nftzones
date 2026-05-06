@@ -257,9 +257,7 @@ in
           v6
         ];
         json = builtins.fromJSON (nftypes.toJson rs);
-        tableCommands = builtins.filter (
-          c: c ? add && c.add ? table
-        ) json.nftables;
+        tableCommands = builtins.filter (c: c ? add && c.add ? table) json.nftables;
         tableTuples = map (c: {
           inherit (c.add.table) name family;
         }) tableCommands;
@@ -287,22 +285,22 @@ in
     expr =
       let
         json = builtins.fromJSON (
-          nftypes.toJson (nftzones.mkRuleset "fw" {
-            zones = {
-              lan.interfaces = [ "lan0" ];
-              wan.interfaces = [ "wan0" ];
-            };
-            filters.f = {
-              from = [ "lan" ];
-              to = [ "wan" ];
-              rule = [ ];
-            };
-          })
+          nftypes.toJson (
+            nftzones.mkRuleset "fw" {
+              zones = {
+                lan.interfaces = [ "lan0" ];
+                wan.interfaces = [ "wan0" ];
+              };
+              filters.f = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+                rule = [ ];
+              };
+            }
+          )
         );
         chainNames = pkgs.lib.sort (a: b: a < b) (
-          map (c: c.add.chain.name) (
-            builtins.filter (c: c ? add && c.add ? chain) json.nftables
-          )
+          map (c: c.add.chain.name) (builtins.filter (c: c ? add && c.add ? chain) json.nftables)
         );
       in
       chainNames;

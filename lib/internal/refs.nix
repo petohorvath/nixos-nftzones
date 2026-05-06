@@ -148,23 +148,18 @@ let
         let
           body = v.vmap or null;
         in
-        lib.optional (
-          isSingleton "vmap"
-          && builtins.isAttrs body
-          && (body ? data)
-          && builtins.isString body.data
-        ) {
-          kind = "maps";
-          name = stripAt body.data;
-        };
+        lib.optional
+          (isSingleton "vmap" && builtins.isAttrs body && (body ? data) && builtins.isString body.data)
+          {
+            kind = "maps";
+            name = stripAt body.data;
+          };
 
       flowRef =
         let
           body = v.flow or null;
         in
-        lib.optional (
-          isSingleton "flow" && builtins.isAttrs body && (body ? flowtable)
-        ) {
+        lib.optional (isSingleton "flow" && builtins.isAttrs body && (body ? flowtable)) {
           kind = "flowtables";
           name = stripAt body.flowtable;
         };

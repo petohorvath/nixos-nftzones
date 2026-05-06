@@ -3,8 +3,7 @@
   render + `nft --check` pipeline itself: an empty table with a
   single set should parse cleanly.
 */
-_:
-{
+_: {
   zones.lan = {
     interfaces = [ "lan0" ];
   };

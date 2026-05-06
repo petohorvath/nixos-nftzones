@@ -1,6 +1,6 @@
 # Cross-Zone Validation (Draft — Superseded)
 
-> **Status**: this draft is preserved for historical context. The actual validation work landed inline in `lib/internal/normalize.nix` as a sequence of Phase 1 validators (`checkNameCollisions`, `checkSettings`, `checkZoneRefs`, `checkZoneMatchable`, `checkChainOverridePlacement`, `checkPolicyUniqueness`, `checkSetNameCollisions`, `checkObjectRefs`) — see `docs/compile-pipeline-draft.md` §1.3 for the current shape. The "Where the validation lives" / "Open questions" sections below reflect choices that were made differently in implementation.
+> **Status**: this draft is preserved for historical context. The actual validation work landed inline in `lib/internal/normalize.nix` as a sequence of Phase 1 validators (`checkNameCollisions`, `checkSettings`, `checkZoneRefs`, `checkZoneMatchable`, `checkChainOverridePlacement`, `checkPolicyUniqueness`, `checkSetNameCollisions`, `checkObjectRefs`, `checkParentRefs`, `checkParentCycles`) — see `docs/compile-pipeline-draft.md` §1.3 for the current shape and `docs/specs/zone-parent.md` for the parent-related ones. The "Where the validation lives" / "Open questions" sections below reflect choices that were made differently in implementation.
 
 This document captures the design discussion around validating zone configurations across the whole `zones` attrset, beyond what per-zone NixOS option types can express.
 
@@ -118,4 +118,14 @@ A dedicated `lib/validate/` namespace is **not** an established Nix/NixOS conven
 
 ## Status
 
-No code has been written for the validator yet. Decisions on the open questions above need to be made before implementation, and the chosen approach should align with whatever shape the eventual `nftzones.modules.zones` module takes.
+Parent resolution and parent-cycle detection landed in
+`lib/internal/normalize.nix` as `checkParentRefs` and
+`checkParentCycles`. The validators run during Phase 1 of the
+compile pipeline and emit aggregated errors with the rest of
+Phase 1's validators. See `docs/specs/zone-parent.md` for the
+hierarchical-dispatch model that gives `parent` its observable
+behaviour and the rejected validator-shape alternatives discussed
+above.
+
+Reserved-name and CIDR-overlap checks were not implemented; their
+absence is tolerated for now.

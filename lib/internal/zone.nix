@@ -111,7 +111,8 @@ let
     (`active.ipv4 or autoV4`).
   */
   getActiveMatchOverrides =
-    zone: side: lib.filterAttrs (_: section: section != null && section != [ ]) zone.matchOverride.${side};
+    zone: side:
+    lib.filterAttrs (_: section: section != null && section != [ ]) zone.matchOverride.${side};
 in
 {
   inherit genSets getActiveMatchOverrides;

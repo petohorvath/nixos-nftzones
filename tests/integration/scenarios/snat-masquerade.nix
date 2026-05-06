@@ -3,8 +3,7 @@
   postrouting@srcnat base chain with type=nat. Exercises the
   snat-via-rule.masquerade dispatch path.
 */
-_:
-{
+_: {
   zones = {
     lan.interfaces = [ "lan0" ];
     wan.interfaces = [ "wan0" ];

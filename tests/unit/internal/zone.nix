@@ -14,7 +14,12 @@ let
   inherit (nftypes.dsl) expr;
   inherit (nftzones.internal.zone) genSets getActiveMatchOverrides;
 
-  mockZoneOverride = sections: { matchOverride = { ingress = sections; egress = { }; }; };
+  mockZoneOverride = sections: {
+    matchOverride = {
+      ingress = sections;
+      egress = { };
+    };
+  };
 
   cidrV4 = "10.0.0.0/24";
   cidrV6 = "2001:db8::/32";
@@ -84,10 +89,14 @@ in
   # ===== genSets — multiple CIDRs of the same family preserve order =====
 
   testGenSetsMultipleSameFamily = {
-    expr = (genSets "lan" {
-      interfaces = [ ];
-      cidrs = [ "10.0.0.0/24" "192.168.0.0/16" ];
-    }).lan_v4.elements;
+    expr =
+      (genSets "lan" {
+        interfaces = [ ];
+        cidrs = [
+          "10.0.0.0/24"
+          "192.168.0.0/16"
+        ];
+      }).lan_v4.elements;
     expected = [
       (expr.prefix "10.0.0.0" 24)
       (expr.prefix "192.168.0.0" 16)
@@ -125,10 +134,12 @@ in
   # ===== genSets — set names always carry the zone-name prefix =====
 
   testGenSetsNamePrefix = {
-    expr = pkgs.lib.attrNames (genSets "guest" {
-      interfaces = [ "guest0" ];
-      cidrs = [ cidrV4 ];
-    });
+    expr = pkgs.lib.attrNames (
+      genSets "guest" {
+        interfaces = [ "guest0" ];
+        cidrs = [ cidrV4 ];
+      }
+    );
     expected = [
       "guest_iifs"
       "guest_v4"
@@ -191,8 +202,12 @@ in
       let
         zone = {
           matchOverride = {
-            ingress = { ipv4 = [ "ing-v4" ]; };
-            egress = { extra = [ "egr-extra" ]; };
+            ingress = {
+              ipv4 = [ "ing-v4" ];
+            };
+            egress = {
+              extra = [ "egr-extra" ];
+            };
           };
         };
       in
@@ -201,8 +216,12 @@ in
         egr = getActiveMatchOverrides zone "egress";
       };
     expected = {
-      ing = { ipv4 = [ "ing-v4" ]; };
-      egr = { extra = [ "egr-extra" ]; };
+      ing = {
+        ipv4 = [ "ing-v4" ];
+      };
+      egr = {
+        extra = [ "egr-extra" ];
+      };
     };
   };
 }

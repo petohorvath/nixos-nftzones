@@ -19,6 +19,10 @@
       { table; ctx = { errors = [ ]; }; }
         ↓ convertNodesToZones           ctx.mergedZones
         ↓ computeZoneSets               ctx.zoneSets
+        ↓ checkParentRefs               ctx.errors  (appends)
+        ↓ checkParentCycles             ctx.errors  (appends)
+        ↓ computeChildrenOf             ctx.childrenOf
+        ↓ computeRootZoneNames          ctx.rootZoneNames
         ↓ collectAllZoneNames           ctx.allZoneNames
         ↓ expandWildcardZones           ctx.expandedGroups
         ↓ resolvePriorities             ctx.resolvedPriorities
@@ -33,8 +37,9 @@
         ↓ checkObjectRefs               ctx.errors  (appends)
       { table;
         ctx = {
-          mergedZones; zoneSets; allZoneNames; expandedGroups;
-          resolvedPriorities; zoneRefs; errors;
+          mergedZones; zoneSets; childrenOf; rootZoneNames;
+          allZoneNames; expandedGroups; resolvedPriorities;
+          zoneRefs; errors;
         };
       }
 
@@ -83,6 +88,60 @@
   `nftzones.types.zone` submodule shape (filling in `name`,
   `matchOverride`, `comment` defaults), then merges into
   the declared zones. Result is a uniformly-shaped attrset.
+
+  ===== checkParentRefs =====
+
+  Reads:  ctx.mergedZones, table.settings.localZone
+  Writes: ctx.errors (appends)
+
+  Verifies every non-null `zone.parent` resolves to a key in
+  `ctx.mergedZones`. The `localZone` sentinel is forbidden as a
+  parent — it isn't a real zone, has no ingress match, and can't
+  participate in chain dispatch. Each error is
+  `lib.nameValuePair "zoneParentUnknown" <message>` for unresolved
+  parents, or `"zoneParentLocalZone" <message>` for the localZone
+  case.
+
+  ===== checkParentCycles =====
+
+  Reads:  ctx.mergedZones
+  Writes: ctx.errors (appends)
+
+  Walks each zone's parent chain; if a name is revisited within
+  the same walk, emits a cycle error. Rotated duplicates of the
+  same cycle (e.g., `a → b → c → a` and `b → c → a → b`) may
+  survive `lib.unique` since the dedup is on the formatted string;
+  acceptable for a v1 — a single cycle still fails the build.
+
+  Each error is `lib.nameValuePair "zoneParentCycle" <message>`
+  with the cycle path joined by `" → "`.
+
+  ===== computeChildrenOf =====
+
+  Reads:  ctx.mergedZones
+  Writes: ctx.childrenOf
+
+  Inverse map of `parent`: for each parent name that appears in
+  any `zone.parent` field, lists the children that point at it.
+  Roots (zones with `parent == null`) are not present in
+  `childrenOf`'s keys; consumers read with `or [ ]`. Children
+  lists are alphabetically sorted for stable jump emission order
+  in Phase 4 emit.
+
+  ===== computeRootZoneNames =====
+
+  Reads:  ctx.mergedZones, table.settings.localZone
+  Writes: ctx.rootZoneNames
+
+  Computes the list of root zones: zones in `mergedZones` whose
+  `parent == null`, plus the `localZone` sentinel. Used in two
+  places:
+    - Wildcard from-side expansion (`from = [ "all" ]`) substitutes
+      this list rather than every zone, since descendants reach
+      traffic via parent dispatch.
+    - Phase 4 emit's `mkBaseChain` jump-rule construction emits
+      base-chain jumps only for root from-zones whose subtree has
+      content for the relevant to-zone.
 
   ===== checkNameCollisions =====
 
@@ -400,7 +459,147 @@ let
     {
       inherit table;
       ctx = ctx // {
-        zoneSets = lib.foldlAttrs (acc: name: zone: acc // genSets name zone) { } ctx.mergedZones;
+        zoneSets = lib.foldlAttrs (
+          acc: name: zone:
+          acc // genSets name zone
+        ) { } ctx.mergedZones;
+      };
+    };
+
+  /*
+    `parentOf zone` reads `zone.parent or null` — accommodating
+    raw test fixtures that bypass the type system. Submodule-
+    evaluated zones always have `parent` defaulted to null.
+  */
+  parentOf = zone: zone.parent or null;
+
+  checkParentRefs =
+    { table, ctx }:
+    let
+      inherit (table.settings) localZone;
+      inherit (ctx) mergedZones;
+
+      newErrors = lib.foldlAttrs (
+        acc: zoneName: zone:
+        let
+          p = parentOf zone;
+        in
+        if p == null then
+          acc
+        else if p == localZone then
+          acc
+          ++ [
+            (lib.nameValuePair "zoneParentLocalZone" "zones.${zoneName}.parent is '${p}' (the localZone sentinel) — localZone cannot be a parent")
+          ]
+        else if !(mergedZones ? ${p}) then
+          acc
+          ++ [
+            (lib.nameValuePair "zoneParentUnknown" "zones.${zoneName}.parent references unknown zone '${p}'")
+          ]
+        else
+          acc
+      ) [ ] mergedZones;
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
+  checkParentCycles =
+    { table, ctx }:
+    let
+      inherit (ctx) mergedZones;
+
+      /*
+        Walk the parent chain starting at `start`. Returns a
+        non-empty list (the cycle path) iff a cycle is found,
+        empty list otherwise. The walk stops at unresolved or
+        null parents — those are handled by `checkParentRefs`
+        and are not cycles.
+      */
+      walkChain =
+        start:
+        let
+          step =
+            visited: name:
+            let
+              zone = mergedZones.${name} or null;
+              parent = if zone == null then null else parentOf zone;
+            in
+            if parent == null then
+              [ ]
+            else if !(mergedZones ? ${parent}) then
+              [ ]
+            else if builtins.elem parent visited then
+              visited ++ [ parent ]
+            else
+              step (visited ++ [ parent ]) parent;
+        in
+        step [ start ] start;
+
+      cycles = lib.pipe (builtins.attrNames mergedZones) [
+        (map walkChain)
+        (builtins.filter (chain: chain != [ ]))
+        (map (chain: lib.concatStringsSep " → " chain))
+        lib.unique
+      ];
+
+      newErrors = map (msg: lib.nameValuePair "zoneParentCycle" "zone parent cycle: ${msg}") cycles;
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
+  computeChildrenOf =
+    { table, ctx }:
+    let
+      inherit (ctx) mergedZones;
+
+      childrenOf = lib.mapAttrs (_: lib.sort (a: b: a < b)) (
+        lib.foldlAttrs (
+          acc: zoneName: zone:
+          let
+            p = parentOf zone;
+          in
+          if p == null then
+            acc
+          else
+            acc
+            // {
+              ${p} = (acc.${p} or [ ]) ++ [ zoneName ];
+            }
+        ) { } mergedZones
+      );
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        inherit childrenOf;
+      };
+    };
+
+  computeRootZoneNames =
+    { table, ctx }:
+    let
+      inherit (table.settings) localZone;
+      inherit (ctx) mergedZones;
+
+      rootsFromZones = lib.pipe mergedZones [
+        (lib.filterAttrs (_: zone: parentOf zone == null))
+        builtins.attrNames
+      ];
+
+      rootZoneNames = rootsFromZones ++ [ localZone ];
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        inherit rootZoneNames;
       };
     };
 
@@ -408,12 +607,26 @@ let
     { table, ctx }:
     let
       inherit (table.settings) wildcardZone;
-      inherit (ctx) allZoneNames;
+      inherit (ctx) allZoneNames rootZoneNames;
 
-      expandWildcard =
+      /*
+        From-side wildcard expands to root zones only: descendants
+        receive traffic via parent dispatch (Phase 4 emits child
+        sub-chain jumps inside each parent's sub-chain). Expanding
+        to every zone would emit redundant cells in every leaf.
+
+        To-side wildcard keeps the full zone list because to-side
+        hierarchy is not modelled — `to = [ "all" ]` means "any
+        destination zone" and each unique destination needs its
+        own sub-chain.
+      */
+      expandFrom =
+        zones: lib.unique (lib.concatMap (z: if z == wildcardZone then rootZoneNames else [ z ]) zones);
+      expandTo =
         zones: lib.unique (lib.concatMap (z: if z == wildcardZone then allZoneNames else [ z ]) zones);
 
-      expandDirection = direction: entry: expandWildcard entry.${direction};
+      expandDirection =
+        direction: entry: if direction == "from" then expandFrom entry.from else expandTo entry.to;
 
       expandEntry =
         directions: entry: lib.genAttrs directions (direction: expandDirection direction entry);
@@ -754,8 +967,7 @@ let
         compute path) the zone declares any interfaces or CIDRs.
       */
       isMatchable =
-        zone: side:
-        getActiveMatchOverrides zone side != { } || zone.interfaces != [ ] || zone.cidrs != [ ];
+        zone: side: getActiveMatchOverrides zone side != { } || zone.interfaces != [ ] || zone.cidrs != [ ];
 
       # Skip refs without a `direction` (node parent refs), refs to
       # the localZone sentinel (no `mergedZones` entry by design),
@@ -884,17 +1096,26 @@ let
       refsFromMatchOverrides = lib.concatLists (
         lib.mapAttrsToList (
           zoneName: zone:
-          lib.concatMap (
-            dir:
-            lib.concatLists (
-              lib.mapAttrsToList (
-                section: body:
-                map (ref: ref // {
-                  path = "zones.${zoneName}.matchOverride.${dir}.${section}";
-                }) (extractRefs body)
-              ) (getActiveMatchOverrides zone dir)
+          lib.concatMap
+            (
+              dir:
+              lib.concatLists (
+                lib.mapAttrsToList (
+                  section: body:
+                  map (
+                    ref:
+                    ref
+                    // {
+                      path = "zones.${zoneName}.matchOverride.${dir}.${section}";
+                    }
+                  ) (extractRefs body)
+                ) (getActiveMatchOverrides zone dir)
+              )
             )
-          ) [ "ingress" "egress" ]
+            [
+              "ingress"
+              "egress"
+            ]
         ) mergedZones
       );
 
@@ -915,9 +1136,7 @@ let
           ) kindAttrs
         );
 
-      refsFromObjects = lib.concatLists (
-        lib.mapAttrsToList refsFromObjectKind table.objects
-      );
+      refsFromObjects = lib.concatLists (lib.mapAttrsToList refsFromObjectKind table.objects);
 
       allRefs = lib.concatLists [
         (refsFromGroup "filters" table.filters)
@@ -929,14 +1148,10 @@ let
         refsFromObjects
       ];
 
-      unresolvedRefs = builtins.filter (
-        r: !(builtins.elem r.name (knownNames.${r.kind} or [ ]))
-      ) allRefs;
+      unresolvedRefs = builtins.filter (r: !(builtins.elem r.name (knownNames.${r.kind} or [ ]))) allRefs;
 
       newErrors = map (
-        r:
-        lib.nameValuePair "objectRefUnknown"
-          "${r.path} references unknown ${r.kind} object '${r.name}'"
+        r: lib.nameValuePair "objectRefUnknown" "${r.path} references unknown ${r.kind} object '${r.name}'"
       ) unresolvedRefs;
     in
     {
@@ -952,6 +1167,10 @@ let
       final = lib.pipe (mkInitialState table) [
         convertNodesToZones
         computeZoneSets
+        checkParentRefs
+        checkParentCycles
+        computeChildrenOf
+        computeRootZoneNames
         collectAllZoneNames
         expandWildcardZones
         resolvePriorities
@@ -978,6 +1197,10 @@ in
   inherit
     convertNodesToZones
     computeZoneSets
+    checkParentRefs
+    checkParentCycles
+    computeChildrenOf
+    computeRootZoneNames
     checkNameCollisions
     checkPolicyUniqueness
     checkSettings

@@ -191,9 +191,7 @@ in
       in
       {
         differ = compact != pretty;
-        prettyLonger =
-          lib.length (lib.splitString "\n" pretty)
-          > lib.length (lib.splitString "\n" compact);
+        prettyLonger = lib.length (lib.splitString "\n" pretty) > lib.length (lib.splitString "\n" compact);
       };
     expected = {
       differ = true;

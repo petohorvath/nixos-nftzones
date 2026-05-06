@@ -14,10 +14,11 @@
   into the final table body):
 
       { table; ctx (post-Phase 3) }
-        ↓ emitBaseChains   ctx.baseChains    (reads ctx.zoneSets for jumps)
-        ↓ emitSubChains    ctx.subChains
-        ↓ emitUserObjects  ctx.userObjects
-        ↓ assembleOutput   ctx.output        (nftypes.dsl.table value)
+        ↓ computeEffectiveSubChains  ctx.effectiveSubChainsByBucket
+        ↓ emitBaseChains             ctx.baseChains
+        ↓ emitSubChains              ctx.subChains
+        ↓ emitUserObjects            ctx.userObjects
+        ↓ assembleOutput             ctx.output (nftypes.dsl.table value)
       { table; ctx }
 
   `ctx.zoneSets` is materialized once in Phase 1
@@ -25,6 +26,13 @@
   serves both Phase 1 validators (`checkSetNameCollisions`,
   `checkObjectRefs`) and Phase 4 emit (jump construction +
   `assembleOutput`'s final body), avoiding redundant evaluation.
+
+  `ctx.effectiveSubChainsByBucket` is the same idea applied per
+  base chain bucket: each bucket's full sub-chain map (direct +
+  intermediate dispatchers) is computed once in
+  `computeEffectiveSubChains` and consumed by both
+  `mkBaseChain` (root-jump emission) and `mkSubChain` (chain
+  body construction).
 
   ===== assembleTable =====
 
@@ -69,13 +77,6 @@
   builders so they pass the marker-validation that prevents raw
   libnftables-json shapes from leaking through.
 
-  ===== mkSubChain =====
-
-  Pure helper: build one sub-chain body (regular non-base chain
-  with a `rules` field) from a list of cells. Cells are already
-  sorted by Phase 3 (priority asc, name asc; policies last as
-  tail rules) so this just maps `mkRuleBody` over them in order.
-
   ===== subChainNameOf =====
 
   Pure helper: build the full nftables sub-chain name from a
@@ -86,14 +87,65 @@
   `body.chains` for sub-chains and as the `jump` target in base
   chains.
 
+  ===== mkSubChainKey =====
+
+  Pure helper: compose a sub-chain key from explicit
+  `(fromZone, toZone)` components — the unpacked counterpart to
+  `dispatch.subChainKeyOf` (which takes a cell). Used by
+  `buildEffectiveSubChains` to fabricate intermediate-parent
+  sub-chain keys without re-parsing strings.
+
+  ===== isRootFrom =====
+
+  Pure predicate: is this from-zone a root (no parent)?
+  `localZone` is always a root by construction — the sentinel
+  has no `mergedZones` entry. Unknown zones are also treated as
+  roots defensively (consistent with the localZone case).
+
+  ===== buildEffectiveSubChains =====
+
+  Pure helper: for one base chain bucket, compute the full set of
+  sub-chain records to emit — direct cell-bearing sub-chains
+  plus transparent intermediate-parent dispatchers synthesized
+  along each cell-bearing sub-chain's parent chain. Returns an
+  attrset keyed by `subChainKey`.
+
+  Why intermediates: only root from-zones jump from the base
+  chain. A descendant zone with cells (e.g. `web-server`) is
+  only reachable through a chain of parent dispatch jumps
+  starting at its root ancestor. If any ancestor lacks its own
+  cells, an empty placeholder chain still has to exist so the
+  parent above can dispatch into it.
+
+  Direct sub-chain records carry `preChildCells` and
+  `postChildCells` from Phase 3. Synthesized intermediates are
+  seeded with empty cell lists; emit fills them with just the
+  child-dispatch jumps.
+
+  ===== mkSubChain =====
+
+  Pure helper: build one sub-chain body (regular non-base chain
+  with a `rules` field) from one sub-chain record. Body order:
+
+    1. preChildCells   — sorted (priority asc, name asc) by
+                          Phase 3.
+    2. child-dispatch jumps to children with content (one rule
+                          per child × from-side variant).
+    3. postChildCells  — sorted (priority asc, name asc;
+                          policies appended last as tail rules)
+                          by Phase 3.
+
+  Sub-chains with no `from` (droute-style) carry no
+  child-dispatch — hierarchy applies only on the from-side.
+
   ===== mkSubChains =====
 
-  Walks `ctx.chainBuckets.<baseChainName>.subChains.<subChainKey>`
-  producing one sub-chain entry per `(baseChainName, subChainKey)`
-  pair, keyed by the full sub-chain name (see `subChainNameOf`).
-  Reuses Phase 3 keys verbatim so the name → `(hook, priority,
-  from, to)` mapping is mechanical and auditable in the generated
-  JSON.
+  Walks every base chain bucket's effective sub-chains
+  (see `buildEffectiveSubChains`), producing one sub-chain entry
+  per `(baseChainName, subChainKey)` pair, keyed by the full
+  sub-chain name (see `subChainNameOf`). Reuses Phase 3 keys
+  verbatim so the name → `(hook, priority, from, to)` mapping is
+  mechanical and auditable in the generated JSON.
 
   ===== mkDirectionVariants =====
 
@@ -101,7 +153,7 @@
   (`from` / `to`) of one sub-chain at a given hook. Returns a
   list of variants — each variant is a list of statements ANDed
   within a single rule. The cartesian product across both
-  directions is taken in `mkJumpRules`.
+  directions is taken in `mkRootJumpRules`.
 
   Why per-variant rather than ANDed clauses: in `inet` family,
   `ip <addr>` and `ip6 <addr>` clauses can't be ANDed in the
@@ -135,34 +187,49 @@
   Both return `[ [ ] ]` (one empty variant, contributing nothing
   to the cartesian product).
 
-  ===== mkJumpRules =====
+  ===== mkChildDispatchJumpRules =====
 
-  Pure helper: build the jump rules for one base chain bucket.
-  For each sub-chain, computes the `from` / `to` direction
-  variants and emits one jump per variant pair (cartesian
-  product). Each jump = `<from-stmts> ++ <to-stmts> ++ [ jump
-  (subChainNameOf baseChainName subChainKey) ]`.
+  Pure helper: build the child-dispatch jump rules for one
+  parent sub-chain. For each child of `parentFromZone` that has
+  a sub-chain in `effectiveSubChains` for the same `toZone`,
+  emit one jump per from-side variant of the child's match.
+  Targets `__<child>-to-<to>` (or `__<child>` for
+  single-direction sub-chains).
 
-  Family-mismatch waste: in `inet` with both v4 and v6 sets on
-  each direction, the cartesian product produces (v4-from,
-  v6-to) and (v6-from, v4-to) jumps in addition to the
-  matched-family pairs. They're harmless (skip on family
-  mismatch) but bloat the chain. Optimization deferred — see
-  `docs/compile-pipeline-draft.md` §4.4.
+  To-side is implicit — by the time control reaches a parent's
+  sub-chain, traffic already matched the to-side at the
+  chain-jump point. Child-dispatch only re-checks the from-side,
+  narrowing into the more specific child match.
+
+  ===== mkRootJumpRules =====
+
+  Pure helper: build the dispatch jump rules for one base chain
+  bucket. Walks each effective sub-chain; emits jumps only for
+  sub-chains whose `from` is a root from-zone — descendants
+  ride into their sub-chain via the parent's child-dispatch
+  jumps, not via the base chain.
+
+  For each emitted (root) sub-chain, computes the `from` / `to`
+  direction variants and produces one jump per variant pair
+  (cartesian product), dropping cross-family combinations
+  (e.g. v4-from × v6-to) that nft refuses to compile in `inet`
+  tables.
+
+  Sub-chains with no `from` (droute-style) are also emitted from
+  the base chain — they have no parent hierarchy to ride
+  through.
 
   ===== mkBaseChain =====
 
   Pure helper: produces one base chain attrset (chainBody shape per
   `nftypes.dsl.table` docstring) for a given `{ family; settings;
-  bucket; baseChainName; zoneSets; }`. Includes:
+  bucket; baseChainName; mergedZones; zoneSets; }`. Includes:
     - `type` derived via `chainTypeOf`.
     - `hook`, `prio` (priority resolved to int via
       `nftypes.resolvePriority`).
     - `policy` (filter chains only) from `settings.chainPolicy`.
-    - `rules` — boilerplate for filter chains, plus user cells
-      from `bucket.preDispatch` / `bucket.postDispatch` (each
-      cell emitted via `mkRuleBody`), plus sub-chain dispatch
-      jumps (via `mkJumpRules`):
+    - `rules` — boilerplate for filter chains plus root-zone
+      dispatch jumps:
         1. stateful   (`ct state established,related accept`,
                        `ct state invalid drop`) when filter chain
                        and `settings.stateful`.
@@ -171,15 +238,18 @@
         3. rpfilter   (`fib saddr . iif oif eq 0 drop`) when
                        chain is `prerouting-at-raw` and
                        `settings.rpfilter`.
-        4. preDispatch  cells — `map mkRuleBody bucket.preDispatch`.
-        5. sub-chain jumps    — `mkJumpRules` (one rule per
-                                 sub-chain × variant pair).
-        6. postDispatch cells — `map mkRuleBody bucket.postDispatch`.
+        4. root-zone dispatch jumps via `mkRootJumpRules` —
+                       one rule per (root from-zone × from-variant
+                       × to-variant) tuple.
+
+  Per-cell rule bodies (whether for the parent's own rules or
+  for descendants) live inside their respective sub-chains —
+  see `mkSubChain`.
 
   ===== mkBaseChains =====
 
   Walks `ctx.chainBuckets` producing the chain attrset for the
-  table body. Threads `baseChainName` (the bucket attr name) and
+  table body. Threads `baseChainName`, `mergedZones`, and
   `zoneSets` to `mkBaseChain` for jump-rule construction. If
   `settings.rpfilter` is enabled and no user override has
   produced a `prerouting-at-raw` bucket, synthesizes one so the
@@ -367,16 +437,6 @@ let
       cell.rule;
 
   /*
-    Build one sub-chain body: a regular (non-base) chain with
-    just a `rules` field. Cells are already sorted by Phase 3
-    (priority asc, name asc; policies last as tail rules), so we
-    just map `mkRuleBody` over them in order.
-  */
-  mkSubChain = cells: {
-    rules = map mkRuleBody cells;
-  };
-
-  /*
     Build the full nftables sub-chain name from a base chain name
     and a sub-chain key (Phase 3's local key within
     `bucket.subChains`). Output is the `<base>__<sub>` form per
@@ -387,20 +447,242 @@ let
   subChainNameOf = baseChainName: subChainKey: "${baseChainName}__${subChainKey}";
 
   /*
-    Walk `chainBuckets.<baseChainName>.subChains.<subChainKey>`
+    Compose a sub-chain key from explicit `(fromZone, toZone)`
+    components — mirrors `dispatch.subChainKeyOf` but operates on
+    the unpacked pair instead of a cell. Used by
+    `buildEffectiveSubChains` to generate intermediate-parent
+    keys without re-parsing strings.
+  */
+  mkSubChainKey =
+    fromZone: toZone:
+    if fromZone != null && toZone != null then
+      "${fromZone}-to-${toZone}"
+    else if fromZone != null then
+      fromZone
+    else
+      toZone;
+
+  /*
+    Predicate: is this from-zone a root (no parent)?
+    `localZone` is always a root by construction — it's a
+    sentinel that has no `mergedZones` entry. Defensive default
+    for unknown zones (also missing from `mergedZones`) is
+    "root", matching the localZone case. Reads
+    `zone.parent or null` to accommodate raw test fixtures.
+  */
+  isRootFrom =
+    mergedZones: localZone: fromZone:
+    fromZone == localZone
+    || !(mergedZones ? ${fromZone})
+    || (mergedZones.${fromZone}.parent or null) == null;
+
+  /*
+    For one base chain bucket, compute the full set of sub-chain
+    records to emit — direct cell-bearing sub-chains plus
+    transparent intermediate-parent dispatchers synthesized along
+    each cell-bearing sub-chain's parent chain. Returns an
+    attrset keyed by `subChainKey`.
+
+    Why intermediates: only root from-zones jump from the base
+    chain. A descendant zone with cells (e.g., `web-server`) is
+    only reachable through a chain of parent dispatch jumps
+    starting at its root ancestor. If any ancestor lacks its own
+    cells, an empty placeholder chain still has to exist so the
+    parent can dispatch into it.
+
+    Direct sub-chain records carry `preChildCells` and
+    `postChildCells` from Phase 3. Synthesized intermediates are
+    seeded with empty cell lists; Phase 4 emit fills them with
+    just the child-dispatch jumps.
+
+    `bucket.subChains` overrides any intermediate placeholder
+    that turned out to share its key with a cell-bearing
+    sub-chain.
+  */
+  buildEffectiveSubChains =
+    bucket: mergedZones:
+    let
+      ancestorsOf =
+        name:
+        if name == null then
+          [ ]
+        else
+          let
+            zone = mergedZones.${name} or null;
+            parent = if zone == null then null else zone.parent or null;
+          in
+          if parent == null then [ ] else [ parent ] ++ ancestorsOf parent;
+
+      mkEmptyRecord =
+        fromZone: toZone:
+        lib.optionalAttrs (fromZone != null) { from = fromZone; }
+        // lib.optionalAttrs (toZone != null) { to = toZone; }
+        // {
+          preChildCells = [ ];
+          postChildCells = [ ];
+        };
+
+      intermediatesOf =
+        record:
+        let
+          fromZone = record.from or null;
+          toZone = record.to or null;
+        in
+        lib.foldl' (
+          acc: ancestor:
+          let
+            key = mkSubChainKey ancestor toZone;
+          in
+          if acc ? ${key} then acc else acc // { ${key} = mkEmptyRecord ancestor toZone; }
+        ) { } (ancestorsOf fromZone);
+
+      allIntermediates = lib.foldlAttrs (
+        acc: _subChainKey: record:
+        acc // intermediatesOf record
+      ) { } bucket.subChains;
+    in
+    allIntermediates // bucket.subChains;
+
+  /*
+    Build child-dispatch jumps for one parent sub-chain. For each
+    child of `parentFromZone` whose subtree has content for this
+    `(baseChainName, toZone)`, emit one jump per from-side
+    variant of the child's match.
+
+    To-side is implicit: by the time we're inside a
+    `__<parent>-to-<to>` sub-chain, traffic already matched the
+    to-side at the chain-jump point. Child-dispatch only re-checks
+    the from-side, narrowing into the more specific child match.
+  */
+  mkChildDispatchJumpRules =
+    {
+      hook,
+      parentFromZone,
+      toZone,
+      baseChainName,
+      childrenOf,
+      effectiveSubChains,
+      mergedZones,
+      zoneSets,
+      localZone,
+    }:
+    let
+      children = if parentFromZone == null then [ ] else childrenOf.${parentFromZone} or [ ];
+
+      activeFor =
+        zoneName:
+        if zoneName == localZone || !(mergedZones ? ${zoneName}) then
+          { }
+        else
+          getActiveMatchOverrides mergedZones.${zoneName} "ingress";
+
+      mkJumpsForChild =
+        childName:
+        let
+          childKey = mkSubChainKey childName toZone;
+        in
+        if !(effectiveSubChains ? ${childKey}) then
+          [ ]
+        else
+          let
+            fromVariants = mkDirectionVariants {
+              inherit hook zoneSets localZone;
+              direction = "from";
+              zoneName = childName;
+              active = activeFor childName;
+            };
+            jumpStmt = jump (subChainNameOf baseChainName childKey);
+          in
+          map (variant: variant ++ [ jumpStmt ]) fromVariants;
+    in
+    lib.concatMap mkJumpsForChild children;
+
+  /*
+    Build one sub-chain body. Body shape: a regular (non-base)
+    chain with just a `rules` field. Rule order:
+
+      1. preChildCells   — sorted (priority asc, name asc).
+      2. child-dispatch jumps to children with content (one rule
+         per child × from-side variant).
+      3. postChildCells  — sorted (priority asc, name asc;
+                            policies appended last as tail rules).
+
+    Sub-chains with no `from` field (droute-style) carry no
+    child-dispatch (hierarchy is from-side only); their body
+    reduces to `preChildCells ++ postChildCells`.
+  */
+  mkSubChain =
+    {
+      hook,
+      subChain,
+      baseChainName,
+      childrenOf,
+      effectiveSubChains,
+      mergedZones,
+      zoneSets,
+      localZone,
+    }:
+    let
+      parentFromZone = subChain.from or null;
+      toZone = subChain.to or null;
+
+      childJumps = mkChildDispatchJumpRules {
+        inherit
+          hook
+          parentFromZone
+          toZone
+          baseChainName
+          childrenOf
+          effectiveSubChains
+          mergedZones
+          zoneSets
+          localZone
+          ;
+      };
+
+      rules =
+        (map mkRuleBody subChain.preChildCells) ++ childJumps ++ (map mkRuleBody subChain.postChildCells);
+    in
+    {
+      inherit rules;
+    };
+
+  /*
+    Walk every base chain bucket's effective sub-chains,
     producing one sub-chain entry per `(baseChainName,
     subChainKey)` pair, keyed by the full sub-chain name (see
     `subChainNameOf`).
   */
   mkSubChains =
-    chainBuckets:
+    {
+      chainBuckets,
+      effectiveSubChainsByBucket,
+      childrenOf,
+      mergedZones,
+      zoneSets,
+      localZone,
+    }:
     lib.foldlAttrs (
       acc: baseChainName: bucket:
+      let
+        effectiveSubChains = effectiveSubChainsByBucket.${baseChainName};
+      in
       acc
       // lib.mapAttrs' (
         subChainKey: subChain:
-        lib.nameValuePair (subChainNameOf baseChainName subChainKey) (mkSubChain subChain.cells)
-      ) bucket.subChains
+        lib.nameValuePair (subChainNameOf baseChainName subChainKey) (mkSubChain {
+          inherit (bucket) hook;
+          inherit
+            subChain
+            baseChainName
+            childrenOf
+            effectiveSubChains
+            mergedZones
+            zoneSets
+            localZone
+            ;
+        })
+      ) effectiveSubChains
     ) { } chainBuckets;
 
   /*
@@ -522,26 +804,30 @@ let
     ) null variant;
 
   /*
-    Build the jump rules for one base chain bucket. For each
-    sub-chain, computes the from/to direction variants and emits
-    one jump per variant pair, dropping cross-family combinations
-    (e.g. v4-from × v6-to) that nft refuses to compile in `inet`
-    tables.
+    Build the root-zone dispatch jumps for one base chain bucket.
+    Walks each effective sub-chain; emits jumps only for
+    sub-chains whose `from` is a root from-zone (or whose
+    sub-chain has no `from` at all, like droute-style entries
+    which still flat-dispatch from the base chain).
+
+    Non-root (descendant) sub-chains are reachable only via their
+    parent's child-dispatch; they don't get base-chain jumps.
+
+    For each emitted sub-chain, computes the from/to direction
+    variants and produces one jump per variant pair, dropping
+    cross-family combinations (e.g. v4-from × v6-to) that nft
+    refuses to compile in `inet` tables.
   */
-  mkJumpRules =
+  mkRootJumpRules =
     {
       hook,
       baseChainName,
-      subChains,
+      effectiveSubChains,
       mergedZones,
       zoneSets,
       localZone,
     }:
     let
-      # Look up the active matchOverride sections for one zone
-      # reference. Returns `{ }` for the null-direction sentinel
-      # (single-direction sub-chain) and for the localZone
-      # (which has no mergedZones entry).
       activeFor =
         zoneName: side:
         if zoneName == null || zoneName == localZone then
@@ -559,35 +845,37 @@ let
         let
           fromZone = subChain.from or null;
           toZone = subChain.to or null;
-          # Pre-classify each variant by family once; the cartesian
-          # filter then reads cached `from.family` / `to.family`
-          # rather than re-walking the variants per pair.
-          fromVariants = map tagFamily (mkDirectionVariants {
-            inherit hook zoneSets localZone;
-            direction = "from";
-            zoneName = fromZone;
-            active = activeFor fromZone "ingress";
-          });
-          toVariants = map tagFamily (mkDirectionVariants {
-            inherit hook zoneSets localZone;
-            direction = "to";
-            zoneName = toZone;
-            active = activeFor toZone "egress";
-          });
-          jumpStmt = jump (subChainNameOf baseChainName subChainKey);
+          isRoot = fromZone == null || isRootFrom mergedZones localZone fromZone;
         in
-        map ({ from, to }: from.variant ++ to.variant ++ [ jumpStmt ]) (
-          builtins.filter (
-            { from, to }: from.family == null || to.family == null || from.family == to.family
-          ) (
-            lib.cartesianProduct {
-              from = fromVariants;
-              to = toVariants;
-            }
-          )
-        );
+        if !isRoot then
+          [ ]
+        else
+          let
+            fromVariants = map tagFamily (mkDirectionVariants {
+              inherit hook zoneSets localZone;
+              direction = "from";
+              zoneName = fromZone;
+              active = activeFor fromZone "ingress";
+            });
+            toVariants = map tagFamily (mkDirectionVariants {
+              inherit hook zoneSets localZone;
+              direction = "to";
+              zoneName = toZone;
+              active = activeFor toZone "egress";
+            });
+            jumpStmt = jump (subChainNameOf baseChainName subChainKey);
+          in
+          map ({ from, to }: from.variant ++ to.variant ++ [ jumpStmt ]) (
+            builtins.filter ({ from, to }: from.family == null || to.family == null || from.family == to.family)
+              (
+                lib.cartesianProduct {
+                  from = fromVariants;
+                  to = toVariants;
+                }
+              )
+          );
     in
-    lib.concatLists (lib.mapAttrsToList mkJumpsForSubChain subChains);
+    lib.concatLists (lib.mapAttrsToList mkJumpsForSubChain effectiveSubChains);
 
   mkBaseChain =
     {
@@ -595,6 +883,7 @@ let
       settings,
       bucket,
       baseChainName,
+      effectiveSubChains,
       mergedZones,
       zoneSets,
     }:
@@ -616,21 +905,18 @@ let
       loopbackPrelude = lib.optionals (isFilterBaseChain && isInput && settings.loopback) loopbackRules;
       rpfilterPrelude = lib.optionals (isPreroutingRaw && settings.rpfilter) rpfilterRules;
 
-      preDispatchRules = map mkRuleBody bucket.preDispatch;
-      postDispatchRules = map mkRuleBody bucket.postDispatch;
-      jumpRules = mkJumpRules {
+      jumpRules = mkRootJumpRules {
         inherit (bucket) hook;
-        inherit baseChainName mergedZones zoneSets localZone;
-        subChains = bucket.subChains;
+        inherit
+          baseChainName
+          effectiveSubChains
+          mergedZones
+          zoneSets
+          localZone
+          ;
       };
 
-      rules =
-        statefulPrelude
-        ++ loopbackPrelude
-        ++ rpfilterPrelude
-        ++ preDispatchRules
-        ++ jumpRules
-        ++ postDispatchRules;
+      rules = statefulPrelude ++ loopbackPrelude ++ rpfilterPrelude ++ jumpRules;
     in
     {
       type = chainType;
@@ -649,6 +935,7 @@ let
       family,
       settings,
       chainBuckets,
+      effectiveSubChainsByBucket,
       mergedZones,
       zoneSets,
     }:
@@ -664,6 +951,7 @@ let
             mergedZones
             zoneSets
             ;
+          effectiveSubChains = effectiveSubChainsByBucket.${baseChainName};
         }
       ) chainBuckets;
 
@@ -673,15 +961,19 @@ let
       synthesizedRpfilterBucket = {
         hook = "prerouting";
         priority = "raw";
-        preDispatch = [ ];
         subChains = { };
-        postDispatch = [ ];
       };
       rpfilterAddition = lib.optionalAttrs needsRpfilter {
         "prerouting-at-raw" = mkBaseChain {
-          inherit family settings mergedZones zoneSets;
+          inherit
+            family
+            settings
+            mergedZones
+            zoneSets
+            ;
           bucket = synthesizedRpfilterBucket;
           baseChainName = "prerouting-at-raw";
+          effectiveSubChains = { };
         };
       };
     in
@@ -695,6 +987,29 @@ let
     }:
     nftypes.dsl.table family name body;
 
+  /*
+    Materialize each base chain bucket's effective sub-chains
+    (direct + intermediate dispatchers) once at the start of
+    Phase 4, before anything reads them. Both `mkBaseChain` (for
+    root-jump emission) and `mkSubChain` (for child-dispatch
+    emission and chain body construction) consume the same
+    artifact — caching avoids the parent-chain walks happening
+    twice per bucket.
+
+    Mirrors the `ctx.zoneSets` precedent: one fold in Phase 1
+    feeds two Phase 1 validators and Phase 4 emit.
+  */
+  computeEffectiveSubChains =
+    { table, ctx }:
+    {
+      inherit table;
+      ctx = ctx // {
+        effectiveSubChainsByBucket = lib.mapAttrs (
+          _baseChainName: bucket: buildEffectiveSubChains bucket ctx.mergedZones
+        ) ctx.chainBuckets;
+      };
+    };
+
   emitBaseChains =
     { table, ctx }:
     {
@@ -702,7 +1017,12 @@ let
       ctx = ctx // {
         baseChains = mkBaseChains {
           inherit (table) family settings;
-          inherit (ctx) chainBuckets mergedZones zoneSets;
+          inherit (ctx)
+            chainBuckets
+            effectiveSubChainsByBucket
+            mergedZones
+            zoneSets
+            ;
         };
       };
     };
@@ -712,7 +1032,16 @@ let
     {
       inherit table;
       ctx = ctx // {
-        subChains = mkSubChains ctx.chainBuckets;
+        subChains = mkSubChains {
+          inherit (ctx)
+            chainBuckets
+            effectiveSubChainsByBucket
+            childrenOf
+            mergedZones
+            zoneSets
+            ;
+          inherit (table.settings) localZone;
+        };
       };
     };
 
@@ -776,6 +1105,7 @@ let
   emitTable =
     state:
     lib.pipe state [
+      computeEffectiveSubChains
       emitBaseChains
       emitSubChains
       emitUserObjects
@@ -787,14 +1117,19 @@ in
     chainTypeOf
     mkRuleBody
     subChainNameOf
+    mkSubChainKey
+    isRootFrom
+    buildEffectiveSubChains
     mkSubChain
     mkSubChains
     mkDirectionVariants
-    mkJumpRules
+    mkChildDispatchJumpRules
+    mkRootJumpRules
     mkBaseChain
     mkBaseChains
     mkUserObjects
     assembleTable
+    computeEffectiveSubChains
     emitBaseChains
     emitSubChains
     emitUserObjects

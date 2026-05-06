@@ -30,6 +30,10 @@ let
     ]).ctx;
 
   inherit (pkgs) lib;
+
+  # Helpers for inspecting the new sub-chain shape.
+  cellNames = cells: map (c: c.name) cells;
+  allCellNames = sub: cellNames sub.preChildCells ++ cellNames sub.postChildCells;
 in
 {
   # ===== dispatchAndSort — empty cells =====
@@ -195,7 +199,9 @@ in
         subFields = {
           inherit (sub) from;
           hasTo = sub ? to;
-          cellCount = builtins.length sub.cells;
+          # Default priority (500) → postChildCells.
+          preChildCount = builtins.length sub.preChildCells;
+          postChildCount = builtins.length sub.postChildCells;
         };
       };
     expected = {
@@ -205,7 +211,8 @@ in
       subFields = {
         from = "wan";
         hasTo = false;
-        cellCount = 1;
+        preChildCount = 0;
+        postChildCount = 1;
       };
     };
   };
@@ -278,13 +285,13 @@ in
     };
   };
 
-  # ===== dispatchAndSort — pre-dispatch priority → preDispatch slot =====
+  # ===== dispatchAndSort — pre-child priority (< 100) → preChildCells =====
 
-  testDispatchPreDispatchSlot = {
-    # priority `"first"` resolves to 1 → preDispatch.
+  testDispatchPreChildSlot = {
+    # priority `"first"` resolves to 1 < 100 → preChildCells.
     expr =
       let
-        bucket =
+        sub =
           (runDispatch {
             name = "fw";
             zones = {
@@ -301,28 +308,25 @@ in
               rule = [ ];
               priority = "first";
             };
-          }).chainBuckets."forward-at-filter";
+          }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
       in
       {
-        preDispatchCount = builtins.length bucket.preDispatch;
-        subChainsCount = builtins.length (lib.attrNames bucket.subChains);
-        postDispatchCount = builtins.length bucket.postDispatch;
-        firstName = (builtins.head bucket.preDispatch).name;
+        preChildNames = cellNames sub.preChildCells;
+        postChildNames = cellNames sub.postChildCells;
       };
     expected = {
-      preDispatchCount = 1;
-      subChainsCount = 0;
-      postDispatchCount = 0;
-      firstName = "early";
+      preChildNames = [ "early" ];
+      postChildNames = [ ];
     };
   };
 
-  # ===== dispatchAndSort — post-dispatch priority → postDispatch slot =====
+  # ===== dispatchAndSort — post-child priority (>= 100) → postChildCells =====
 
-  testDispatchPostDispatchSlot = {
+  testDispatchPostChildSlot = {
+    # priority `"last"` resolves to 999 >= 100 → postChildCells.
     expr =
       let
-        bucket =
+        sub =
           (runDispatch {
             name = "fw";
             zones = {
@@ -339,29 +343,26 @@ in
               rule = [ ];
               priority = "last";
             };
-          }).chainBuckets."forward-at-filter";
+          }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
       in
       {
-        preDispatchCount = builtins.length bucket.preDispatch;
-        subChainsCount = builtins.length (lib.attrNames bucket.subChains);
-        postDispatchCount = builtins.length bucket.postDispatch;
-        lastName = (builtins.head bucket.postDispatch).name;
+        preChildNames = cellNames sub.preChildCells;
+        postChildNames = cellNames sub.postChildCells;
       };
     expected = {
-      preDispatchCount = 0;
-      subChainsCount = 0;
-      postDispatchCount = 1;
-      lastName = "late";
+      preChildNames = [ ];
+      postChildNames = [ "late" ];
     };
   };
 
-  # ===== dispatchAndSort — default priority → subChains slot =====
+  # ===== dispatchAndSort — default priority (500) → postChildCells =====
 
   testDispatchDefaultSlot = {
-    # No explicit priority → default ("default" = 500) → subChains.
+    # Default priority (500) lands in postChildCells — the natural
+    # parent-fallback slot.
     expr =
       let
-        bucket =
+        sub =
           (runDispatch {
             name = "fw";
             zones = {
@@ -377,24 +378,22 @@ in
               to = [ "wan" ];
               rule = [ ];
             };
-          }).chainBuckets."forward-at-filter";
+          }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
       in
       {
-        preDispatchCount = builtins.length bucket.preDispatch;
-        subChainsCount = builtins.length (lib.attrNames bucket.subChains);
-        postDispatchCount = builtins.length bucket.postDispatch;
+        preChildNames = cellNames sub.preChildCells;
+        postChildNames = cellNames sub.postChildCells;
       };
     expected = {
-      preDispatchCount = 0;
-      subChainsCount = 1;
-      postDispatchCount = 0;
+      preChildNames = [ ];
+      postChildNames = [ "regular" ];
     };
   };
 
-  # ===== dispatchAndSort — sort by (priority, name) =====
+  # ===== dispatchAndSort — sort by (priority, name) within postChildCells =====
 
   testDispatchSortOrder = {
-    expr = map (c: c.name) (
+    expr = cellNames (
       (runDispatch {
         name = "fw";
         zones = {
@@ -427,7 +426,7 @@ in
             priority = 200;
           };
         };
-      }).chainBuckets."forward-at-filter".subChains."lan-to-wan".cells
+      }).chainBuckets."forward-at-filter".subChains."lan-to-wan".postChildCells
     );
     # Sorted by priority asc, name asc within priority.
     expected = [
@@ -437,10 +436,10 @@ in
     ];
   };
 
-  # ===== dispatchAndSort — filter + policy: policies sort to end =====
+  # ===== dispatchAndSort — filter + policy: policies sort to end of postChildCells =====
 
   testDispatchPolicyAtEnd = {
-    expr = map (c: c.name) (
+    expr = cellNames (
       (runDispatch {
         name = "fw";
         zones = {
@@ -461,7 +460,7 @@ in
           to = [ "wan" ];
           verdict = "drop";
         };
-      }).chainBuckets."forward-at-filter".subChains."lan-to-wan".cells
+      }).chainBuckets."forward-at-filter".subChains."lan-to-wan".postChildCells
     );
     # Filter first (has priority); policy last (tail rule).
     expected = [
@@ -503,9 +502,9 @@ in
         filterChainSubs = lib.attrNames out.chainBuckets."forward-at-filter".subChains;
         snatChainSubs = lib.attrNames out.chainBuckets."postrouting-at-srcnat".subChains;
         filterCellName =
-          (builtins.head out.chainBuckets."forward-at-filter".subChains."lan-to-wan".cells).name;
+          (builtins.head out.chainBuckets."forward-at-filter".subChains."lan-to-wan".postChildCells).name;
         snatCellName =
-          (builtins.head out.chainBuckets."postrouting-at-srcnat".subChains."lan-to-wan".cells).name;
+          (builtins.head out.chainBuckets."postrouting-at-srcnat".subChains."lan-to-wan".postChildCells).name;
       };
     expected = {
       filterChainSubs = [ "lan-to-wan" ];
@@ -523,7 +522,7 @@ in
   testDispatchOverrideMergesWithDefault = {
     expr =
       let
-        bucket =
+        sub =
           (runDispatch {
             name = "fw";
             zones = {
@@ -548,23 +547,23 @@ in
                 };
               };
             };
-          }).chainBuckets."forward-at-filter";
+          }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
       in
-      lib.sort (a: b: a < b) (map (c: c.name) bucket.subChains."lan-to-wan".cells);
+      lib.sort (a: b: a < b) (cellNames sub.postChildCells);
     expected = [
       "override"
       "regular"
     ];
   };
 
-  # ===== dispatchAndSort — pre + sub + post slots populate independently =====
-  # Single chain receives one cell per slot; verifies the bucketing
-  # routes each cell by `slotFor` without leakage.
+  # ===== dispatchAndSort — pre + post sub-slots populate independently =====
+  # One sub-chain receives one cell per sub-slot. Verifies the cells
+  # split correctly inside `subChainOf`.
 
-  testDispatchAllSlotsPopulated = {
+  testDispatchPreAndPostChildSplit = {
     expr =
       let
-        bucket =
+        sub =
           (runDispatch {
             name = "fw";
             zones = {
@@ -590,17 +589,21 @@ in
                 priority = "last";
               };
             };
-          }).chainBuckets."forward-at-filter";
+          }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
       in
       {
-        preNames = map (c: c.name) bucket.preDispatch;
-        subNames = map (c: c.name) bucket.subChains."lan-to-wan".cells;
-        postNames = map (c: c.name) bucket.postDispatch;
+        preChildNames = cellNames sub.preChildCells;
+        postChildNames = cellNames sub.postChildCells;
       };
     expected = {
-      preNames = [ "early" ];
-      subNames = [ "regular" ];
-      postNames = [ "late" ];
+      # priority preDispatch (50) < 100 → preChildCells.
+      preChildNames = [ "early" ];
+      # priority default (500) and last (999) >= 100 → postChildCells,
+      # sorted ascending: regular (500), late (999).
+      postChildNames = [
+        "regular"
+        "late"
+      ];
     };
   };
 
@@ -631,8 +634,8 @@ in
       in
       {
         keys = lib.sort (a: b: a < b) (lib.attrNames subChains);
-        guestCellName = (builtins.head subChains."guest-to-wan".cells).name;
-        lanCellName = (builtins.head subChains."lan-to-wan".cells).name;
+        guestCellName = (builtins.head subChains."guest-to-wan".postChildCells).name;
+        lanCellName = (builtins.head subChains."lan-to-wan".postChildCells).name;
       };
     expected = {
       keys = [
@@ -671,16 +674,18 @@ in
       in
       {
         inherit (bucket) hook priority;
-        hasPreDispatch = bucket ? preDispatch;
         hasSubChains = bucket ? subChains;
+        # Base chain no longer carries pre/post slots — every cell
+        # lives in a sub-chain now.
+        hasPreDispatch = bucket ? preDispatch;
         hasPostDispatch = bucket ? postDispatch;
       };
     expected = {
       hook = "forward";
       priority = "filter";
-      hasPreDispatch = true;
       hasSubChains = true;
-      hasPostDispatch = true;
+      hasPreDispatch = false;
+      hasPostDispatch = false;
     };
   };
 }

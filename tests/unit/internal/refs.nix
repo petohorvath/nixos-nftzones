@@ -60,7 +60,12 @@ in
 
   testRefsCounterInlineNoRef = {
     # `counter = { packets; bytes; }` is anonymous, not a ref.
-    expr = extractRefs [ (dsl.counter { packets = 0; bytes = 0; }) ];
+    expr = extractRefs [
+      (dsl.counter {
+        packets = 0;
+        bytes = 0;
+      })
+    ];
     expected = [ ];
   };
 
@@ -214,7 +219,12 @@ in
   testRefsAnonymousSetLookupNoRef = {
     # Anonymous set (list body) has no name — should NOT be flagged.
     expr = extractRefs [
-      (dsl.inSet fields.ip.saddr (dsl.expr.set [ "1.2.3.4" "5.6.7.8" ]))
+      (dsl.inSet fields.ip.saddr (
+        dsl.expr.set [
+          "1.2.3.4"
+          "5.6.7.8"
+        ]
+      ))
     ];
     expected = [ ];
   };
@@ -223,13 +233,10 @@ in
 
   testRefsMapLookupExpr = {
     expr = extractRefs [
-      (dsl.eq
-        (dsl.expr.map {
-          key = fields.ip.saddr;
-          data = "verdict-map";
-        })
-        "drop"
-      )
+      (dsl.eq (dsl.expr.map {
+        key = fields.ip.saddr;
+        data = "verdict-map";
+      }) "drop")
     ];
     expected = [
       {

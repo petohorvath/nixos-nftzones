@@ -22,13 +22,17 @@
     submodule's evaluated form filled in:
       {
         name          = <node.name>;
-        parent        = <node.zone>;
+        parent        = <node.zone>;     # establishes hierarchy
         interfaces    = [ ];
         cidrs         = optional ipv4 "${ipv4}/32"
                      ++ optional ipv6 "${ipv6}/128";
         matchOverride = { ingress = { }; egress = { }; };
         comment       = <node.comment>;   # propagated; null if unset
       }
+
+    `parent` is load-bearing — it places the lowered zone inside
+    the parent's sub-chain via Phase 4 emit's child-dispatch
+    jumps. See `docs/specs/zone-parent.md` for the dispatch model.
     The empty per-side attrsets are valid `zoneMatchOverrideSide`
     values: every section defaults to `null`, and downstream
     consumers go through `internal.zone.getActiveMatchOverrides`,

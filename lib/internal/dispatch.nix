@@ -2,10 +2,11 @@
   internal/dispatch — Phase 3 of the compile pipeline, exposed
   under `nftzones.internal.dispatch`.
 
-  Buckets each cell from Phase 2 by `(chain, slot)` ready for
-  Phase 4 to emit. Each cell ends up in exactly one bucket; buckets
-  are sorted by `(priority, name)` with policies (no priority)
-  trailing as tail rules.
+  Buckets each cell from Phase 2 by `(chain, sub-chain, sub-slot)`
+  ready for Phase 4 to emit. Every cell lives in exactly one
+  sub-chain; within the sub-chain, cells split into pre-child and
+  post-child slots around the eventual child-dispatch jump
+  position. Policies (no priority) trail as tail rules.
 
   Pipeline pattern: each phase takes `{ table; ctx }` and returns
   the same shape, mirroring `internal.normalize` / `internal.expand`.
@@ -53,39 +54,47 @@
   Reads:  ctx.groupedByChain
   Writes: ctx.chainBuckets
 
-  Builds the final bucket per chain group: splits cells by slot,
-  partitions the `subChains` slot per `(from, to)` pair, sorts
-  each slot.
+  Builds the final bucket per chain group: partitions cells per
+  `(from, to)` sub-chain, then within each sub-chain splits cells
+  into pre-child-dispatch and post-child-dispatch by priority
+  cutoff at 100. Each slot pre-sorted by `(priority asc, name asc)`;
+  policies (no priority) appended last to `postChildCells`.
 
-  Each cell's slot within the chain is determined by priority:
-    - Cells with priority resolved to `1` (`first`) or `50`
-      (`preDispatch`) → `preDispatch` slot (base chain, before the
-      sub-chain dispatch jumps).
-    - Cells with priority resolved to `100` (`postDispatch`) or
-      `999` (`last`) → `postDispatch` slot (base chain, after the
-      sub-chain dispatch jumps).
-    - All other cells (default priority `500`, or any unmarked
-      int) → `subChains` slot, partitioned per `(from, to)` pair.
-    - Policies have no priority; they always go in `subChains` and
-      sort to the end of their per-pair list as tail rules.
+  Slot semantics within a sub-chain:
+    - Cells with priority < 100 (`first` = 1, `preDispatch` = 50,
+      or any int < 100) → `preChildCells`. Phase 4 emits these
+      before the sub-chain's child-dispatch jumps fire.
+    - Cells with priority >= 100 (`postDispatch` = 100,
+      `default` = 500, `last` = 999, or any int >= 100), and
+      policies (no priority) → `postChildCells`. Phase 4 emits
+      these after child-dispatch jumps return without verdict —
+      i.e., as parent-fallback rules.
+    - The base chain itself no longer carries pre/post slots;
+      every cell lives in its sub-chain. Rules that conceptually
+      need to fire "before any zone dispatch" land in each root
+      sub-chain's pre-child slot — equivalent for any traffic
+      that matched a root.
 
   Output shape:
     chainBuckets = {
       "<hook>-at-<priority>" = {
-        hook         = <string>;
-        priority     = <symbol or int>;
-        preDispatch  = [ <sorted cells> ];
+        hook      = <string>;
+        priority  = <symbol or int>;
         subChains = {
           "<from>-to-<to>" = {
-            from  = <zone-name>;
-            to    = <zone-name>;
-            cells = [ <sorted cells, policies last> ];
+            from           = <zone-name>;
+            to             = <zone-name>;
+            preChildCells  = [ <sorted cells, priority < 100> ];
+            postChildCells = [ <sorted cells, priority >= 100,
+                                policies appended last> ];
           };
-          # Single-direction chains carry only the present direction:
-          "<from>" = { from = <zone-name>; cells = […]; };
-          "<to>"   = { to   = <zone-name>; cells = […]; };
+          # Single-direction chains carry only the present
+          # direction:
+          "<from>" = { from = <zone-name>;  preChildCells = […];
+                       postChildCells = […]; };
+          "<to>"   = { to   = <zone-name>;  preChildCells = […];
+                       postChildCells = […]; };
         };
-        postDispatch = [ <sorted cells> ];
       };
       …
     };
@@ -125,17 +134,12 @@ let
   hooks = lib.genAttrs nftypes.enums.hook lib.id;
   chainPriorities = lib.genAttrs (builtins.attrNames priorityIntsDefault) lib.id;
 
-  # Resolved-priority values that opt cells out into the base chain
-  # pre/post-dispatch slots. `default` (500) and any other unmarked
-  # int land in the `subChains` slot.
-  preDispatchSet = [
-    entryPriorities.first
-    entryPriorities.preDispatch
-  ];
-  postDispatchSet = [
-    entryPriorities.postDispatch
-    entryPriorities.last
-  ];
+  # Sub-chain pre/post-child-dispatch cutoff. Cells with resolved
+  # priority below this fall in the `preChildCells` slot (fire
+  # before child-dispatch jumps); cells at or above fall in
+  # `postChildCells` (fire after children return — parent
+  # fallback). Default (500) lands in `postChildCells` naturally.
+  preChildCutoff = entryPriorities.postDispatch;
 
   # Default chain attrs per group (excluding filters / policies,
   # which dispatch by host position).
@@ -196,24 +200,10 @@ let
   # fields, not parsed strings.
   baseChainNameOf = chainAttrs: "${chainAttrs.hook}-at-${toString chainAttrs.priority}";
 
-  # Classify a cell into one of the three slots within its chain
-  # (see "Slot" in the design doc terminology). Field-less policies
-  # fall through to `subChains` as tail rules.
-  slotFor =
-    cell:
-    if !(cell ? priority) then
-      "subChains"
-    else if builtins.elem cell.priority preDispatchSet then
-      "preDispatch"
-    else if builtins.elem cell.priority postDispatchSet then
-      "postDispatch"
-    else
-      "subChains";
-
-  # Sub-chain key for a cell within its chain bucket — `"<from>-to-<to>"`
-  # for bidirectional cells, bare `"<from>"` or `"<to>"` for
-  # single-direction. Decorative; sub-chain carries `from` / `to`
-  # as fields.
+  # Sub-chain key for a cell within its chain bucket —
+  # `"<from>-to-<to>"` for bidirectional cells, bare `"<from>"` or
+  # `"<to>"` for single-direction. Decorative; sub-chain carries
+  # `from` / `to` as fields.
   subChainKeyOf =
     cell:
     if cell ? from && cell ? to then
@@ -223,61 +213,58 @@ let
     else
       cell.to;
 
-  /*
-    Sort cells: non-policy by (priority asc, name asc); policies
-    by name and appended at the end (tail rules).
+  # Sort by `(priority asc, name asc)`. Caller filters out
+  # policies first if needed (policies have no `priority`).
+  sortByPriorityName = lib.sort (
+    a: b: if a.priority != b.priority then a.priority < b.priority else a.name < b.name
+  );
 
-    Invariant (set by Phase 2): every cell carries a resolved int
-    `priority` *except* policy cells, which intentionally omit the
-    field so they can be identified here without a separate "kind"
-    tag. Filter / snat / dnat / sroute / droute entries default to
-    the resolved `"default"` priority (500) when the user doesn't
-    set one — only policies are field-less.
-  */
-  sortMixed =
-    cells:
-    let
-      parts = lib.partition (c: c ? priority) cells;
-
-      byPriorityAndName = lib.sort (
-        a: b: if a.priority != b.priority then a.priority < b.priority else a.name < b.name
-      ) parts.right;
-
-      byName = lib.sort (a: b: a.name < b.name) parts.wrong;
-    in
-    byPriorityAndName ++ byName;
+  sortByName = lib.sort (a: b: a.name < b.name);
 
   /*
     Build one sub-chain attrset from a list of cells sharing a
-    sub-chain key. Carries only the directions actually present
-    on the cells (no null fields).
+    sub-chain key. Cells partition into pre-child / post-child
+    slots by priority cutoff at 100; policies (no priority) tail
+    `postChildCells`. Only the directions actually present on the
+    cells get `from` / `to` fields (no nulls).
+
+    Invariant (set by Phase 2): every non-policy cell carries a
+    resolved int `priority`; only policies are field-less.
   */
   subChainOf =
     cells:
     let
       firstCell = builtins.head cells;
+
+      preParts = lib.partition (c: (c ? priority) && c.priority < preChildCutoff) cells;
+      preChildCells = sortByPriorityName preParts.right;
+
+      # `postChildCells`: the remainder — non-policy cells with
+      # priority >= cutoff, plus policies (which lack a `priority`
+      # field). Sort the priority-bearing portion, then append
+      # policies sorted by name as tail rules.
+      postRest = preParts.wrong;
+      postPriorityParts = lib.partition (c: c ? priority) postRest;
+      postChildCells = sortByPriorityName postPriorityParts.right ++ sortByName postPriorityParts.wrong;
     in
     lib.optionalAttrs (firstCell ? from) { inherit (firstCell) from; }
     // lib.optionalAttrs (firstCell ? to) { inherit (firstCell) to; }
     // {
-      cells = sortMixed cells;
+      inherit preChildCells postChildCells;
     };
 
   /*
     Build one chain bucket from chain attrs + a list of cells
-    sharing the chain. Splits cells by slot, partitions
-    `subChains` slot by sub-chain key, sorts everything.
+    sharing the chain. Partitions cells per `(from, to)` sub-chain
+    key, then `subChainOf` does the slot split + sort within each.
+    The base chain itself no longer holds pre/post slots — every
+    cell lives in its sub-chain.
   */
   bucketOf =
     chainAttrs: cells:
-    let
-      bySlot = lib.groupBy slotFor cells;
-    in
     chainAttrs
     // {
-      preDispatch = sortMixed (bySlot.preDispatch or [ ]);
-      subChains = lib.mapAttrs (_: subChainOf) (lib.groupBy subChainKeyOf (bySlot.subChains or [ ]));
-      postDispatch = sortMixed (bySlot.postDispatch or [ ]);
+      subChains = lib.mapAttrs (_: subChainOf) (lib.groupBy subChainKeyOf cells);
     };
 
   groupCellsByChain =
