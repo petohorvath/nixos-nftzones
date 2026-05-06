@@ -53,7 +53,7 @@
 
   Output shape note: lowered nodes are completed to the full
   `nftzones.types.zone` submodule shape (`name`, `parent`,
-  `interfaces`, `cidrs`, `match`, `matchOverride`, `comment`),
+  `interfaces`, `cidrs`, `matchOverride`, `comment`),
   mirroring the submodule's defaults. Declared zones already have
   this shape from submodule evaluation, so `ctx.mergedZones` is
   uniformly shaped — downstream phases can consume it without
@@ -81,7 +81,7 @@
 
   Lowers each node via `node.toZone`, completes it to the full
   `nftzones.types.zone` submodule shape (filling in `name`,
-  `match`, `matchOverride`, `comment` defaults), then merges into
+  `matchOverride`, `comment` defaults), then merges into
   the declared zones. Result is a uniformly-shaped attrset.
 
   ===== checkNameCollisions =====
@@ -159,7 +159,8 @@
     - Node parent ref: `{ zone; path; }` (no `direction`)
 
   `direction` lets `checkZoneMatchable` know which side of the
-  zone's `match` field to validate against.
+  zone's `matchOverride` (and raw `interfaces` / `cidrs`) to
+  validate against.
 
   ===== checkSettings =====
 
