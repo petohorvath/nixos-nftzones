@@ -353,6 +353,16 @@ let
   resolveDefaultPriority =
     priority: if builtins.isInt priority then priority else priorityIntsDefault.${priority};
 
+  # KNOWN BUG (tracked in `docs/compile-pipeline-draft.md` follow-up
+  # #2): `route` chains are valid only at `output`, not `prerouting`.
+  # `sroute` (which dispatches to `prerouting + mangle`) therefore
+  # emits an invalid ruleset that the kernel rejects with "Chain of
+  # type 'route' is not supported". The fix is blocked on upstream
+  # adding `nftypes.compatibility.hooksByChainType` so this whole
+  # mapping can move to a single source of truth — see
+  # `../nix-nftypes/prompt-fix.md`. Until then, the prerouting case
+  # below is wrong (it should be `output`-only); `droute` happens to
+  # land correctly because output + mangle is route's actual home.
   chainTypeOf =
     chainAttrs:
     let

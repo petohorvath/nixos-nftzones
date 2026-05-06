@@ -92,6 +92,9 @@ Two Phase 1 validators (`internal.normalize.checkParentRefs` and
 
 ## Worked example
 
+(Assumes `inherit (nftypes.lib.dsl) eq accept limit;` and
+`inherit (nftypes.lib.dsl.fields) tcp;` are in scope.)
+
 ```nix
 zones.dmz = {
   interfaces = [ "dmz0" ];
@@ -209,12 +212,12 @@ node is added without copying every parent-level rule.
 - `lib/internal/dispatch.nix`:
   - `subChainOf` — partitions cells into pre/post-child slots.
 - `lib/internal/emit.nix`:
-  - `subChainKeyFor` — key composition from `(fromZone, toZone)`.
+  - `mkSubChainKey` — key composition from `(fromZone, toZone)`.
   - `isRootFrom` — root predicate.
   - `buildEffectiveSubChains` — synthesize transparent
     intermediate-parent dispatchers.
-  - `mkChildDispatchJumps` — child-dispatch jumps inside a parent
-    sub-chain.
+  - `mkChildDispatchJumpRules` — child-dispatch jumps inside a
+    parent sub-chain.
   - `mkRootJumpRules` — base-chain jumps for root zones only.
 - `tests/integration/scenarios/parent-*.nix` — end-to-end
   scenarios covering basic, priorities, deep nesting, and empty
