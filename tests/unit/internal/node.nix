@@ -15,8 +15,8 @@ let
   /*
     Pull out the input-derivable fields of a `toZone` result —
     the ones whose values come straight from the node. The
-    remaining fields (`match`, `matchOverride`) carry submodule
-    defaults whose shapes are exercised separately.
+    remaining `matchOverride` field carries submodule defaults
+    whose shape is exercised separately.
   */
   inputFields = z: {
     inherit (z)

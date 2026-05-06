@@ -375,14 +375,11 @@ let
   policyVerdictStmts = { inherit accept drop; };
 
   /*
-    Emit one cell's rule entry. Dispatches on cell shape to build
-    the statement list (`stmts`); when the cell carries a non-null
-    `comment`, the result is wrapped as `{ expr; comment; }` so
-    the comment surfaces on the rendered rule. Otherwise the bare
-    statement list is returned (chainBody.rules accepts both
-    shapes per nftypes' `dsl/structure/table.nix`).
+    Emit one cell's rule entry. A non-null `cell.comment` wraps the
+    statement list as `{ expr; comment; }` — the alternate rule-list
+    element shape per nftypes' `dsl/structure/table.nix`.
 
-    Cell shape dispatch (no explicit group arg needed):
+    Cell shape dispatch:
       - `cell ? verdict`            → policy
       - `cell.rule ? snat`          → snat with address translation
       - `cell.rule ? masquerade`    → snat masquerade
@@ -407,7 +404,7 @@ let
         else
           cell.rule;
     in
-    if cell ? comment && cell.comment != null then
+    if cell.comment != null then
       {
         expr = stmts;
         inherit (cell) comment;

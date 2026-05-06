@@ -829,6 +829,7 @@ in
         (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 22)
         nftypes.dsl.accept
       ];
+      comment = null;
     };
     expected = [
       (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 22)
@@ -842,6 +843,7 @@ in
         addr = "203.0.113.5";
         port = 8080;
       };
+      comment = null;
     };
     expected = [
       (nftypes.dsl.snat {
@@ -854,6 +856,7 @@ in
   testMkRuleBodySnatMasquerade = {
     expr = mkRuleBody {
       rule.masquerade = { };
+      comment = null;
     };
     expected = [ (nftypes.dsl.masquerade { }) ];
   };
@@ -867,6 +870,7 @@ in
           port = 443;
         };
       };
+      comment = null;
     };
     expected = [
       (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 443)
@@ -885,6 +889,7 @@ in
           port = 22;
         };
       };
+      comment = null;
     };
     expected = [ (nftypes.dsl.redirect { port = 22; }) ];
   };
@@ -894,6 +899,7 @@ in
       rule = [
         (nftypes.dsl.mangle nftypes.dsl.fields.meta.mark 100)
       ];
+      comment = null;
     };
     expected = [
       (nftypes.dsl.mangle nftypes.dsl.fields.meta.mark 100)
@@ -901,12 +907,18 @@ in
   };
 
   testMkRuleBodyPolicyAccept = {
-    expr = mkRuleBody { verdict = "accept"; };
+    expr = mkRuleBody {
+      verdict = "accept";
+      comment = null;
+    };
     expected = [ nftypes.dsl.accept ];
   };
 
   testMkRuleBodyPolicyDrop = {
-    expr = mkRuleBody { verdict = "drop"; };
+    expr = mkRuleBody {
+      verdict = "drop";
+      comment = null;
+    };
     expected = [ nftypes.dsl.drop ];
   };
 
@@ -919,7 +931,12 @@ in
         from = "lan";
         to = "wan";
         preChildCells = [ ];
-        postChildCells = [ { rule = [ nftypes.dsl.accept ]; } ];
+        postChildCells = [
+          {
+            rule = [ nftypes.dsl.accept ];
+            comment = null;
+          }
+        ];
       };
       baseChainName = "forward-at-filter";
       childrenOf = { };
@@ -949,8 +966,18 @@ in
       subChain = {
         from = "lan";
         to = "wan";
-        preChildCells = [ { rule = [ nftypes.dsl.accept ]; } ];
-        postChildCells = [ { rule = [ nftypes.dsl.drop ]; } ];
+        preChildCells = [
+          {
+            rule = [ nftypes.dsl.accept ];
+            comment = null;
+          }
+        ];
+        postChildCells = [
+          {
+            rule = [ nftypes.dsl.drop ];
+            comment = null;
+          }
+        ];
       };
       baseChainName = "forward-at-filter";
       childrenOf = { };
@@ -995,7 +1022,12 @@ in
               from = "lan";
               to = "wan";
               preChildCells = [ ];
-              postChildCells = [ { rule = [ nftypes.dsl.accept ]; } ];
+              postChildCells = [
+                {
+                  rule = [ nftypes.dsl.accept ];
+                  comment = null;
+                }
+              ];
             };
           };
         };
