@@ -377,15 +377,19 @@ lib/
 
     # Layer 1 — phase orchestrators (consume the leaves above)
     normalize.nix            — Phase 1 orchestrator + 19 phases:
-                               convertNodesToZones, computeZoneSets,
-                               checkParentRefs, checkParentCycles,
-                               computeChildrenOf, computeRootZoneNames,
-                               collectAllZoneNames, expandWildcardZones,
-                               resolvePriorities, collectZoneRefs,
-                               checkNameCollisions, checkSettings,
-                               checkZoneRefs, checkZoneMatchable,
+                               compute — convertNodesToZones,
+                               computeZoneSets, computeChildrenOf,
+                               computeRootZoneNames,
+                               collectAllZoneNames,
+                               expandWildcardZones, resolvePriorities,
+                               collectZoneRefs;
+                               check — checkParentRefs,
+                               checkParentCycles, checkNameCollisions,
+                               checkSettings, checkZoneRefs,
+                               checkZoneMatchable,
                                checkChainOverridePlacement,
-                               checkChainPlacement, checkRpfilterOverride,
+                               checkChainPlacement,
+                               checkRpfilterOverride,
                                checkPolicyUniqueness,
                                checkSetNameCollisions, checkObjectRefs.
     expand.nix               — Phase 2 orchestrator: expandTable

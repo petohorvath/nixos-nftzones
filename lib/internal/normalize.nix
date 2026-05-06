@@ -19,24 +19,24 @@
       { table; ctx = { errors = [ ]; warnings = [ ]; }; }
         ↓ convertNodesToZones           ctx.mergedZones
         ↓ computeZoneSets               ctx.zoneSets
-        ↓ checkParentRefs               ctx.errors  (appends)
-        ↓ checkParentCycles             ctx.errors  (appends)
         ↓ computeChildrenOf             ctx.childrenOf
         ↓ computeRootZoneNames          ctx.rootZoneNames
         ↓ collectAllZoneNames           ctx.allZoneNames
         ↓ expandWildcardZones           ctx.expandedGroups
         ↓ resolvePriorities             ctx.resolvedPriorities
         ↓ collectZoneRefs               ctx.zoneRefs
-        ↓ checkNameCollisions           ctx.errors  (appends)
-        ↓ checkSettings                 ctx.errors  (appends)
-        ↓ checkZoneRefs                 ctx.errors  (appends)
-        ↓ checkZoneMatchable            ctx.errors  (appends)
-        ↓ checkChainOverridePlacement   ctx.errors  (appends)
-        ↓ checkChainPlacement           ctx.errors  (appends)
+        ↓ checkParentRefs               ctx.errors   (appends)
+        ↓ checkParentCycles             ctx.errors   (appends)
+        ↓ checkNameCollisions           ctx.errors   (appends)
+        ↓ checkSettings                 ctx.errors   (appends)
+        ↓ checkZoneRefs                 ctx.errors   (appends)
+        ↓ checkZoneMatchable            ctx.errors   (appends)
+        ↓ checkChainOverridePlacement   ctx.errors   (appends)
+        ↓ checkChainPlacement           ctx.errors   (appends)
         ↓ checkRpfilterOverride         ctx.warnings (appends)
-        ↓ checkPolicyUniqueness         ctx.errors  (appends)
-        ↓ checkSetNameCollisions        ctx.errors  (appends)
-        ↓ checkObjectRefs               ctx.errors  (appends)
+        ↓ checkPolicyUniqueness         ctx.errors   (appends)
+        ↓ checkSetNameCollisions        ctx.errors   (appends)
+        ↓ checkObjectRefs               ctx.errors   (appends)
       { table;
         ctx = {
           mergedZones; zoneSets; childrenOf; rootZoneNames;
@@ -1369,16 +1369,20 @@ let
     table:
     let
       final = lib.pipe (mkInitialState table) [
+        # Compute phases — populate ctx with derived state.
         convertNodesToZones
         computeZoneSets
-        checkParentRefs
-        checkParentCycles
         computeChildrenOf
         computeRootZoneNames
         collectAllZoneNames
         expandWildcardZones
         resolvePriorities
         collectZoneRefs
+        # Validators — every phase below appends to ctx.errors
+        # (or ctx.warnings); the orchestrator throws once at the
+        # end if any errors fired.
+        checkParentRefs
+        checkParentCycles
         checkNameCollisions
         checkSettings
         checkZoneRefs
