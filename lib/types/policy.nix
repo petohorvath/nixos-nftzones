@@ -47,12 +47,16 @@
   identical to filter / snat / dnat — see `types/filter.nix` for
   the full discussion.
 
-  `policyVerdict` reuses `nftypes.types.policy` —
-  `enum [ "accept" "drop" ]`. The same enum nftables uses for
-  chain-level policies, applied here at the per-pair level. The
-  compile pipeline turns `"accept"` into `{ accept = null; }` and
-  `"drop"` into `{ drop = null; }` (`nftypes.dsl.<verdict>`) for
-  the emitted tail rule.
+  `policyVerdict` is `enum [ "accept" "drop" ]` — the two
+  verdicts nftables permits in a chain-level `policy <X>;`
+  clause, applied here at the per-pair level. Defined locally
+  rather than reused from `nftypes.types.policy` because the
+  compile pipeline's `policyVerdictStmts` dispatch only knows
+  `accept` / `drop`; if upstream ever broadens its policy enum
+  the local constraint keeps Phase 4 from crashing on an
+  unrecognized value. The pipeline turns `"accept"` into
+  `{ accept = null; }` and `"drop"` into `{ drop = null; }`
+  (`nftypes.dsl.<verdict>`) for the emitted tail rule.
 
   Example:
     options.policies = lib.mkOption {
@@ -85,7 +89,7 @@
   zone,
 }:
 let
-  inherit (inputs) lib nftypes;
+  inherit (inputs) lib;
   inherit (zone) zoneName;
 
   policyName = primitives.identifier;
@@ -97,7 +101,10 @@ let
   */
   policyZones = lib.types.nonEmptyListOf zoneName;
 
-  policyVerdict = nftypes.types.policy;
+  policyVerdict = lib.types.enum [
+    "accept"
+    "drop"
+  ];
 
   policyComment = primitives.comment;
 

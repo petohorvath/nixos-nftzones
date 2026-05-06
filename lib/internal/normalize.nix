@@ -110,10 +110,11 @@
   Writes: ctx.errors (appends)
 
   Walks each zone's parent chain; if a name is revisited within
-  the same walk, emits a cycle error. Rotated duplicates of the
-  same cycle (e.g., `a → b → c → a` and `b → c → a → b`) may
-  survive `lib.unique` since the dedup is on the formatted string;
-  acceptable for a v1 — a single cycle still fails the build.
+  the same walk, emits a cycle error. Each cycle is canonicalized
+  by rotating its node list so the lex-smallest member leads,
+  then formatted — so the same cycle discovered from different
+  starting points produces one error per cycle rather than one
+  per starting point.
 
   Each error is `lib.nameValuePair "zoneParentCycle" <message>`
   with the cycle path joined by `" → "`.
@@ -537,12 +538,19 @@ let
     let
       inherit (ctx) mergedZones;
 
+      indexOf =
+        needle: list:
+        let
+          matches = builtins.filter (e: e.v == needle) (lib.imap0 (i: v: { inherit i v; }) list);
+        in
+        (builtins.head matches).i;
+
       /*
-        Walk the parent chain starting at `start`. Returns a
-        non-empty list (the cycle path) iff a cycle is found,
-        empty list otherwise. The walk stops at unresolved or
-        null parents — those are handled by `checkParentRefs`
-        and are not cycles.
+        Walk the parent chain starting at `start`. Returns the
+        cycle proper (just the cycle members, no leading tail and
+        no closing duplicate) iff a cycle is found, empty list
+        otherwise. The walk stops at unresolved or null parents —
+        those are handled by `checkParentRefs` and are not cycles.
       */
       walkChain =
         start:
@@ -553,21 +561,39 @@ let
               zone = mergedZones.${name} or null;
               parent = if zone == null then null else parentOf zone;
             in
-            if parent == null then
-              [ ]
-            else if !(mergedZones ? ${parent}) then
+            if parent == null || !(mergedZones ? ${parent}) then
               [ ]
             else if builtins.elem parent visited then
-              visited ++ [ parent ]
+              # Drop the leading tail (anything before parent's
+              # first occurrence) so callers see only the cycle
+              # members.
+              lib.drop (indexOf parent visited) visited
             else
               step (visited ++ [ parent ]) parent;
         in
         step [ start ] start;
 
+      /*
+        Rotate `nodes` so the lex-smallest member leads. Two
+        walks of the same cycle (e.g., `[a, b, c]` and `[b, c, a]`)
+        canonicalize to the same list, so `lib.unique` collapses
+        them after formatting.
+      */
+      canonicalRotation =
+        nodes:
+        let
+          minNode = lib.foldl' lib.min (builtins.head nodes) nodes;
+          minIdx = indexOf minNode nodes;
+        in
+        (lib.drop minIdx nodes) ++ (lib.take minIdx nodes);
+
+      formatCycle = nodes: lib.concatStringsSep " → " (nodes ++ [ (builtins.head nodes) ]);
+
       cycles = lib.pipe (builtins.attrNames mergedZones) [
         (map walkChain)
         (builtins.filter (chain: chain != [ ]))
-        (map (chain: lib.concatStringsSep " → " chain))
+        (map canonicalRotation)
+        (map formatCycle)
         lib.unique
       ];
 

@@ -3163,36 +3163,113 @@ in
     expected = [ ];
   };
 
-  # ===== checkParentCycles — simple cycle flagged =====
+  # ===== checkParentCycles — simple cycle flagged exactly once =====
 
   testCheckParentCyclesSimple = {
     expr =
-      let
-        errs =
-          (runPipeline
-            [
-              convertNodesToZones
-              checkParentCycles
-            ]
-            (
-              emptyTable
-              // {
-                zones = {
-                  a = {
-                    parent = "b";
-                  };
-                  b = {
-                    parent = "a";
-                  };
-                };
-              }
-            )
-          ).errors;
-      in
-      # `lib.unique` may leave rotated duplicates; we only assert
-      # that *at least one* cycle error was emitted.
-      builtins.length errs >= 1 && builtins.all (e: e.name == "zoneParentCycle") errs;
-    expected = true;
+      (runPipeline
+        [
+          convertNodesToZones
+          checkParentCycles
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              a = {
+                parent = "b";
+              };
+              b = {
+                parent = "a";
+              };
+            };
+          }
+        )
+      ).errors;
+    expected = [
+      {
+        name = "zoneParentCycle";
+        value = "zone parent cycle: a → b → a";
+      }
+    ];
+  };
+
+  # ===== checkParentCycles — 3-cycle dedups across all rotations =====
+
+  testCheckParentCyclesThreeNodeDedup = {
+    # Cycle `a → c → b → a` (following parent pointers).
+    # Walks starting from a, b, c each discover the same cycle
+    # from different positions. Canonicalization (rotate to
+    # lex-smallest) collapses them into one error.
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          checkParentCycles
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              a = {
+                parent = "c";
+              };
+              b = {
+                parent = "a";
+              };
+              c = {
+                parent = "b";
+              };
+            };
+          }
+        )
+      ).errors;
+    expected = [
+      {
+        name = "zoneParentCycle";
+        value = "zone parent cycle: a → c → b → a";
+      }
+    ];
+  };
+
+  # ===== checkParentCycles — tail leading into cycle is stripped =====
+
+  testCheckParentCyclesTailStripped = {
+    # `d → a → b → c → a`: walk from d hits the cycle but `d`
+    # itself isn't part of it. Output should be just the cycle
+    # members, canonicalized.
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          checkParentCycles
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              a = {
+                parent = "b";
+              };
+              b = {
+                parent = "c";
+              };
+              c = {
+                parent = "a";
+              };
+              d = {
+                parent = "a";
+              };
+            };
+          }
+        )
+      ).errors;
+    expected = [
+      {
+        name = "zoneParentCycle";
+        value = "zone parent cycle: a → b → c → a";
+      }
+    ];
   };
 
   # ===== computeChildrenOf — empty parent set =====
