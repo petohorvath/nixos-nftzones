@@ -485,6 +485,46 @@ in
     expected = 1;
   };
 
+  # ===== buildEffectiveSubChains — terminates on parent cycle =====
+
+  testBuildEffectiveSubChainsCycleSafe = {
+    # Phase 1's `checkParentCycles` rejects cycles in normal use,
+    # but a unit-test fixture (or a future caller that bypasses
+    # Phase 1) might hand emit a cyclic mergedZones. The
+    # `visited` guard inside `ancestorsOf` must stop the walk
+    # rather than infinite-loop. We don't assert structural
+    # equality — just that the call terminates and returns a
+    # finite attrset.
+    expr =
+      let
+        bucket = {
+          subChains = {
+            "leaf-to-local" = {
+              from = "leaf";
+              to = "local";
+              preChildCells = [ ];
+              postChildCells = [ { name = "x"; } ];
+            };
+          };
+        };
+        # cycle: a → b → a
+        mergedZones = {
+          a = mockZone // {
+            parent = "b";
+          };
+          b = mockZone // {
+            parent = "a";
+          };
+          leaf = mockZone // {
+            parent = "a";
+          };
+        };
+        eff = buildEffectiveSubChains bucket mergedZones;
+      in
+      builtins.isAttrs eff;
+    expected = true;
+  };
+
   # ===== mkBaseChain — filter input gets stateful + loopback =====
 
   testMkBaseChainFilterInput = {

@@ -502,16 +502,29 @@ let
   buildEffectiveSubChains =
     bucket: mergedZones:
     let
+      # Walk the parent chain. Returns ancestors in root-toward
+      # order (immediate parent first). Phase 1's
+      # `checkParentCycles` should have rejected any cycle before
+      # we get here; the `visited` guard is defensive so unit-test
+      # fixtures that bypass Phase 1 don't infinite-loop.
       ancestorsOf =
-        name:
-        if name == null then
-          [ ]
-        else
-          let
-            zone = mergedZones.${name} or null;
-            parent = if zone == null then null else zone.parent or null;
-          in
-          if parent == null then [ ] else [ parent ] ++ ancestorsOf parent;
+        start:
+        let
+          step =
+            visited: name:
+            if name == null then
+              [ ]
+            else
+              let
+                zone = mergedZones.${name} or null;
+                parent = if zone == null then null else zone.parent or null;
+              in
+              if parent == null || builtins.elem parent visited then
+                [ ]
+              else
+                [ parent ] ++ step (visited ++ [ parent ]) parent;
+        in
+        step [ start ] start;
 
       mkEmptyRecord =
         fromZone: toZone:

@@ -285,6 +285,51 @@ in
     };
   };
 
+  # ===== dispatchAndSort — int priority on chain override collapses
+  # into the same bucket as the symbol-form default =====
+
+  testDispatchIntPriorityCanonicalizes = {
+    # `chain.priority = 0` is the int form of `"filter"`; the
+    # default filter dispatch uses the symbol. Both must land in
+    # `"input-at-filter"` — otherwise nftables would see two
+    # base chains at the same `(hook, priority)` slot under
+    # different names.
+    expr =
+      let
+        out =
+          (runDispatch {
+            name = "fw";
+            zones.wan = {
+              interfaces = [ "wan0" ];
+            };
+            filters = {
+              default-form = {
+                from = [ "wan" ];
+                to = [ "local" ];
+                rule = [ ];
+              };
+              int-override = {
+                from = [ "wan" ];
+                to = [ "local" ];
+                rule = [ ];
+                chain = {
+                  hook = "input";
+                  priority = 0;
+                };
+              };
+            };
+          }).chainBuckets;
+      in
+      {
+        bucketKeys = lib.attrNames out;
+        subKeys = lib.attrNames out."input-at-filter".subChains;
+      };
+    expected = {
+      bucketKeys = [ "input-at-filter" ];
+      subKeys = [ "wan-to-local" ];
+    };
+  };
+
   # ===== dispatchAndSort — pre-child priority (< 100) → preChildCells =====
 
   testDispatchPreChildSlot = {
