@@ -814,9 +814,9 @@ let
       - `route` chain at non-`output` hooks (kernel restriction
         encoded in `hooksByChainType.route = [ "output" ]`).
 
-    Default-placement table (mirrors `internal.dispatch`); kept
-    in sync by hand because dispatch is in layer 1 and we're at
-    layer 1 too — extracting to layer 0 is a separate refactor.
+    Default placements are sourced from `internal.placement`,
+    the same module Phase 3 dispatch reads — single source of
+    truth for the per-group `(hook, priority)` constants.
   */
   checkChainPlacement =
     { table, ctx }:
@@ -824,25 +824,7 @@ let
       inherit (table) family;
       inherit (table.settings) localZone;
       inherit (nftypes) chainTypeFor validChainPlacement;
-
-      defaultPlacement = {
-        snats = {
-          hook = "postrouting";
-          priority = "srcnat";
-        };
-        dnats = {
-          hook = "prerouting";
-          priority = "dstnat";
-        };
-        sroutes = {
-          hook = "prerouting";
-          priority = "mangle";
-        };
-        droutes = {
-          hook = "output";
-          priority = "mangle";
-        };
-      };
+      inherit (internal.placement) defaultGroupChainAttrs filterChainPriority;
 
       /*
         For a filter/policy entry, derive every hook the dispatch
@@ -874,11 +856,11 @@ let
         else if group == "filters" || group == "policies" then
           map (hook: {
             inherit entryName hook;
-            priority = "filter";
+            priority = filterChainPriority;
           }) (filterHooks ctx.expandedGroups.${group}.${entryName})
         else
           [
-            (defaultPlacement.${group}
+            (defaultGroupChainAttrs.${group}
               // {
                 inherit entryName;
               }

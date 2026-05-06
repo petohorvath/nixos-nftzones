@@ -124,16 +124,8 @@
 let
   inherit (inputs) lib nftypes;
   inherit (nftypes) priorityNameOf;
-  inherit (nftypes.compatibility) priorityIntsDefault;
   inherit (internal.priority) entryPriorities;
-
-  # Name-keyed views of nftypes' canonical enums — `hooks.input` /
-  # `chainPriorities.filter` read as the string but trip a
-  # missing-attr error if nftypes ever drops a name we reference
-  # below. Replaces both the hardcoded literals and the lazy
-  # `_validateCanonical` assert that never fired.
-  hooks = lib.genAttrs nftypes.enums.hook lib.id;
-  chainPriorities = lib.genAttrs (builtins.attrNames priorityIntsDefault) lib.id;
+  inherit (internal.placement) defaultGroupChainAttrs filterChainHook filterChainPriority;
 
   # Sub-chain pre/post-child-dispatch cutoff. Cells with resolved
   # priority below this fall in the `preChildCells` slot (fire
@@ -141,36 +133,6 @@ let
   # `postChildCells` (fire after children return — parent
   # fallback). Default (500) lands in `postChildCells` naturally.
   preChildCutoff = entryPriorities.postDispatch;
-
-  # Default chain attrs per group (excluding filters / policies,
-  # which dispatch by host position).
-  defaultGroupChainAttrs = {
-    snats = {
-      hook = hooks.postrouting;
-      priority = chainPriorities.srcnat;
-    };
-    dnats = {
-      hook = hooks.prerouting;
-      priority = chainPriorities.dstnat;
-    };
-    sroutes = {
-      hook = hooks.prerouting;
-      priority = chainPriorities.mangle;
-    };
-    droutes = {
-      hook = hooks.output;
-      priority = chainPriorities.mangle;
-    };
-  };
-
-  filterChainHook =
-    localZone: cell:
-    if cell ? to && cell.to == localZone then
-      hooks.input
-    else if cell ? from && cell.from == localZone then
-      hooks.output
-    else
-      hooks.forward;
 
   /*
     Compute a cell's chain attrs `{ hook; priority; }` — the
@@ -188,7 +150,7 @@ let
     else if group == "filters" || group == "policies" then
       {
         hook = filterChainHook localZone cell;
-        priority = chainPriorities.filter;
+        priority = filterChainPriority;
       }
     else
       defaultGroupChainAttrs.${group};

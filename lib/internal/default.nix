@@ -20,6 +20,7 @@ let
   priority = import ./priority.nix { inherit inputs; };
   node = import ./node.nix { inherit inputs; };
   refs = import ./refs.nix { inherit inputs; };
+  placement = import ./placement.nix { inherit inputs; };
 
   base = {
     inherit
@@ -28,6 +29,7 @@ let
       priority
       node
       refs
+      placement
       ;
   };
 

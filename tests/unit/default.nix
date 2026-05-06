@@ -19,6 +19,7 @@ args@{
 // import ./internal/entry.nix args
 // import ./internal/priority.nix args
 // import ./internal/node.nix args
+// import ./internal/placement.nix args
 // import ./internal/normalize.nix args
 // import ./internal/refs.nix args
 // import ./internal/expand.nix args
