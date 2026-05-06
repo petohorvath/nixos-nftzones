@@ -60,11 +60,10 @@
 
   Output shape note: lowered nodes are completed to the full
   `nftzones.types.zone` submodule shape (`name`, `parent`,
-  `interfaces`, `cidrs`, `matchOverride`, `comment`),
-  mirroring the submodule's defaults. Declared zones already have
-  this shape from submodule evaluation, so `ctx.mergedZones` is
-  uniformly shaped — downstream phases can consume it without
-  re-evaluation.
+  `interfaces`, `cidrs`, `matchOverride`), mirroring the
+  submodule's defaults. Declared zones already have this shape
+  from submodule evaluation, so `ctx.mergedZones` is uniformly
+  shaped — downstream phases can consume it without re-evaluation.
 
   ===== computeZoneSets =====
 
@@ -88,8 +87,8 @@
 
   Lowers each node via `node.toZone`, completes it to the full
   `nftzones.types.zone` submodule shape (filling in `name`,
-  `matchOverride`, `comment` defaults), then merges into
-  the declared zones. Result is a uniformly-shaped attrset.
+  `matchOverride` defaults), then merges into the declared zones.
+  Result is a uniformly-shaped attrset.
 
   ===== checkParentRefs =====
 

@@ -131,7 +131,6 @@ in
           interfaces
           cidrs
           matchOverride
-          comment
           ;
       };
     expected = {
@@ -146,7 +145,6 @@ in
         ingress = { };
         egress = { };
       };
-      comment = null;
     };
   };
 

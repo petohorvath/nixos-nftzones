@@ -15,8 +15,8 @@ let
   /*
     Pull out the input-derivable fields of a `toZone` result —
     the ones whose values come straight from the node. The
-    remaining fields (`match`, `matchOverride`, `comment`) carry
-    submodule defaults whose shapes are exercised separately.
+    remaining fields (`match`, `matchOverride`) carry submodule
+    defaults whose shapes are exercised separately.
   */
   inputFields = z: {
     inherit (z)
@@ -134,7 +134,6 @@ in
     );
     expected = [
       "cidrs"
-      "comment"
       "interfaces"
       "matchOverride"
       "name"
@@ -157,30 +156,13 @@ in
         };
       in
       {
-        inherit (z) matchOverride comment;
+        inherit (z) matchOverride;
       };
     expected = {
       matchOverride = {
         ingress = { };
         egress = { };
       };
-      comment = null;
     };
-  };
-
-  # ===== toZone — non-null comment propagates onto the lowered zone =====
-
-  testCommentPropagation = {
-    expr =
-      (toZone {
-        name = "web";
-        zone = "dmz";
-        address = {
-          ipv4 = "10.0.0.5";
-          ipv6 = null;
-        };
-        comment = "primary web host";
-      }).comment;
-    expected = "primary web host";
   };
 }

@@ -15,7 +15,6 @@
                             auto-generated clause. Consumed by
                             Phase 1's `checkZoneMatchable` and
                             Phase 4's `mkDirectionVariants`.
-    - `zoneComment`       — optional free-form comment
 
   Consumers wire the zone type as `lib.mkOption { type =
   lib.types.attrsOf nftzones.types.zone; }`.
@@ -59,8 +58,6 @@ let
   zoneInterfaces = lib.types.listOf libnet.types.interfaceName;
 
   zoneCidrs = lib.types.listOf libnet.types.cidr;
-
-  zoneComment = primitives.comment;
 
   /*
     Per-direction override sections. Each section is `nullOr (listOf
@@ -226,17 +223,6 @@ let
             section semantics.
           '';
         };
-
-        comment = lib.mkOption {
-          type = zoneComment;
-          default = null;
-          example = "trusted internal subnets";
-          description = ''
-            Free-form comment, attached to the zone for
-            documentation. `null` (the default) emits no comment
-            downstream.
-          '';
-        };
       };
     }
   );
@@ -248,7 +234,6 @@ in
     zoneInterfaces
     zoneCidrs
     zoneMatchOverride
-    zoneComment
     zone
     ;
 }

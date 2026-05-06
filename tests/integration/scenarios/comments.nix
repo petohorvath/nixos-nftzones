@@ -1,8 +1,8 @@
 /*
-  Comment-propagation scenario — sets `comment` on the table,
-  zone, and filter entry. Verifies the type system accepts the
-  field at every level and that the rendered ruleset still
-  passes `nft -j --check` with comments attached.
+  Comment-propagation scenario — sets `comment` on the table and
+  filter entry. Verifies the type system accepts the field and
+  that the rendered ruleset passes `nft -j --check` with comments
+  attached.
 */
 { nftypes }:
 let
@@ -14,7 +14,6 @@ in
 
   zones.wan = {
     interfaces = [ "wan0" ];
-    comment = "internet-facing edge";
   };
 
   filters.allow-ssh = {

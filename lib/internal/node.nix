@@ -27,7 +27,6 @@
         cidrs         = optional ipv4 "${ipv4}/32"
                      ++ optional ipv6 "${ipv6}/128";
         matchOverride = { ingress = { }; egress = { }; };
-        comment       = <node.comment>;   # propagated; null if unset
       }
 
     `parent` is load-bearing — it places the lowered zone inside
@@ -56,7 +55,6 @@
       interfaces = [ ];
       cidrs = [ "10.0.0.5/32" "fe80::1/128" ];
       matchOverride = { ingress = { }; egress = { }; };
-      comment = null;
     }
 */
 { inputs }:
@@ -68,7 +66,6 @@ let
       name,
       zone,
       address,
-      comment ? null,
       ...
     }:
     let
@@ -84,7 +81,6 @@ let
         parent
         interfaces
         cidrs
-        comment
         ;
       matchOverride = {
         ingress = { };
