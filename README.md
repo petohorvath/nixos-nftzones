@@ -135,8 +135,7 @@ filters.web-server-http = {
 ## Known limitations
 
 - **No real-kernel VM tests yet** — module-level tests confirm the wiring, but actual `nft -f` behavior in a live kernel (conntrack survival, traffic flow) isn't yet exercised in CI.
-- **`sroute` group emits an invalid `route`-type chain.** Source-zone-keyed route mangling currently produces a `type route` chain at `prerouting + mangle`; the kernel only accepts `route` chains at `output`. Use the `filters` group with a `chain = { hook = "prerouting"; priority = "mangle"; }` override as the workaround until the upstream nftypes fix lands. Tracked as follow-up #2 in [`docs/compile-pipeline-draft.md`](docs/compile-pipeline-draft.md).
-- **`bridge` family is rejected at compile time.** Bridge uses its own priority constants that nftzones' chain-name and chain-type derivations don't yet consult. Phase 1 raises `unsupportedFamily` so the symptom is a clear error rather than a silently-wrong ruleset. Tracked as follow-up #3 in [`docs/compile-pipeline-draft.md`](docs/compile-pipeline-draft.md).
+- **Bridge family supports `filter` chains only.** `nat` (not supported by the bridge family) and `route` (no `mangle` priority on bridge) placements are rejected at compile time by `checkChainPlacement` so users get a clear error rather than a kernel-level rejection.
 - See `Pending follow-ups` in [`docs/compile-pipeline-draft.md`](docs/compile-pipeline-draft.md) for tracked design gaps.
 
 ## Contributing

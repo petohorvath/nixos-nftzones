@@ -19,7 +19,6 @@
       { table; ctx = { errors = [ ]; }; }
         ↓ convertNodesToZones           ctx.mergedZones
         ↓ computeZoneSets               ctx.zoneSets
-        ↓ checkSupportedFamily          ctx.errors  (appends)
         ↓ checkParentRefs               ctx.errors  (appends)
         ↓ checkParentCycles             ctx.errors  (appends)
         ↓ computeChildrenOf             ctx.childrenOf
@@ -33,6 +32,7 @@
         ↓ checkZoneRefs                 ctx.errors  (appends)
         ↓ checkZoneMatchable            ctx.errors  (appends)
         ↓ checkChainOverridePlacement   ctx.errors  (appends)
+        ↓ checkChainPlacement           ctx.errors  (appends)
         ↓ checkPolicyUniqueness         ctx.errors  (appends)
         ↓ checkSetNameCollisions        ctx.errors  (appends)
         ↓ checkObjectRefs               ctx.errors  (appends)
@@ -434,6 +434,17 @@ let
     to = "egress";
   };
 
+  # Rule-bearing groups, in pipeline-canonical order. Used by
+  # validators and bookkeeping that need to iterate every group.
+  groupNames = [
+    "filters"
+    "policies"
+    "snats"
+    "dnats"
+    "sroutes"
+    "droutes"
+  ];
+
   collectAllZoneNames =
     { table, ctx }:
     let
@@ -748,31 +759,130 @@ let
     };
 
   /*
-    Reject `family = "bridge"` at compile time. Bridge has its own
-    priority constants (`priorityIntsBridge`: filter = -200, srcnat
-    = 300, …) that `internal.dispatch.canonicalPriority` and
-    `internal.emit.chainTypeOf` don't consult — they hardcode
-    `priorityIntsDefault`. A bridge table would compile, but every
-    chain-name canonicalization and chain-type derivation would
-    silently misbehave. Tracked as follow-up #3 in
-    `docs/compile-pipeline-draft.md`; blocked on upstream nftypes
-    surfacing family-aware reverse lookups (see
-    `../nix-nftypes/prompt-fix-2.md`).
+    Reject placements the kernel will refuse, before they reach
+    `nft -f`. Each rule group dispatches into a `(hook, priority)`
+    pair; combined with `table.family`, the implied chain type
+    (via `nftypes.chainTypeFor`) is what the kernel sees. If
+    `nftypes.validChainPlacement` says the triple is rejected,
+    we error out with the offending placement.
 
-    Surfaces as `unsupportedFamily` so users get a clear error
-    today instead of silent misbehaviour.
+    Catches three failure modes uncovered by the audit:
+      - `bridge` snat/dnat — bridge family doesn't support `nat`
+        chains at all.
+      - `bridge` sroute/droute — bridge has no `mangle` priority,
+        so `chainTypeFor` returns null and we surface the gap
+        rather than throwing in emit.
+      - `route` chain at non-`output` hooks (kernel restriction
+        encoded in `hooksByChainType.route = [ "output" ]`).
+
+    Default-placement table (mirrors `internal.dispatch`); kept
+    in sync by hand because dispatch is in layer 1 and we're at
+    layer 1 too — extracting to layer 0 is a separate refactor.
   */
-  checkSupportedFamily =
+  checkChainPlacement =
     { table, ctx }:
     let
-      unsupported = [ "bridge" ];
-      newErrors = lib.optional (builtins.elem table.family unsupported) (
-        lib.nameValuePair "unsupportedFamily" (
-          "table.family = '${table.family}' is not yet supported — chain-name "
-          + "canonicalization and chain-type derivation are inet/ip/ip6/arp/netdev "
-          + "only. See follow-up #3 in docs/compile-pipeline-draft.md"
-        )
-      );
+      inherit (table) family;
+      inherit (table.settings) localZone;
+      inherit (nftypes) chainTypeFor validChainPlacement;
+
+      defaultPlacement = {
+        snats = {
+          hook = "postrouting";
+          priority = "srcnat";
+        };
+        dnats = {
+          hook = "prerouting";
+          priority = "dstnat";
+        };
+        sroutes = {
+          hook = "prerouting";
+          priority = "mangle";
+        };
+        droutes = {
+          hook = "output";
+          priority = "mangle";
+        };
+      };
+
+      /*
+        For a filter/policy entry, derive every hook the dispatch
+        could land on. Hook depends solely on whether `localZone`
+        appears on the from / to side, so a membership check beats
+        materializing the full cartesian.
+      */
+      filterHooks =
+        dirs:
+        let
+          fromHasLocal = builtins.elem localZone dirs.from;
+          toHasLocal = builtins.elem localZone dirs.to;
+          nonLocalFrom = builtins.length dirs.from > (if fromHasLocal then 1 else 0);
+          nonLocalTo = builtins.length dirs.to > (if toHasLocal then 1 else 0);
+        in
+        lib.optional toHasLocal "input"
+        ++ lib.optional fromHasLocal "output"
+        ++ lib.optional (nonLocalFrom && nonLocalTo) "forward";
+
+      placementsForEntry =
+        group: entryName: entry:
+        if (entry.chain or null) != null then
+          [
+            {
+              inherit entryName;
+              inherit (entry.chain) hook priority;
+            }
+          ]
+        else if group == "filters" || group == "policies" then
+          map (hook: {
+            inherit entryName hook;
+            priority = "filter";
+          }) (filterHooks ctx.expandedGroups.${group}.${entryName})
+        else
+          [
+            (defaultPlacement.${group}
+              // {
+                inherit entryName;
+              }
+            )
+          ];
+
+      placementsForGroup =
+        group:
+        lib.concatLists (
+          lib.mapAttrsToList (placementsForEntry group) (table.${group} or { })
+        );
+
+      mkError =
+        group: p: reason:
+        lib.nameValuePair "invalidChainPlacement" (
+          "${group}.${p.entryName} would emit a base chain at "
+          + "(family=${family}, hook=${p.hook}, priority=${toString p.priority}) "
+          + "— ${reason}"
+        );
+
+      classify =
+        group: p:
+        let
+          chainType = chainTypeFor family p.hook p.priority;
+        in
+        if chainType == null then
+          [
+            (mkError group p
+              "priority symbol '${toString p.priority}' has no value in family '${family}'"
+            )
+          ]
+        else if !(validChainPlacement family chainType p.hook) then
+          [
+            (mkError group p
+              "kernel rejects chain type '${chainType}' on hook '${p.hook}' for family '${family}'"
+            )
+          ]
+        else
+          [ ];
+
+      newErrors = lib.concatMap (
+        group: lib.concatMap (classify group) (placementsForGroup group)
+      ) groupNames;
     in
     {
       inherit table;
@@ -1202,7 +1312,6 @@ let
       final = lib.pipe (mkInitialState table) [
         convertNodesToZones
         computeZoneSets
-        checkSupportedFamily
         checkParentRefs
         checkParentCycles
         computeChildrenOf
@@ -1216,6 +1325,7 @@ let
         checkZoneRefs
         checkZoneMatchable
         checkChainOverridePlacement
+        checkChainPlacement
         checkPolicyUniqueness
         checkSetNameCollisions
         checkObjectRefs
@@ -1233,7 +1343,6 @@ in
   inherit
     convertNodesToZones
     computeZoneSets
-    checkSupportedFamily
     checkParentRefs
     checkParentCycles
     computeChildrenOf
@@ -1248,6 +1357,7 @@ in
     checkZoneRefs
     checkZoneMatchable
     checkChainOverridePlacement
+    checkChainPlacement
     checkSetNameCollisions
     checkObjectRefs
     normalizeTable

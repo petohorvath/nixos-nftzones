@@ -14,7 +14,6 @@ let
   inherit (nftzones.internal.expand) expandTable;
   inherit (nftzones.internal.dispatch) dispatchAndSort;
   inherit (nftzones.internal.emit)
-    chainTypeOf
     mkBaseChain
     mkBaseChains
     mkRuleBody
@@ -234,95 +233,10 @@ in
     };
   };
 
-  # ===== chainTypeOf — filter (filter priority) =====
-
-  testChainTypeOfFilter = {
-    expr = chainTypeOf {
-      hook = "forward";
-      priority = "filter";
-    };
-    expected = "filter";
-  };
-
-  testChainTypeOfSrcnat = {
-    expr = chainTypeOf {
-      hook = "postrouting";
-      priority = "srcnat";
-    };
-    expected = "nat";
-  };
-
-  testChainTypeOfDstnat = {
-    expr = chainTypeOf {
-      hook = "prerouting";
-      priority = "dstnat";
-    };
-    expected = "nat";
-  };
-
-  testChainTypeOfRouteOnPrerouting = {
-    expr = chainTypeOf {
-      hook = "prerouting";
-      priority = "mangle";
-    };
-    expected = "route";
-  };
-
-  testChainTypeOfRouteOnOutput = {
-    expr = chainTypeOf {
-      hook = "output";
-      priority = "mangle";
-    };
-    expected = "route";
-  };
-
-  testChainTypeOfMangleOnInput = {
-    expr = chainTypeOf {
-      hook = "input";
-      priority = "mangle";
-    };
-    expected = "filter";
-  };
-
-  testChainTypeOfRpfilterOverride = {
-    expr = chainTypeOf {
-      hook = "prerouting";
-      priority = "raw";
-    };
-    expected = "filter";
-  };
-
-  testChainTypeOfIntSrcnat = {
-    expr = chainTypeOf {
-      hook = "postrouting";
-      priority = 100;
-    };
-    expected = "nat";
-  };
-
-  testChainTypeOfIntFilter = {
-    expr = chainTypeOf {
-      hook = "forward";
-      priority = 0;
-    };
-    expected = "filter";
-  };
-
-  testChainTypeOfIntRoute = {
-    expr = chainTypeOf {
-      hook = "output";
-      priority = -150;
-    };
-    expected = "route";
-  };
-
-  testChainTypeOfIntRaw = {
-    expr = chainTypeOf {
-      hook = "prerouting";
-      priority = -300;
-    };
-    expected = "filter";
-  };
+  # Chain type derivation moved upstream to
+  # `nftypes.compatibility.chainTypeFor`; tests for it live with
+  # the upstream helper. End-to-end coverage of the consumer path
+  # comes from the integration scenarios.
 
   # ===== mkSubChainKey — bidirectional =====
 
@@ -601,6 +515,11 @@ in
   };
 
   testMkBaseChainSroute = {
+    # `type route` is output-only per nftypes' hooksByChainType;
+    # sroute (prerouting + mangle) compiles as a regular filter
+    # chain that does mangle ops. The mark-set still happens; the
+    # routing-table re-evaluation that `type route` would trigger
+    # is meaningless at prerouting (no routing decision yet).
     expr =
       let
         c = mkChain { bucket = emptyBucket "prerouting" "mangle"; };
@@ -610,7 +529,7 @@ in
         hasPolicy = c ? policy;
       };
     expected = {
-      type = "route";
+      type = "filter";
       hook = "prerouting";
       prio = -150;
       hasPolicy = false;
@@ -1747,6 +1666,8 @@ in
   };
 
   testEmitTableSrouteChain = {
+    # sroute lands at prerouting+mangle as `type filter` (route
+    # chains are output-only — see `testMkBaseChainSroute`).
     expr =
       let
         chains =
@@ -1767,7 +1688,7 @@ in
         "prerouting-at-mangle"
         "prerouting-at-mangle__wan"
       ];
-      baseType = "route";
+      baseType = "filter";
     };
   };
 

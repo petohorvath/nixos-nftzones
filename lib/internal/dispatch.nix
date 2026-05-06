@@ -123,6 +123,7 @@
 { inputs, internal }:
 let
   inherit (inputs) lib nftypes;
+  inherit (nftypes) priorityNameOf;
   inherit (nftypes.compatibility) priorityIntsDefault;
   inherit (internal.priority) entryPriorities;
 
@@ -192,37 +193,22 @@ let
     else
       defaultGroupChainAttrs.${group};
 
-  # When a priority int matches a canonical symbol (e.g. 0 →
-  # "filter", -300 → "raw"), normalize to the symbol form so a
-  # user override that supplies the int collapses into the same
-  # bucket as a default placement that supplies the symbol.
-  # Without this, `chain.priority = 0` on a filter cell would
-  # produce bucket `"input-at-0"` while the default produces
-  # `"input-at-filter"` — two distinct base chains at the same
-  # kernel `(hook, priority)` slot.
-  #
-  # Only consults `priorityIntsDefault`; bridge family has its
-  # own table and isn't yet supported (see `emit.nix` chainTypeOf
-  # docstring).
-  canonicalPriority =
-    priority:
-    if !(builtins.isInt priority) then
-      priority
-    else
-      let
-        symbols = builtins.attrNames priorityIntsDefault;
-        matching = builtins.filter (s: priorityIntsDefault.${s} == priority) symbols;
-      in
-      if matching == [ ] then priority else builtins.head matching;
-
   # Base chain name — `"<hook>-at-<priority>"` (e.g.
   # `"input-at-filter"`). Used as the bucket key in `chainBuckets`
   # *and* as the chain name Phase 4 emits in the nftables output.
   # The format is a naming convention; bucket carries the
   # structured `{ hook; priority; }` separately so Phase 4 reads
-  # fields, not parsed strings. Priority is canonicalized so int
-  # and symbol forms of the same value share one bucket.
-  baseChainNameOf = chainAttrs: "${chainAttrs.hook}-at-${toString (canonicalPriority chainAttrs.priority)}";
+  # fields, not parsed strings.
+  #
+  # Priority is canonicalized via `nftypes.compatibility.priorityNameOf`
+  # so int and symbol forms of the same value share one bucket
+  # (`chain.priority = 0` and the default `"filter"` collapse into
+  # `"input-at-filter"`). The lookup is family-aware — bridge's
+  # `filter = -200` canonicalizes correctly, unlike the prior
+  # inet-only inline implementation.
+  baseChainNameOf =
+    family: chainAttrs:
+    "${chainAttrs.hook}-at-${toString (priorityNameOf family chainAttrs.priority)}";
 
   # Sub-chain key for a cell within its chain bucket —
   # `"<from>-to-<to>"` for bidirectional cells, bare `"<from>"` or
@@ -295,6 +281,7 @@ let
     { table, ctx }:
     let
       inherit (table.settings) localZone;
+      inherit (table) family;
 
       /*
         Data flow:
@@ -324,7 +311,7 @@ let
       groupedByChain = lib.pipe ctx.cells [
         pairWithChain
         lib.concatAttrValues
-        (lib.groupBy (item: baseChainNameOf item.attrs))
+        (lib.groupBy (item: baseChainNameOf family item.attrs))
         coalesce
       ];
     in

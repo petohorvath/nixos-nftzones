@@ -45,19 +45,6 @@
   (`flags`, `comment`); all are optional. As Phase 4 grows the
   body expands.
 
-  ===== chainTypeOf =====
-
-  Pure helper: derives the nftables chain *type* (`filter` / `nat`
-  / `route`) from a chain's `(hook, priority)`. nftypes does not
-  expose this mapping — `nftypes.enums.chainType` lists the three
-  values and `nftypes.compatibility.familiesByChainType` validates
-  family compatibility, but neither derives type from priority.
-  See `docs/compile-pipeline-draft.md` §4.2 for the rule.
-
-  Currently uses `priorityIntsDefault` (inet/ip/ip6/arp/netdev
-  family) for the comparison; bridge family has different priority
-  ints and is a documented limitation.
-
   ===== mkRuleBody =====
 
   Pure helper: emit one cell's rule body (list of nftypes
@@ -224,7 +211,7 @@
   Pure helper: produces one base chain attrset (chainBody shape per
   `nftypes.dsl.table` docstring) for a given `{ family; settings;
   bucket; baseChainName; mergedZones; zoneSets; }`. Includes:
-    - `type` derived via `chainTypeOf`.
+    - `type` derived via `nftypes.compatibility.chainTypeFor`.
     - `hook`, `prio` (priority resolved to int via
       `nftypes.resolvePriority`).
     - `policy` (filter chains only) from `settings.chainPolicy`.
@@ -340,43 +327,8 @@ let
     ip
     ip6
     ;
-  inherit (nftypes.compatibility) priorityIntsDefault;
+  inherit (nftypes) chainTypeFor priorityNameOf;
   inherit (internal.zone) getActiveMatchOverrides;
-
-  /*
-    Resolve a chain priority value (int or symbol) to its int
-    counterpart, family-default-table only. Used by `chainTypeOf`
-    to compare against canonical srcnat / dstnat / mangle values
-    — for the chain-header `prio` field we use
-    `nftypes.resolvePriority` (family-aware) instead.
-  */
-  resolveDefaultPriority =
-    priority: if builtins.isInt priority then priority else priorityIntsDefault.${priority};
-
-  # KNOWN BUG (tracked in `docs/compile-pipeline-draft.md` follow-up
-  # #2): `route` chains are valid only at `output`, not `prerouting`.
-  # `sroute` (which dispatches to `prerouting + mangle`) therefore
-  # emits an invalid ruleset that the kernel rejects with "Chain of
-  # type 'route' is not supported". The fix is blocked on upstream
-  # adding `nftypes.compatibility.hooksByChainType` so this whole
-  # mapping can move to a single source of truth — see
-  # `../nix-nftypes/prompt-fix.md`. Until then, the prerouting case
-  # below is wrong (it should be `output`-only); `droute` happens to
-  # land correctly because output + mangle is route's actual home.
-  chainTypeOf =
-    chainAttrs:
-    let
-      priority = resolveDefaultPriority chainAttrs.priority;
-    in
-    if priority == priorityIntsDefault.srcnat || priority == priorityIntsDefault.dstnat then
-      "nat"
-    else if
-      priority == priorityIntsDefault.mangle
-      && (chainAttrs.hook == "prerouting" || chainAttrs.hook == "output")
-    then
-      "route"
-    else
-      "filter";
 
   # Boilerplate rule constants (each rule = list of statements).
   statefulRules = [
@@ -913,16 +865,18 @@ let
     let
       inherit (settings) localZone;
 
-      chainType = chainTypeOf bucket;
-      chainPriority = resolveDefaultPriority bucket.priority;
+      chainType = chainTypeFor family bucket.hook bucket.priority;
+      priorityName = priorityNameOf family bucket.priority;
 
       # `isFilterBaseChain` is the narrower predicate that gates
       # stateful + loopback boilerplate: chain at the canonical
       # `filter` priority specifically, not other filter-type
-      # placements (`raw` for rpfilter, `security`, …).
-      isFilterBaseChain = chainType == "filter" && chainPriority == priorityIntsDefault.filter;
+      # placements (`raw` for rpfilter, `security`, …). Compares
+      # canonical names so bridge filter (-200) and ip filter (0)
+      # both qualify.
+      isFilterBaseChain = chainType == "filter" && priorityName == "filter";
       isInput = bucket.hook == "input";
-      isPreroutingRaw = bucket.hook == "prerouting" && chainPriority == priorityIntsDefault.raw;
+      isPreroutingRaw = bucket.hook == "prerouting" && priorityName == "raw";
 
       statefulPrelude = lib.optionals (isFilterBaseChain && settings.stateful) statefulRules;
       loopbackPrelude = lib.optionals (isFilterBaseChain && isInput && settings.loopback) loopbackRules;
@@ -1137,7 +1091,6 @@ let
 in
 {
   inherit
-    chainTypeOf
     mkRuleBody
     subChainNameOf
     mkSubChainKey

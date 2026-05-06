@@ -13,7 +13,7 @@ let
   inherit (nftzones.internal.normalize)
     convertNodesToZones
     computeZoneSets
-    checkSupportedFamily
+    checkChainPlacement
     checkParentRefs
     checkParentCycles
     computeChildrenOf
@@ -465,40 +465,126 @@ in
     ];
   };
 
-  # ===== checkSupportedFamily — inet (default) is fine =====
+  # ===== checkChainPlacement — inet defaults are accepted =====
 
-  testCheckSupportedFamilyInet = {
+  testCheckChainPlacementInetDefaults = {
     expr =
-      (runPhase checkSupportedFamily (
-        emptyTable
-        // {
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          expandWildcardZones
+          checkChainPlacement
+        ]
+        {
           family = "inet";
+          zones.lan.interfaces = [ "lan0" ];
+          zones.wan.interfaces = [ "wan0" ];
+          filters.allow = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule = [ ];
+          };
+          snats.masq = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule.masquerade = { };
+          };
         }
-      )).errors;
+      ).errors;
     expected = [ ];
   };
 
-  # ===== checkSupportedFamily — bridge raises unsupportedFamily =====
+  # ===== checkChainPlacement — bridge family + snat is rejected =====
 
-  testCheckSupportedFamilyBridge = {
-    # Bridge has its own priority constants that downstream phases
-    # don't consult; reject at compile time until that's fixed.
+  testCheckChainPlacementBridgeRejectsSnat = {
+    # Bridge family doesn't support `nat` chains
+    # (`familiesByChainType.nat = [ip ip6 inet]`); the default
+    # snat placement at postrouting+srcnat must be flagged.
     expr =
-      (runPhase checkSupportedFamily (
-        emptyTable
-        // {
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          expandWildcardZones
+          checkChainPlacement
+        ]
+        {
           family = "bridge";
+          zones.lan.interfaces = [ "lan0" ];
+          zones.wan.interfaces = [ "wan0" ];
+          snats.masq = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule.masquerade = { };
+          };
         }
-      )).errors;
+      ).errors;
     expected = [
       {
-        name = "unsupportedFamily";
+        name = "invalidChainPlacement";
         value =
-          "table.family = 'bridge' is not yet supported — chain-name "
-          + "canonicalization and chain-type derivation are inet/ip/ip6/arp/netdev "
-          + "only. See follow-up #3 in docs/compile-pipeline-draft.md";
+          "snats.masq would emit a base chain at "
+          + "(family=bridge, hook=postrouting, priority=srcnat) "
+          + "— kernel rejects chain type 'nat' on hook 'postrouting' for family 'bridge'";
       }
     ];
+  };
+
+  # ===== checkChainPlacement — bridge sroute hits the null chainType branch =====
+
+  testCheckChainPlacementBridgeSrouteUnknownPriority = {
+    # Bridge has no `mangle` priority, so `chainTypeFor` returns
+    # null — the validator surfaces it as a clear error rather
+    # than letting emit throw.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          expandWildcardZones
+          checkChainPlacement
+        ]
+        {
+          family = "bridge";
+          zones.lan.interfaces = [ "lan0" ];
+          sroutes.mark = {
+            from = [ "lan" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [
+      {
+        name = "invalidChainPlacement";
+        value =
+          "sroutes.mark would emit a base chain at "
+          + "(family=bridge, hook=prerouting, priority=mangle) "
+          + "— priority symbol 'mangle' has no value in family 'bridge'";
+      }
+    ];
+  };
+
+  # ===== checkChainPlacement — bridge filter+policy is fine =====
+
+  testCheckChainPlacementBridgeFilter = {
+    # Bridge supports filter chains; with no nat/route groups
+    # declared the placement check passes.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          expandWildcardZones
+          checkChainPlacement
+        ]
+        {
+          family = "bridge";
+          zones.lan.interfaces = [ "lan0" ];
+          filters.allow = {
+            from = [ "lan" ];
+            to = [ "lan" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [ ];
   };
 
   # ===== checkSettings — defaults are conflict-free =====
