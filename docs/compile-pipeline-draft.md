@@ -282,11 +282,13 @@ result   = if variants ≠ [ ] then variants
            else [ ]
 ```
 
-The 8-case auto-path table (section-resolution simplified to "no override anywhere"):
+The seven reachable cases (auto-path only — section-resolution
+simplified to "no override anywhere"; the empty-zone case below
+is unreachable in practice because `checkZoneMatchable` rejects
+it in Phase 1):
 
 | Zone has        | Variants emitted (per direction) |
 |---|---|
-| empty           | `[ ]` *(Phase 1 `checkZoneMatchable` should prevent reaching this)* |
 | iface only      | `[[ <ifField> @<zone>_iifs ]]` |
 | v4 only         | `[[ <ipFamily> <addrField> @<zone>_v4 ]]` |
 | v6 only         | `[[ ip6 <addrField> @<zone>_v6 ]]` |
@@ -294,6 +296,7 @@ The 8-case auto-path table (section-resolution simplified to "no override anywhe
 | iface + v4      | 1 variant — iface prefix + v4 |
 | iface + v6      | 1 variant — iface prefix + v6 |
 | iface + v4 + v6 | 2 variants — each with iface prefix |
+| empty *(unreachable)* | `[ ]` — defense only; `checkZoneMatchable` rejects empty zones at Phase 1 |
 
 Where `<ifField>` is `iifname` (from-direction) or `oifname` (to-direction), and `<addrField>` is `saddr` / `daddr` likewise. With overrides in play, every cell can be replaced by user content; `extra` adds an extra family-agnostic prefix to every variant (e.g. `meta mark @<zone>_marks` for fwmark-defined zone membership).
 
@@ -364,24 +367,35 @@ lib/
                                extracts named-object refs from any
                                rule body or expression; consumed by
                                Phase 1's checkObjectRefs).
+    placement.nix            — defaultGroupChainAttrs +
+                               filterChainHook + filterChainPriority
+                               (per-group `(hook, priority)` constants
+                               and the localZone-driven host-position
+                               hook; shared by Phase 1's
+                               checkChainPlacement and Phase 3's
+                               chainAttrsOf).
 
     # Layer 1 — phase orchestrators (consume the leaves above)
-    normalize.nix            — Phase 1 orchestrator + 14 phases:
+    normalize.nix            — Phase 1 orchestrator + 19 phases:
                                convertNodesToZones, computeZoneSets,
+                               checkParentRefs, checkParentCycles,
+                               computeChildrenOf, computeRootZoneNames,
                                collectAllZoneNames, expandWildcardZones,
                                resolvePriorities, collectZoneRefs,
                                checkNameCollisions, checkSettings,
                                checkZoneRefs, checkZoneMatchable,
                                checkChainOverridePlacement,
+                               checkChainPlacement, checkRpfilterOverride,
                                checkPolicyUniqueness,
                                checkSetNameCollisions, checkObjectRefs.
     expand.nix               — Phase 2 orchestrator: expandTable
                                (cartesian product per entry into cells).
     dispatch.nix             — Phase 3 orchestrator: dispatchAndSort
                                (groupCellsByChain → chain buckets
-                               keyed by `<hook>-at-<priority>`,
-                               slotted into preDispatch / subChains
-                               / postDispatch).
+                               keyed by `<hook>-at-<priority>`, then
+                               buildChainBuckets partitioning cells
+                               into per-(from, to) sub-chains with
+                               pre/post-child slots).
     emit.nix                 — Phase 4 orchestrator: emitTable
                                (emitBaseChains → emitSubChains →
                                emitUserObjects → assembleOutput) plus

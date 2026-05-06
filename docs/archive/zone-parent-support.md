@@ -1,5 +1,10 @@
 # Zone parent support — implementation plan
 
+> **Archived.** This plan landed; see `docs/specs/zone-parent.md`
+> for the current behavior contract and `git log` for the
+> commit-by-commit progression. Preserved here for the historical
+> rationale (decisions, behavioural shift, rejected alternatives).
+
 ## Outcome
 
 `zone.parent` becomes load-bearing on the **from**-side of zone-pair
@@ -148,7 +153,7 @@ Cycle detection: unit test only (the throw fires before
 ## Files touched
 
 ```
-docs/plans/zone-parent-support.md          NEW (this file)
+docs/archive/zone-parent-support.md        NEW (this file; was docs/plans/zone-parent-support.md when written)
 docs/specs/zone-parent.md                  NEW (full spec)
 docs/compile-pipeline-draft.md             EDIT
 docs/validation-zones-draft.md             EDIT
