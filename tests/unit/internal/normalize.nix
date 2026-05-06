@@ -13,6 +13,7 @@ let
   inherit (nftzones.internal.normalize)
     convertNodesToZones
     computeZoneSets
+    checkSupportedFamily
     checkParentRefs
     checkParentCycles
     computeChildrenOf
@@ -461,6 +462,42 @@ in
     expected = [
       "lan"
       "host"
+    ];
+  };
+
+  # ===== checkSupportedFamily — inet (default) is fine =====
+
+  testCheckSupportedFamilyInet = {
+    expr =
+      (runPhase checkSupportedFamily (
+        emptyTable
+        // {
+          family = "inet";
+        }
+      )).errors;
+    expected = [ ];
+  };
+
+  # ===== checkSupportedFamily — bridge raises unsupportedFamily =====
+
+  testCheckSupportedFamilyBridge = {
+    # Bridge has its own priority constants that downstream phases
+    # don't consult; reject at compile time until that's fixed.
+    expr =
+      (runPhase checkSupportedFamily (
+        emptyTable
+        // {
+          family = "bridge";
+        }
+      )).errors;
+    expected = [
+      {
+        name = "unsupportedFamily";
+        value =
+          "table.family = 'bridge' is not yet supported — chain-name "
+          + "canonicalization and chain-type derivation are inet/ip/ip6/arp/netdev "
+          + "only. See follow-up #3 in docs/compile-pipeline-draft.md";
+      }
     ];
   };
 

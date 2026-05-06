@@ -19,6 +19,7 @@
       { table; ctx = { errors = [ ]; }; }
         ↓ convertNodesToZones           ctx.mergedZones
         ↓ computeZoneSets               ctx.zoneSets
+        ↓ checkSupportedFamily          ctx.errors  (appends)
         ↓ checkParentRefs               ctx.errors  (appends)
         ↓ checkParentCycles             ctx.errors  (appends)
         ↓ computeChildrenOf             ctx.childrenOf
@@ -746,6 +747,40 @@ let
       };
     };
 
+  /*
+    Reject `family = "bridge"` at compile time. Bridge has its own
+    priority constants (`priorityIntsBridge`: filter = -200, srcnat
+    = 300, …) that `internal.dispatch.canonicalPriority` and
+    `internal.emit.chainTypeOf` don't consult — they hardcode
+    `priorityIntsDefault`. A bridge table would compile, but every
+    chain-name canonicalization and chain-type derivation would
+    silently misbehave. Tracked as follow-up #3 in
+    `docs/compile-pipeline-draft.md`; blocked on upstream nftypes
+    surfacing family-aware reverse lookups (see
+    `../nix-nftypes/prompt-fix-2.md`).
+
+    Surfaces as `unsupportedFamily` so users get a clear error
+    today instead of silent misbehaviour.
+  */
+  checkSupportedFamily =
+    { table, ctx }:
+    let
+      unsupported = [ "bridge" ];
+      newErrors = lib.optional (builtins.elem table.family unsupported) (
+        lib.nameValuePair "unsupportedFamily" (
+          "table.family = '${table.family}' is not yet supported — chain-name "
+          + "canonicalization and chain-type derivation are inet/ip/ip6/arp/netdev "
+          + "only. See follow-up #3 in docs/compile-pipeline-draft.md"
+        )
+      );
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
   checkSettings =
     { table, ctx }:
     let
@@ -1167,6 +1202,7 @@ let
       final = lib.pipe (mkInitialState table) [
         convertNodesToZones
         computeZoneSets
+        checkSupportedFamily
         checkParentRefs
         checkParentCycles
         computeChildrenOf
@@ -1197,6 +1233,7 @@ in
   inherit
     convertNodesToZones
     computeZoneSets
+    checkSupportedFamily
     checkParentRefs
     checkParentCycles
     computeChildrenOf
