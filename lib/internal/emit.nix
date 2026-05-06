@@ -222,16 +222,14 @@
                        and `settings.stateful`.
         2. loopback   (`iif lo accept`) when filter input chain
                        and `settings.loopback`.
-        3. rpfilter   (`fib saddr . iif oif eq 0 drop`) when
-                       chain is `prerouting-at-raw` and
-                       `settings.rpfilter`.
-        4. root-zone dispatch jumps via `mkRootJumpRules` —
+        3. root-zone dispatch jumps via `mkRootJumpRules` —
                        one rule per (root from-zone × from-variant
                        × to-variant) tuple.
 
   Per-cell rule bodies (whether for the parent's own rules or
   for descendants) live inside their respective sub-chains —
-  see `mkSubChain`.
+  see `mkSubChain`. The rpfilter chain is built separately by
+  `mkBaseChains` and never injected into a user-authored chain.
 
   ===== mkBaseChains =====
 
@@ -239,8 +237,11 @@
   table body. Threads `baseChainName`, `mergedZones`, and
   `zoneSets` to `mkBaseChain` for jump-rule construction. If
   `settings.rpfilter` is enabled and no user override has
-  produced a `prerouting-at-raw` bucket, synthesizes one so the
-  rpfilter rule has a chain to live in.
+  claimed `prerouting-at-raw`, synthesizes a dedicated chain
+  carrying just `fib saddr . iif oif eq 0 drop`. A user
+  override at `(prerouting, raw)` always wins; Phase 1's
+  `checkRpfilterOverride` warns when both are set so the
+  suppression is visible.
 
   ===== emitBaseChains =====
 
@@ -876,11 +877,9 @@ let
       # both qualify.
       isFilterBaseChain = chainType == "filter" && priorityName == "filter";
       isInput = bucket.hook == "input";
-      isPreroutingRaw = bucket.hook == "prerouting" && priorityName == "raw";
 
       statefulPrelude = lib.optionals (isFilterBaseChain && settings.stateful) statefulRules;
       loopbackPrelude = lib.optionals (isFilterBaseChain && isInput && settings.loopback) loopbackRules;
-      rpfilterPrelude = lib.optionals (isPreroutingRaw && settings.rpfilter) rpfilterRules;
 
       jumpRules = mkRootJumpRules {
         inherit (bucket) hook;
@@ -893,7 +892,7 @@ let
           ;
       };
 
-      rules = statefulPrelude ++ loopbackPrelude ++ rpfilterPrelude ++ jumpRules;
+      rules = statefulPrelude ++ loopbackPrelude ++ jumpRules;
     in
     {
       type = chainType;
@@ -932,26 +931,20 @@ let
         }
       ) chainBuckets;
 
-      # Synthesize a prerouting-at-raw bucket if rpfilter is enabled
-      # and no user override has produced one already.
+      # rpfilter chain lives entirely here so user overrides at
+      # `(prerouting, raw)` aren't silently mutated. Synthesized
+      # only when the user hasn't already claimed the slot —
+      # Phase 1's `checkRpfilterOverride` warns when both are
+      # set so the user knows their override took precedence.
       needsRpfilter = settings.rpfilter && !(fromBuckets ? "prerouting-at-raw");
-      synthesizedRpfilterBucket = {
+      synthesizedRpfilterChain = {
+        type = "filter";
         hook = "prerouting";
-        priority = "raw";
-        subChains = { };
+        prio = nftypes.resolvePriority family "raw";
+        rules = rpfilterRules;
       };
       rpfilterAddition = lib.optionalAttrs needsRpfilter {
-        "prerouting-at-raw" = mkBaseChain {
-          inherit
-            family
-            settings
-            mergedZones
-            zoneSets
-            ;
-          bucket = synthesizedRpfilterBucket;
-          baseChainName = "prerouting-at-raw";
-          effectiveSubChains = { };
-        };
+        "prerouting-at-raw" = synthesizedRpfilterChain;
       };
     in
     fromBuckets // rpfilterAddition;

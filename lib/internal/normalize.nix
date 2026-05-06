@@ -16,7 +16,7 @@
 
   Phase pipeline:
 
-      { table; ctx = { errors = [ ]; }; }
+      { table; ctx = { errors = [ ]; warnings = [ ]; }; }
         ↓ convertNodesToZones           ctx.mergedZones
         ↓ computeZoneSets               ctx.zoneSets
         ↓ checkParentRefs               ctx.errors  (appends)
@@ -33,6 +33,7 @@
         ↓ checkZoneMatchable            ctx.errors  (appends)
         ↓ checkChainOverridePlacement   ctx.errors  (appends)
         ↓ checkChainPlacement           ctx.errors  (appends)
+        ↓ checkRpfilterOverride         ctx.warnings (appends)
         ↓ checkPolicyUniqueness         ctx.errors  (appends)
         ↓ checkSetNameCollisions        ctx.errors  (appends)
         ↓ checkObjectRefs               ctx.errors  (appends)
@@ -40,7 +41,7 @@
         ctx = {
           mergedZones; zoneSets; childrenOf; rootZoneNames;
           allZoneNames; expandedGroups; resolvedPriorities;
-          zoneRefs; errors;
+          zoneRefs; errors; warnings;
         };
       }
 
@@ -412,14 +413,17 @@ let
 
   /*
     Build the pipeline's initial `{ table; ctx }` from a fresh
-    table value. The `ctx` is seeded with an empty `errors` list
-    so validating phases can append unconditionally without
-    `or [ ]` defensiveness.
+    table value. The `ctx` is seeded with empty `errors` and
+    `warnings` lists so validating phases can append
+    unconditionally without `or [ ]` defensiveness. Errors abort
+    the build via `throw`; warnings surface via `lib.warn` and
+    let evaluation continue.
   */
   mkInitialState = table: {
     inherit table;
     ctx = {
       errors = [ ];
+      warnings = [ ];
     };
   };
 
@@ -443,6 +447,15 @@ let
     "dnats"
     "sroutes"
     "droutes"
+  ];
+
+  # Subset of `groupNames` whose entry types expose a `chain`
+  # override field (filters / snats / dnats). Sroutes, droutes,
+  # policies have fixed placements with no override path.
+  chainOverrideGroups = [
+    "filters"
+    "snats"
+    "dnats"
   ];
 
   collectAllZoneNames =
@@ -891,6 +904,44 @@ let
       };
     };
 
+  /*
+    Warn (don't error) when `settings.rpfilter = true` and a user
+    override at `(prerouting, raw)` already claims the slot.
+    Phase 4 keeps the user's chain intact and skips synthesizing
+    the rpfilter chain — without this warning, the rpfilter rule
+    would silently disappear and the user would have no signal
+    that their override took precedence.
+  */
+  checkRpfilterOverride =
+    { table, ctx }:
+    let
+      inherit (table) family;
+      inherit (nftypes) priorityNameOf;
+
+      claimsRawPrerouting =
+        entry:
+        let
+          chain = entry.chain or null;
+        in
+        chain != null && chain.hook == "prerouting" && priorityNameOf family chain.priority == "raw";
+
+      groupClaims = group: lib.any claimsRawPrerouting (lib.attrValues table.${group});
+
+      newWarnings = lib.optional (table.settings.rpfilter && lib.any groupClaims chainOverrideGroups) (
+        "settings.rpfilter is enabled but a user chain override "
+        + "already claims (prerouting, raw); the synthesized rpfilter "
+        + "chain is suppressed and the user-authored chain is used "
+        + "as-is. Add `fib saddr . iif oif eq 0 drop` to the override "
+        + "manually if you want rpfilter behavior in that chain."
+      );
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        warnings = ctx.warnings ++ newWarnings;
+      };
+    };
+
   checkSettings =
     { table, ctx }:
     let
@@ -1326,13 +1377,17 @@ let
         checkZoneMatchable
         checkChainOverridePlacement
         checkChainPlacement
+        checkRpfilterOverride
         checkPolicyUniqueness
         checkSetNameCollisions
         checkObjectRefs
       ];
+
+      withWarnings =
+        result: builtins.foldl' (acc: msg: lib.warn "nftzones.normalize: ${msg}" acc) result final.ctx.warnings;
     in
     if final.ctx.errors == [ ] then
-      final
+      withWarnings final
     else
       throw (
         "nftzones.normalize: validation failed:\n"
@@ -1358,6 +1413,7 @@ in
     checkZoneMatchable
     checkChainOverridePlacement
     checkChainPlacement
+    checkRpfilterOverride
     checkSetNameCollisions
     checkObjectRefs
     normalizeTable

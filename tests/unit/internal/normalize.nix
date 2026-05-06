@@ -14,6 +14,7 @@ let
     convertNodesToZones
     computeZoneSets
     checkChainPlacement
+    checkRpfilterOverride
     checkParentRefs
     checkParentCycles
     computeChildrenOf
@@ -59,6 +60,7 @@ let
 
   emptyCtx = {
     errors = [ ];
+    warnings = [ ];
   };
 
   /*
@@ -585,6 +587,97 @@ in
         }
       ).errors;
     expected = [ ];
+  };
+
+  # ===== checkRpfilterOverride — rpfilter on, no override → silent =====
+
+  testCheckRpfilterOverrideNoOverride = {
+    expr =
+      (runEvalPipeline [ checkRpfilterOverride ] {
+        settings.rpfilter = true;
+        zones.lan.interfaces = [ "lan0" ];
+      }).warnings;
+    expected = [ ];
+  };
+
+  # ===== checkRpfilterOverride — override but rpfilter off → silent =====
+
+  testCheckRpfilterOverrideRpfilterOff = {
+    expr =
+      (runEvalPipeline [ checkRpfilterOverride ] {
+        zones.wan.interfaces = [ "wan0" ];
+        filters.early-drop = {
+          from = [ "wan" ];
+          to = [ "wan" ];
+          rule = [ ];
+          chain = {
+            hook = "prerouting";
+            priority = "raw";
+          };
+        };
+      }).warnings;
+    expected = [ ];
+  };
+
+  # ===== checkRpfilterOverride — both set → warning fires =====
+
+  testCheckRpfilterOverrideConflict = {
+    # User chain at (prerouting, raw) suppresses the synthesized
+    # rpfilter chain in Phase 4. Validator surfaces a warning so
+    # the suppression isn't silent.
+    expr =
+      (runEvalPipeline [ checkRpfilterOverride ] {
+        settings.rpfilter = true;
+        zones.wan.interfaces = [ "wan0" ];
+        filters.early-drop = {
+          from = [ "wan" ];
+          to = [ "wan" ];
+          rule = [ ];
+          chain = {
+            hook = "prerouting";
+            priority = "raw";
+          };
+        };
+      }).warnings;
+    expected = [
+      (
+        "settings.rpfilter is enabled but a user chain override "
+        + "already claims (prerouting, raw); the synthesized rpfilter "
+        + "chain is suppressed and the user-authored chain is used "
+        + "as-is. Add `fib saddr . iif oif eq 0 drop` to the override "
+        + "manually if you want rpfilter behavior in that chain."
+      )
+    ];
+  };
+
+  # ===== checkRpfilterOverride — int form override is detected too =====
+
+  testCheckRpfilterOverrideIntPriority = {
+    # `priority = -300` is the int form of `"raw"`; canonicalized
+    # via priorityNameOf so the check matches both forms.
+    expr =
+      (runEvalPipeline [ checkRpfilterOverride ] {
+        settings.rpfilter = true;
+        zones.wan.interfaces = [ "wan0" ];
+        filters.early-drop = {
+          from = [ "wan" ];
+          to = [ "wan" ];
+          rule = [ ];
+          chain = {
+            hook = "prerouting";
+            priority = -300;
+          };
+        };
+      }).warnings;
+    expected = [
+      (
+        "settings.rpfilter is enabled but a user chain override "
+        + "already claims (prerouting, raw); the synthesized rpfilter "
+        + "chain is suppressed and the user-authored chain is used "
+        + "as-is. Add `fib saddr . iif oif eq 0 drop` to the override "
+        + "manually if you want rpfilter behavior in that chain."
+      )
+    ];
   };
 
   # ===== checkSettings — defaults are conflict-free =====
@@ -2889,6 +2982,7 @@ in
       "mergedZones"
       "resolvedPriorities"
       "rootZoneNames"
+      "warnings"
       "zoneRefs"
       "zoneSets"
     ];

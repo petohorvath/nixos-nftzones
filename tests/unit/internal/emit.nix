@@ -570,7 +570,11 @@ in
     };
   };
 
-  testMkBaseChainRpfilter = {
+  # `mkBaseChain` no longer attaches the rpfilter rule itself —
+  # the synthesized chain in `mkBaseChains` carries it instead.
+  # A user override at (prerouting, raw) gets only the standard
+  # boilerplate + jump rules, never the rpfilter `fib` drop.
+  testMkBaseChainNoRpfilterPrelude = {
     expr =
       let
         c = mkChain {
@@ -588,24 +592,66 @@ in
       type = "filter";
       hook = "prerouting";
       prio = -300;
-      ruleCount = 1; # rpfilter rule only
+      ruleCount = 0;
     };
   };
 
-  # ===== mkBaseChains — rpfilter synthesizes chain when absent =====
+  # ===== mkBaseChains — rpfilter synthesizes a dedicated chain =====
 
   testMkBaseChainsRpfilterSynthesized = {
-    expr = builtins.attrNames (mkBaseChains {
-      family = "inet";
-      settings = defaultSettings // {
-        rpfilter = true;
+    expr =
+      let
+        chains = mkBaseChains {
+          family = "inet";
+          settings = defaultSettings // {
+            rpfilter = true;
+          };
+          chainBuckets = { };
+          effectiveSubChainsByBucket = { };
+          mergedZones = { };
+          zoneSets = { };
+        };
+        chain = chains."prerouting-at-raw";
+      in
+      {
+        keys = builtins.attrNames chains;
+        inherit (chain) type hook prio;
+        ruleCount = builtins.length chain.rules;
       };
-      chainBuckets = { };
-      effectiveSubChainsByBucket = { };
-      mergedZones = { };
-      zoneSets = { };
-    });
-    expected = [ "prerouting-at-raw" ];
+    expected = {
+      keys = [ "prerouting-at-raw" ];
+      type = "filter";
+      hook = "prerouting";
+      prio = -300;
+      ruleCount = 1;
+    };
+  };
+
+  # ===== mkBaseChains — user override at (prerouting, raw) suppresses synthesis =====
+
+  testMkBaseChainsRpfilterUserOverrideWins = {
+    expr =
+      let
+        chains = mkBaseChains {
+          family = "inet";
+          settings = defaultSettings // {
+            rpfilter = true;
+          };
+          chainBuckets = {
+            "prerouting-at-raw" = emptyBucket "prerouting" "raw";
+          };
+          effectiveSubChainsByBucket = {
+            "prerouting-at-raw" = { };
+          };
+          mergedZones = { };
+          zoneSets = { };
+        };
+      in
+      builtins.length chains."prerouting-at-raw".rules;
+    # User chain runs through `mkBaseChain` only; with no
+    # boilerplate-eligible settings + no zone jumps, the chain
+    # is empty. Crucially, the rpfilter fib-drop is NOT injected.
+    expected = 0;
   };
 
   testMkBaseChainsEmpty = {
