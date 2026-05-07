@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+# Default to read-only for all jobs. The CI runs untrusted code from
+# fork PRs (Nix evaluation, VM tests); a least-privilege GITHUB_TOKEN
+# limits blast radius if a flake input or action is compromised.
+# Override per-job if a step ever needs to write (e.g. release).
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -14,8 +21,8 @@ jobs:
     name: format check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v30
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72 # v30
       - name: Apply formatter
         run: nix fmt
       - name: Verify no formatting drift
@@ -25,8 +32,8 @@ jobs:
     name: unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v30
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72 # v30
       - name: Build unit checks
         run: nix build --print-build-logs .#checks.x86_64-linux.unit
 
@@ -34,8 +41,8 @@ jobs:
     name: integration tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v30
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72 # v30
       - name: Build integration checks
         run: nix build --print-build-logs .#checks.x86_64-linux.integration
 
@@ -43,7 +50,7 @@ jobs:
     name: vm tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       # GitHub-hosted ubuntu-latest runners support nested
       # virtualization, but `/dev/kvm` is owned by root:kvm with
       # mode 0660 by default. The nix-daemon needs world-readable
@@ -55,7 +62,7 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - uses: cachix/install-nix-action@v30
+      - uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72 # v30
         with:
           extra_nix_config: |
             system-features = kvm nixos-test benchmark big-parallel uid-range
