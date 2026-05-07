@@ -37,6 +37,13 @@
   compiled output (rule comments present, policy emitted as tail
   rule, chain naming canonical) that `nft -j --check` is too
   lenient to catch.
+
+  Rejection scenarios (a separate flow, see `mkRejectionCheck`)
+  invert the polarity: the input is a deliberate misconfiguration,
+  and the build succeeds iff `mkRuleset` *throws*. Used to prove
+  Phase 1 validators are wired into the live pipeline; unit tests
+  verify each validator in isolation, but only the rejection
+  build proves the orchestrator still calls them.
 */
 {
   pkgs,
@@ -139,7 +146,42 @@ let
           touch $out
         ''
     );
+
+  /*
+    Rejection scenario: build succeeds iff `mkRuleset` *throws* on
+    the supplied body. Used to prove a Phase 1 validator is wired
+    into the live `mkRuleset` pipeline; if the validator gets
+    disconnected and the misconfigured body compiles cleanly, the
+    eval-time check below fires and the build never starts.
+
+    `builtins.deepSeq` forces full evaluation of the would-be
+    rendered ruleset; without it the lazy `mkTable` thunks could
+    leave the validator throws unforced and `tryEval` would
+    spuriously report success.
+
+    `tryEval` does not capture the throw message — only its
+    presence — so the unit tests in `tests/unit/internal/normalize.nix`
+    remain the source of truth for *which* validator fired and
+    *what* it said. The rejection check just pins that something
+    in the pipeline rejected the input.
+  */
+  mkRejectionCheck =
+    name: rejection:
+    let
+      attempt = builtins.tryEval (
+        builtins.deepSeq (nftzones.mkRuleset name rejection.body) null
+      );
+    in
+    if attempt.success then
+      throw (
+        "nftzones rejection scenario '${name}': "
+        + "expected mkRuleset to throw on the supplied body, "
+        + "but it compiled cleanly. "
+        + "(${rejection.description or "no description"})"
+      )
+    else
+      pkgs.runCommand "nftzones-rejection-${name}" { } "touch $out";
 in
 {
-  inherit renderScenario mkScenarioCheck;
+  inherit renderScenario mkScenarioCheck mkRejectionCheck;
 }
