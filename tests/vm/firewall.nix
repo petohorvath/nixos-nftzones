@@ -19,6 +19,13 @@
                   192.168.1.0/24             203.0.113.0/24
     [client]  ─── eth1 (.10)   ─── eth1 [router] eth2 ─── (.10) eth1 [server]
                                   (.1)            (.1)
+                                                ╲─── (.20) eth1 [external]
+
+  `external` is a fourth VM on the wan vlan that acts as an
+  off-net caller for the DNAT port-forward test. Doing the same
+  test from `server` would be hairpin NAT (server → router →
+  server) — Linux drops those packets unless explicit hairpin
+  SNAT is applied, which isn't what we're trying to verify here.
 
   Closes the README "no real-kernel VM tests yet" gap. This is the
   slow tier of the suite — booting three VMs takes 30-60s per
@@ -44,6 +51,7 @@ let
   routerLanIp = "${lanNet}.1";
   routerWanIp = "${wanNet}.1";
   serverWanIp = "${wanNet}.10";
+  externalWanIp = "${wanNet}.20";
 in
 pkgs.testers.nixosTest {
   name = "nftzones-firewall";
@@ -282,6 +290,29 @@ pkgs.testers.nixosTest {
 
         environment.systemPackages = [ pkgs.netcat-openbsd ];
       };
+
+    external =
+      { lib, pkgs, ... }:
+      {
+        virtualisation.vlans = [ 2 ];
+
+        networking = {
+          useDHCP = false;
+          firewall.enable = false;
+          interfaces.eth1 = {
+            useDHCP = false;
+            ipv4.addresses = lib.mkForce [
+              {
+                address = externalWanIp;
+                prefixLength = 24;
+              }
+            ];
+          };
+          defaultGateway = lib.mkForce routerWanIp;
+        };
+
+        environment.systemPackages = [ pkgs.curl ];
+      };
   };
 
   testScript = ''
@@ -295,6 +326,7 @@ pkgs.testers.nixosTest {
     client.wait_for_unit("multi-user.target")
     router.wait_for_unit("multi-user.target")
     server.wait_for_unit("multi-user.target")
+    external.wait_for_unit("multi-user.target")
 
     server.wait_for_unit("sshd.service")
     server.wait_for_open_port(22)
@@ -336,10 +368,12 @@ pkgs.testers.nixosTest {
         )
 
     with subtest("DNAT port forward: external 8080 lands on server:80"):
-        # Connect from server-side back to router-wan:8080 (acting as
-        # an "external" caller relative to the lan); DNAT bends to
-        # serverWanIp:80, which the testweb service answers.
-        out = server.succeed(
+        # The `external` VM is on the wan vlan but not the server
+        # itself, so the connection isn't hairpin: external → router
+        # (rewrites destination to serverWanIp:80) → server, reply
+        # via router (un-DNATs back) → external. testweb on server
+        # answers with a known body.
+        out = external.succeed(
             "curl -s --max-time 5 http://${routerWanIp}:8080/index.html"
         )
         assert "hello-from-server" in out, f"unexpected dnat response: {out!r}"
