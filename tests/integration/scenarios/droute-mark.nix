@@ -42,7 +42,8 @@ in
     }
     {
       description = "rule comment surfaces on the rendered rule";
-      expr = (builtins.elemAt compiled.tables.droute-mark.chains."output-at-mangle__lan-remote".rules 0).comment;
+      expr =
+        (builtins.elemAt compiled.tables.droute-mark.chains."output-at-mangle__lan-remote".rules 0).comment;
       expected = "local traffic to remote-lan via VPN";
     }
   ];

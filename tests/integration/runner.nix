@@ -67,18 +67,16 @@ let
     name: body:
     if builtins.isList body then
       {
-        tables = lib.listToAttrs (
-          map (e: lib.nameValuePair e.name (nftzones.mkTable e.name e.body)) body
-        );
+        tables = lib.listToAttrs (map (e: lib.nameValuePair e.name (nftzones.mkTable e.name e.body)) body);
       }
     else
       {
-        tables = { ${name} = nftzones.mkTable name body; };
+        tables = {
+          ${name} = nftzones.mkTable name body;
+        };
       };
 
-  /*
-    Compile a scenario body into libnftables-JSON.
-  */
+  # Compile a scenario body into libnftables-JSON.
   renderScenario =
     name: body:
     if builtins.isList body then
@@ -124,8 +122,7 @@ let
 
       compiled = compileScenario name body;
 
-      assertions =
-        if isWrapper && scenario ? assertions then scenario.assertions compiled else [ ];
+      assertions = if isWrapper && scenario ? assertions then scenario.assertions compiled else [ ];
 
       checked = evaluateAssertions name assertions;
 
@@ -168,9 +165,7 @@ let
   mkRejectionCheck =
     name: rejection:
     let
-      attempt = builtins.tryEval (
-        builtins.deepSeq (nftzones.mkRuleset name rejection.body) null
-      );
+      attempt = builtins.tryEval (builtins.deepSeq (nftzones.mkRuleset name rejection.body) null);
     in
     if attempt.success then
       throw (

@@ -61,11 +61,18 @@ in
     {
       description = "every declared object kind passes through to the rendered table";
       expr = {
-        limits = compiled.tables.objects-stateful ? limits && compiled.tables.objects-stateful.limits ? "ssh-rate";
-        quotas = compiled.tables.objects-stateful ? quotas && compiled.tables.objects-stateful.quotas ? "daily-cap";
-        ctHelpers = compiled.tables.objects-stateful ? ctHelpers && compiled.tables.objects-stateful.ctHelpers ? "ftp-helper";
-        ctTimeouts = compiled.tables.objects-stateful ? ctTimeouts && compiled.tables.objects-stateful.ctTimeouts ? "long-tcp";
-        maps = compiled.tables.objects-stateful ? maps && compiled.tables.objects-stateful.maps ? "port-redirect";
+        limits =
+          compiled.tables.objects-stateful ? limits && compiled.tables.objects-stateful.limits ? "ssh-rate";
+        quotas =
+          compiled.tables.objects-stateful ? quotas && compiled.tables.objects-stateful.quotas ? "daily-cap";
+        ctHelpers =
+          compiled.tables.objects-stateful ? ctHelpers
+          && compiled.tables.objects-stateful.ctHelpers ? "ftp-helper";
+        ctTimeouts =
+          compiled.tables.objects-stateful ? ctTimeouts
+          && compiled.tables.objects-stateful.ctTimeouts ? "long-tcp";
+        maps =
+          compiled.tables.objects-stateful ? maps && compiled.tables.objects-stateful.maps ? "port-redirect";
       };
       expected = {
         limits = true;

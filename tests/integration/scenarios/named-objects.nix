@@ -44,7 +44,8 @@ in
   assertions = compiled: [
     {
       description = "user counter passes through to the rendered table";
-      expr = compiled.tables.named-objects ? counters && compiled.tables.named-objects.counters ? lan-out-hits;
+      expr =
+        compiled.tables.named-objects ? counters && compiled.tables.named-objects.counters ? lan-out-hits;
       expected = true;
     }
     {

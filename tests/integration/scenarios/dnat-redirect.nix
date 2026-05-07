@@ -18,7 +18,9 @@ in
       from = [ "wan" ];
       rule = {
         match = [ (eq tcp.dport 2222) ];
-        action.redirect = { port = 22; };
+        action.redirect = {
+          port = 22;
+        };
       };
       comment = "expose sshd via 2222";
     };
@@ -32,7 +34,8 @@ in
     }
     {
       description = "redirect path emits a redirect statement (not dnat)";
-      expr = (builtins.elemAt compiled.tables.dnat-redirect.chains."prerouting-at-dstnat__wan".rules 0).expr;
+      expr =
+        (builtins.elemAt compiled.tables.dnat-redirect.chains."prerouting-at-dstnat__wan".rules 0).expr;
       expected = [
         (eq tcp.dport 2222)
         (redirect { port = 22; })
@@ -40,7 +43,8 @@ in
     }
     {
       description = "rule comment surfaces on the rendered rule";
-      expr = (builtins.elemAt compiled.tables.dnat-redirect.chains."prerouting-at-dstnat__wan".rules 0).comment;
+      expr =
+        (builtins.elemAt compiled.tables.dnat-redirect.chains."prerouting-at-dstnat__wan".rules 0).comment;
       expected = "expose sshd via 2222";
     }
   ];

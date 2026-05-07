@@ -40,7 +40,9 @@ in
     }
     {
       description = "filter rule is first (preDispatch-priority precedes policy)";
-      expr = builtins.elemAt compiled.tables.policy-default.chains."forward-at-filter__lan-to-wan".rules 0;
+      expr =
+        builtins.elemAt compiled.tables.policy-default.chains."forward-at-filter__lan-to-wan".rules
+          0;
       expected = [
         (eq tcp.dport 443)
         accept
@@ -48,7 +50,9 @@ in
     }
     {
       description = "policy is the tail rule (last entry — sort contract)";
-      expr = builtins.elemAt compiled.tables.policy-default.chains."forward-at-filter__lan-to-wan".rules 1;
+      expr =
+        builtins.elemAt compiled.tables.policy-default.chains."forward-at-filter__lan-to-wan".rules
+          1;
       expected = [ drop ];
     }
   ];

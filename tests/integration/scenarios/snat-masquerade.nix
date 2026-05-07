@@ -34,7 +34,9 @@ in
     }
     {
       description = "rule body is the bare masquerade statement";
-      expr = builtins.elemAt compiled.tables.snat-masquerade.chains."postrouting-at-srcnat__lan-to-wan".rules 0;
+      expr =
+        builtins.elemAt compiled.tables.snat-masquerade.chains."postrouting-at-srcnat__lan-to-wan".rules
+          0;
       expected = [ (masquerade { }) ];
     }
   ];

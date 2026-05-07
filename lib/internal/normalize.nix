@@ -937,7 +937,8 @@ let
           }) (filterHooks ctx.expandedGroups.${group}.${entryName})
         else
           [
-            (defaultGroupChainAttrs.${group}
+            (
+              defaultGroupChainAttrs.${group}
               // {
                 inherit entryName;
               }
@@ -945,10 +946,7 @@ let
           ];
 
       placementsForGroup =
-        group:
-        lib.concatLists (
-          lib.mapAttrsToList (placementsForEntry group) (table.${group} or { })
-        );
+        group: lib.concatLists (lib.mapAttrsToList (placementsForEntry group) (table.${group} or { }));
 
       mkError =
         group: p: reason:
@@ -965,9 +963,7 @@ let
         in
         if chainType == null then
           [
-            (mkError group p
-              "priority symbol '${toString p.priority}' has no value in family '${family}'"
-            )
+            (mkError group p "priority symbol '${toString p.priority}' has no value in family '${family}'")
           ]
         else if !(validChainPlacement family chainType p.hook) then
           [
@@ -1329,8 +1325,7 @@ let
         same-iface conflicts.
       */
       allEntries = lib.concatMap (
-        zoneName:
-        map (iface: { inherit zoneName iface; }) mergedZones.${zoneName}.interfaces
+        zoneName: map (iface: { inherit zoneName iface; }) mergedZones.${zoneName}.interfaces
       ) (builtins.attrNames mergedZones);
 
       n = builtins.length allEntries;
@@ -1351,9 +1346,7 @@ let
             b = builtins.elemAt allEntries j;
             sameZone = a.zoneName == b.zoneName;
             sameIface = a.iface == b.iface;
-            shouldFlag =
-              sameIface
-              && (sameZone || !(relatedByHierarchy mergedZones a.zoneName b.zoneName));
+            shouldFlag = sameIface && (sameZone || !(relatedByHierarchy mergedZones a.zoneName b.zoneName));
           in
           if shouldFlag then
             [
@@ -1413,8 +1406,7 @@ let
             a = builtins.elemAt allEntries i;
             b = builtins.elemAt allEntries j;
             sameZone = a.zoneName == b.zoneName;
-            shouldCheck =
-              sameZone || !(relatedByHierarchy mergedZones a.zoneName b.zoneName);
+            shouldCheck = sameZone || !(relatedByHierarchy mergedZones a.zoneName b.zoneName);
           in
           if shouldCheck && libnet.cidr.overlaps a.parsed b.parsed then
             [
@@ -1594,7 +1586,8 @@ let
       ];
 
       withWarnings =
-        result: builtins.foldl' (acc: msg: lib.warn "nftzones.normalize: ${msg}" acc) result final.ctx.warnings;
+        result:
+        builtins.foldl' (acc: msg: lib.warn "nftzones.normalize: ${msg}" acc) result final.ctx.warnings;
     in
     if final.ctx.errors == [ ] then
       withWarnings final

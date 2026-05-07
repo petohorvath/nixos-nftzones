@@ -169,8 +169,7 @@ let
   # `filter = -200` canonicalizes correctly, unlike the prior
   # inet-only inline implementation.
   baseChainNameOf =
-    family: chainAttrs:
-    "${chainAttrs.hook}-at-${toString (priorityNameOf family chainAttrs.priority)}";
+    family: chainAttrs: "${chainAttrs.hook}-at-${toString (priorityNameOf family chainAttrs.priority)}";
 
   # Sub-chain key for a cell within its chain bucket —
   # `"<from>-to-<to>"` for bidirectional cells, bare `"<from>"` or

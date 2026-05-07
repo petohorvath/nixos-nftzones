@@ -38,7 +38,8 @@ in
     }
     {
       description = "filter rule comment wraps the rule body";
-      expr = (builtins.elemAt compiled.tables.comments.chains."input-at-filter__wan-to-local".rules 0).comment;
+      expr =
+        (builtins.elemAt compiled.tables.comments.chains."input-at-filter__wan-to-local".rules 0).comment;
       expected = "ssh from anywhere";
     }
   ];

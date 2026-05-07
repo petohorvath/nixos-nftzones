@@ -173,7 +173,9 @@ pkgs.testers.nixosTest {
                 from = [ "lan" ];
                 rule = {
                   match = [ (eq udp.dport 53) ];
-                  action.redirect = { port = 53; };
+                  action.redirect = {
+                    port = 53;
+                  };
                 };
               };
 

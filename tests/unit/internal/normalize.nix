@@ -3379,19 +3379,22 @@ in
 
   testCheckInterfaceOverlapDisjoint = {
     expr =
-      (runEvalPipeline [
-        convertNodesToZones
-        checkInterfaceOverlap
-      ] {
-        zones = {
-          lan = {
-            interfaces = [ "eth1" ];
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkInterfaceOverlap
+        ]
+        {
+          zones = {
+            lan = {
+              interfaces = [ "eth1" ];
+            };
+            wan = {
+              interfaces = [ "eth0" ];
+            };
           };
-          wan = {
-            interfaces = [ "eth0" ];
-          };
-        };
-      }).errors;
+        }
+      ).errors;
     expected = [ ];
   };
 
@@ -3399,19 +3402,22 @@ in
 
   testCheckInterfaceOverlapUnrelated = {
     expr =
-      (runEvalPipeline [
-        convertNodesToZones
-        checkInterfaceOverlap
-      ] {
-        zones = {
-          guest = {
-            interfaces = [ "eth1" ];
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkInterfaceOverlap
+        ]
+        {
+          zones = {
+            guest = {
+              interfaces = [ "eth1" ];
+            };
+            lan = {
+              interfaces = [ "eth1" ];
+            };
           };
-          lan = {
-            interfaces = [ "eth1" ];
-          };
-        };
-      }).errors;
+        }
+      ).errors;
     expected = [
       {
         name = "interfaceOverlap";
@@ -3425,20 +3431,23 @@ in
 
   testCheckInterfaceOverlapHierarchyAllowed = {
     expr =
-      (runEvalPipeline [
-        convertNodesToZones
-        checkInterfaceOverlap
-      ] {
-        zones = {
-          lan = {
-            interfaces = [ "eth1" ];
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkInterfaceOverlap
+        ]
+        {
+          zones = {
+            lan = {
+              interfaces = [ "eth1" ];
+            };
+            lan-guests = {
+              parent = "lan";
+              interfaces = [ "eth1" ];
+            };
           };
-          lan-guests = {
-            parent = "lan";
-            interfaces = [ "eth1" ];
-          };
-        };
-      }).errors;
+        }
+      ).errors;
     expected = [ ];
   };
 
@@ -3446,17 +3455,20 @@ in
 
   testCheckInterfaceOverlapIntraZone = {
     expr =
-      (runEvalPipeline [
-        convertNodesToZones
-        checkInterfaceOverlap
-      ] {
-        zones.lan = {
-          interfaces = [
-            "eth1"
-            "eth1"
-          ];
-        };
-      }).errors;
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkInterfaceOverlap
+        ]
+        {
+          zones.lan = {
+            interfaces = [
+              "eth1"
+              "eth1"
+            ];
+          };
+        }
+      ).errors;
     expected = [
       {
         name = "interfaceOverlap";
@@ -3470,22 +3482,25 @@ in
   testCheckInterfaceOverlapThreeWay = {
     expr =
       builtins.length
-        (runEvalPipeline [
-          convertNodesToZones
-          checkInterfaceOverlap
-        ] {
-          zones = {
-            a = {
-              interfaces = [ "eth1" ];
+        (runEvalPipeline
+          [
+            convertNodesToZones
+            checkInterfaceOverlap
+          ]
+          {
+            zones = {
+              a = {
+                interfaces = [ "eth1" ];
+              };
+              b = {
+                interfaces = [ "eth1" ];
+              };
+              c = {
+                interfaces = [ "eth1" ];
+              };
             };
-            b = {
-              interfaces = [ "eth1" ];
-            };
-            c = {
-              interfaces = [ "eth1" ];
-            };
-          };
-        }).errors;
+          }
+        ).errors;
     # Pair-wise: (a,b), (a,c), (b,c) → 3 errors.
     expected = 3;
   };
@@ -3505,19 +3520,22 @@ in
 
   testCheckCidrOverlapDisjoint = {
     expr =
-      (runEvalPipeline [
-        convertNodesToZones
-        checkCidrOverlap
-      ] {
-        zones = {
-          lan = {
-            cidrs = [ "10.0.0.0/24" ];
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkCidrOverlap
+        ]
+        {
+          zones = {
+            lan = {
+              cidrs = [ "10.0.0.0/24" ];
+            };
+            guest = {
+              cidrs = [ "192.168.1.0/24" ];
+            };
           };
-          guest = {
-            cidrs = [ "192.168.1.0/24" ];
-          };
-        };
-      }).errors;
+        }
+      ).errors;
     expected = [ ];
   };
 
@@ -3525,19 +3543,22 @@ in
 
   testCheckCidrOverlapUnrelated = {
     expr =
-      (runEvalPipeline [
-        convertNodesToZones
-        checkCidrOverlap
-      ] {
-        zones = {
-          lan = {
-            cidrs = [ "10.0.0.0/24" ];
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkCidrOverlap
+        ]
+        {
+          zones = {
+            lan = {
+              cidrs = [ "10.0.0.0/24" ];
+            };
+            mgmt = {
+              cidrs = [ "10.0.0.0/28" ];
+            };
           };
-          mgmt = {
-            cidrs = [ "10.0.0.0/28" ];
-          };
-        };
-      }).errors;
+        }
+      ).errors;
     expected = [
       {
         name = "cidrOverlap";
@@ -3551,20 +3572,23 @@ in
 
   testCheckCidrOverlapHierarchyAllowed = {
     expr =
-      (runEvalPipeline [
-        convertNodesToZones
-        checkCidrOverlap
-      ] {
-        zones = {
-          dmz = {
-            cidrs = [ "10.0.0.0/24" ];
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkCidrOverlap
+        ]
+        {
+          zones = {
+            dmz = {
+              cidrs = [ "10.0.0.0/24" ];
+            };
+            web = {
+              parent = "dmz";
+              cidrs = [ "10.0.0.0/28" ];
+            };
           };
-          web = {
-            parent = "dmz";
-            cidrs = [ "10.0.0.0/28" ];
-          };
-        };
-      }).errors;
+        }
+      ).errors;
     expected = [ ];
   };
 
@@ -3572,24 +3596,27 @@ in
 
   testCheckCidrOverlapSiblings = {
     expr =
-      (runEvalPipeline [
-        convertNodesToZones
-        checkCidrOverlap
-      ] {
-        zones = {
-          dmz = {
-            cidrs = [ "10.0.0.0/24" ];
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkCidrOverlap
+        ]
+        {
+          zones = {
+            dmz = {
+              cidrs = [ "10.0.0.0/24" ];
+            };
+            a = {
+              parent = "dmz";
+              cidrs = [ "10.0.0.0/28" ];
+            };
+            b = {
+              parent = "dmz";
+              cidrs = [ "10.0.0.0/29" ];
+            };
           };
-          a = {
-            parent = "dmz";
-            cidrs = [ "10.0.0.0/28" ];
-          };
-          b = {
-            parent = "dmz";
-            cidrs = [ "10.0.0.0/29" ];
-          };
-        };
-      }).errors;
+        }
+      ).errors;
     # Parent ⊇ each sibling (ancestor relation, skipped),
     # but a and b are siblings without ancestor relation → flagged.
     expected = [
@@ -3604,19 +3631,22 @@ in
 
   testCheckCidrOverlapMixedFamily = {
     expr =
-      (runEvalPipeline [
-        convertNodesToZones
-        checkCidrOverlap
-      ] {
-        zones = {
-          a = {
-            cidrs = [ "10.0.0.0/24" ];
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkCidrOverlap
+        ]
+        {
+          zones = {
+            a = {
+              cidrs = [ "10.0.0.0/24" ];
+            };
+            b = {
+              cidrs = [ "fe80::/64" ];
+            };
           };
-          b = {
-            cidrs = [ "fe80::/64" ];
-          };
-        };
-      }).errors;
+        }
+      ).errors;
     expected = [ ];
   };
 
@@ -3624,17 +3654,20 @@ in
 
   testCheckCidrOverlapIntraZone = {
     expr =
-      (runEvalPipeline [
-        convertNodesToZones
-        checkCidrOverlap
-      ] {
-        zones.lan = {
-          cidrs = [
-            "10.0.0.0/24"
-            "10.0.0.0/28"
-          ];
-        };
-      }).errors;
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkCidrOverlap
+        ]
+        {
+          zones.lan = {
+            cidrs = [
+              "10.0.0.0/24"
+              "10.0.0.0/28"
+            ];
+          };
+        }
+      ).errors;
     expected = [
       {
         name = "cidrOverlap";
@@ -3647,18 +3680,21 @@ in
 
   testCheckCidrOverlapNodeInsideParent = {
     expr =
-      (runEvalPipeline [
-        convertNodesToZones
-        checkCidrOverlap
-      ] {
-        zones.dmz = {
-          cidrs = [ "10.0.0.0/24" ];
-        };
-        nodes.web-server = {
-          zone = "dmz";
-          address.ipv4 = "10.0.0.5";
-        };
-      }).errors;
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkCidrOverlap
+        ]
+        {
+          zones.dmz = {
+            cidrs = [ "10.0.0.0/24" ];
+          };
+          nodes.web-server = {
+            zone = "dmz";
+            address.ipv4 = "10.0.0.5";
+          };
+        }
+      ).errors;
     expected = [ ];
   };
 }

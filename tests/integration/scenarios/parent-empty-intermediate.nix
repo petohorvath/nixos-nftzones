@@ -41,7 +41,9 @@ in
     }
     {
       description = "intermediate dispatcher carries exactly one rule (child-dispatch jump)";
-      expr = builtins.length compiled.tables.parent-empty-intermediate.chains."input-at-filter__dmz-to-local".rules;
+      expr =
+        builtins.length
+          compiled.tables.parent-empty-intermediate.chains."input-at-filter__dmz-to-local".rules;
       expected = 1;
     }
     {
