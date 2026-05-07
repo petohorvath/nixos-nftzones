@@ -121,6 +121,14 @@ let
           alongside the interfaces section. Use for `meta mark`,
           `vlan id`, `meta cgroup`, etc. No auto path — exists
           only as a user-supplied prefix.
+
+          Hook validity is the author's responsibility. Some
+          `meta` fields (e.g. `iif`, `oif`) are valid only at
+          certain hooks (`iif` is unavailable on `output`).
+          nftzones inlines `extra` into every variant where the
+          zone appears regardless of hook; using a hook-
+          incompatible clause here produces a silently wrong
+          match, not an error.
         '';
       };
     };
