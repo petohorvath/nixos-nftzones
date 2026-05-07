@@ -118,7 +118,7 @@ allZones = [ "lan" "wan" "dmz" "local" ]
 
 ### 1.3 Validation
 
-Eight validators run after the compute phases, all in `internal/normalize.nix`. Each appends `lib.nameValuePair "<errorTag>" <message>` records to `ctx.errors`; the orchestrator aggregates them and throws a single message listing every error, so users see all problems in one pass.
+Ten validators run after the compute phases, all in `internal/normalize.nix`. Each appends `lib.nameValuePair "<errorTag>" <message>` records to `ctx.errors`; the orchestrator aggregates them and throws a single message listing every error, so users see all problems in one pass.
 
 - **`checkNameCollisions`** — node names must not collide with zone names (lowering would silently overwrite).
 - **`checkSettings`** — `settings.localZone` and `settings.wildcardZone` must differ from each other and from any declared zone / node name.
@@ -127,6 +127,8 @@ Eight validators run after the compute phases, all in `internal/normalize.nix`. 
 - **`checkChainOverridePlacement`** — entries with a `chain` override must land at a hook where their `from` / `to` zones are actually matchable (interface fields aren't valid at every hook).
 - **`checkPolicyUniqueness`** — at most one policy applies per `(from, to)` cell after wildcard expansion.
 - **`checkSetNameCollisions`** — user `objects.sets.<name>` must not collide with auto-generated zone-derived set names (`<zone>_iifs|v4|v6`).
+- **`checkInterfaceOverlap`** — distinct zones must not claim the same interface (ambiguous dispatch); ancestor/descendant pairs are skipped (intentional sharing in a zone hierarchy), and intra-zone duplicates in the `interfaces` list are also flagged.
+- **`checkCidrOverlap`** — distinct zones must not have overlapping CIDR prefixes (ambiguous dispatch); ancestor/descendant pairs are skipped (intentional containment, e.g. a node lowered into its parent zone), and intra-zone overlapping CIDRs are also flagged. Family-aware via `libnet.cidr.overlaps` (v4 vs v6 never overlap).
 - **`checkObjectRefs`** — every named-object reference in entry rule bodies, zone matchOverride content, and object bodies must resolve to a key in `table.objects.<kind>` (or — for `kind == "sets"` — a zone-derived set name). The walker lives in `internal/refs.nix`.
 
 ## Phase 2: expand
@@ -391,7 +393,9 @@ lib/
                                checkChainPlacement,
                                checkRpfilterOverride,
                                checkPolicyUniqueness,
-                               checkSetNameCollisions, checkObjectRefs.
+                               checkSetNameCollisions,
+                               checkInterfaceOverlap, checkCidrOverlap,
+                               checkObjectRefs.
     expand.nix               — Phase 2 orchestrator: expandTable
                                (cartesian product per entry into cells).
     dispatch.nix             — Phase 3 orchestrator: dispatchAndSort
@@ -479,10 +483,12 @@ normalizeTable = lib.pipe (mkInitialState table) [
   checkNameCollisions      # ─┐
   checkSettings            #  │
   checkZoneRefs            #  │
-  checkZoneMatchable       #  │ all append to ctx.errors;
-  checkChainOverridePlacement  # orchestrator throws if non-empty
-  checkPolicyUniqueness    #  │
+  checkZoneMatchable       #  │
+  checkChainOverridePlacement  # all append to ctx.errors;
+  checkPolicyUniqueness    #  │ orchestrator throws if non-empty
   checkSetNameCollisions   #  │
+  checkInterfaceOverlap    #  │
+  checkCidrOverlap         #  │
   checkObjectRefs          # ─┘
 ];
 

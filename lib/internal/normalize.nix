@@ -36,6 +36,8 @@
         ↓ checkRpfilterOverride         ctx.warnings (appends)
         ↓ checkPolicyUniqueness         ctx.errors   (appends)
         ↓ checkSetNameCollisions        ctx.errors   (appends)
+        ↓ checkInterfaceOverlap         ctx.errors   (appends)
+        ↓ checkCidrOverlap              ctx.errors   (appends)
         ↓ checkObjectRefs               ctx.errors   (appends)
       { table;
         ctx = {
@@ -349,6 +351,47 @@
 
   Each error is `lib.nameValuePair "setNameCollision" <message>`.
 
+  ===== checkInterfaceOverlap =====
+
+  Reads:  ctx.mergedZones
+  Writes: ctx.errors (appends)
+
+  Two distinct zones declaring the same interface produce
+  ambiguous dispatch — packets matching `@<zoneA>_iifs` also
+  match `@<zoneB>_iifs`, and whichever zone's jump fires first
+  wins. The losing zone's rules never apply, silently breaking
+  the intended policy.
+
+  Pair-wise comparison over every (zoneName, iface) pair from
+  `ctx.mergedZones`. Skips pairs whose zones are in an
+  ancestor/descendant relation (parent/child sharing an
+  interface is intentional — child traffic is dispatched into
+  the parent's chain first, then the parent's chain dispatches
+  to the child). Same-zone duplicates in the `interfaces` list
+  are also flagged as a separate misconfiguration class.
+
+  Each error is `lib.nameValuePair "interfaceOverlap" <message>`.
+
+  ===== checkCidrOverlap =====
+
+  Reads:  ctx.mergedZones
+  Writes: ctx.errors (appends)
+
+  Same ambiguous-dispatch failure mode as `checkInterfaceOverlap`,
+  for CIDR prefixes. Pair-wise comparison over every
+  (zoneName, cidr) entry from `ctx.mergedZones`. Skips zone pairs
+  in an ancestor/descendant relation — a child zone's CIDR is
+  intentionally inside its parent's (the canonical case is a
+  node lowered into its parent zone, e.g. `web-server` with
+  address `10.0.0.5` inside `dmz` with `10.0.0.0/24`).
+
+  Family-aware via `libnet.cidr.overlaps`: v4 vs v6 prefixes
+  always return false. Intra-zone overlaps (e.g.
+  `cidrs = [ "10.0.0.0/24" "10.0.0.0/28" ]`) are also flagged
+  as a separate misconfiguration class.
+
+  Each error is `lib.nameValuePair "cidrOverlap" <message>`.
+
   ===== checkObjectRefs =====
 
   Reads:  table.{filters,snats,dnats,sroutes,droutes}.<entry>.rule,
@@ -407,7 +450,7 @@
 */
 { inputs, internal }:
 let
-  inherit (inputs) lib nftypes;
+  inherit (inputs) lib libnet nftypes;
   inherit (internal.node) toZone;
   inherit (internal.zone) genSets getActiveMatchOverrides;
 
@@ -497,6 +540,41 @@ let
     evaluated zones always have `parent` defaulted to null.
   */
   parentOf = zone: zone.parent or null;
+
+  /*
+    `strictAncestorsOf mergedZones name` returns the strict
+    ancestor chain of `name` (its parent, grandparent, …),
+    excluding `name` itself. Walks until reaching a null parent
+    or an unresolved one. Cycle-safe via `visited` membership —
+    `checkParentCycles` rejects cycles upstream, but the walk
+    short-circuits anyway so the helper works on raw fixtures.
+  */
+  strictAncestorsOf =
+    mergedZones: name:
+    let
+      step =
+        visited: cur:
+        let
+          zone = mergedZones.${cur} or null;
+          parent = if zone == null then null else parentOf zone;
+        in
+        if parent == null || builtins.elem parent visited || !(mergedZones ? ${parent}) then
+          visited
+        else
+          step (visited ++ [ parent ]) parent;
+    in
+    step [ ] name;
+
+  /*
+    Are zones `a` and `b` in an ancestor/descendant relation in
+    `mergedZones`? True iff one is in the other's strict ancestor
+    chain. Used by overlap validators to skip pairs whose overlap
+    is intentional (parent CIDR contains child CIDR).
+  */
+  relatedByHierarchy =
+    mergedZones: a: b:
+    builtins.elem a (strictAncestorsOf mergedZones b)
+    || builtins.elem b (strictAncestorsOf mergedZones a);
 
   checkParentRefs =
     { table, ctx }:
@@ -1240,6 +1318,125 @@ let
       };
     };
 
+  checkInterfaceOverlap =
+    { table, ctx }:
+    let
+      inherit (ctx) mergedZones;
+
+      /*
+        All (zoneName, iface) pairs across every merged zone, in
+        zone-then-list order. Pair-wise comparison below flags
+        same-iface conflicts.
+      */
+      allEntries = lib.concatMap (
+        zoneName:
+        map (iface: { inherit zoneName iface; }) mergedZones.${zoneName}.interfaces
+      ) (builtins.attrNames mergedZones);
+
+      n = builtins.length allEntries;
+
+      /*
+        Compare unordered pairs (i, j) with i < j. Flag same
+        interface in two cases:
+          - same zone (intra-zone duplicate in `interfaces` list)
+          - different zones not in ancestor/descendant relation
+            (overlap with intentional parent/child sharing skipped)
+      */
+      pairErrors = lib.concatMap (
+        i:
+        lib.concatMap (
+          j:
+          let
+            a = builtins.elemAt allEntries i;
+            b = builtins.elemAt allEntries j;
+            sameZone = a.zoneName == b.zoneName;
+            sameIface = a.iface == b.iface;
+            shouldFlag =
+              sameIface
+              && (sameZone || !(relatedByHierarchy mergedZones a.zoneName b.zoneName));
+          in
+          if shouldFlag then
+            [
+              (lib.nameValuePair "interfaceOverlap" (
+                if sameZone then
+                  "zone '${a.zoneName}' lists interface '${a.iface}' more than once"
+                else
+                  "interface '${a.iface}' is claimed by zones '${a.zoneName}' and '${b.zoneName}' (no ancestor/descendant relationship)"
+              ))
+            ]
+          else
+            [ ]
+        ) (lib.range (i + 1) (n - 1))
+      ) (lib.range 0 (n - 1));
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ pairErrors;
+      };
+    };
+
+  checkCidrOverlap =
+    { table, ctx }:
+    let
+      inherit (ctx) mergedZones;
+
+      /*
+        All (zoneName, cidr-as-string, cidr-parsed) triples across
+        every merged zone. Parse is lazy per entry — only forced
+        on overlap check below.
+      */
+      allEntries = lib.concatMap (
+        zoneName:
+        map (cidrStr: {
+          inherit zoneName cidrStr;
+          parsed = libnet.cidr.parse cidrStr;
+        }) mergedZones.${zoneName}.cidrs
+      ) (builtins.attrNames mergedZones);
+
+      n = builtins.length allEntries;
+
+      /*
+        Same pair-wise pattern as `checkInterfaceOverlap`. Flag
+        overlap when:
+          - same zone (intra-zone overlap, e.g. `[ "10.0.0.0/24"
+            "10.0.0.0/28" ]`)
+          - different zones not in ancestor/descendant relation
+        `libnet.cidr.overlaps` is family-aware: v4 vs v6 always
+        returns false.
+      */
+      pairErrors = lib.concatMap (
+        i:
+        lib.concatMap (
+          j:
+          let
+            a = builtins.elemAt allEntries i;
+            b = builtins.elemAt allEntries j;
+            sameZone = a.zoneName == b.zoneName;
+            shouldCheck =
+              sameZone || !(relatedByHierarchy mergedZones a.zoneName b.zoneName);
+          in
+          if shouldCheck && libnet.cidr.overlaps a.parsed b.parsed then
+            [
+              (lib.nameValuePair "cidrOverlap" (
+                if sameZone then
+                  "zone '${a.zoneName}' has overlapping CIDRs '${a.cidrStr}' and '${b.cidrStr}'"
+                else
+                  "zone '${a.zoneName}' CIDR '${a.cidrStr}' overlaps zone '${b.zoneName}' CIDR '${b.cidrStr}' (no ancestor/descendant relationship)"
+              ))
+            ]
+          else
+            [ ]
+        ) (lib.range (i + 1) (n - 1))
+      ) (lib.range 0 (n - 1));
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ pairErrors;
+      };
+    };
+
   checkObjectRefs =
     { table, ctx }:
     let
@@ -1391,6 +1588,8 @@ let
         checkRpfilterOverride
         checkPolicyUniqueness
         checkSetNameCollisions
+        checkInterfaceOverlap
+        checkCidrOverlap
         checkObjectRefs
       ];
 
@@ -1426,6 +1625,8 @@ in
     checkChainPlacement
     checkRpfilterOverride
     checkSetNameCollisions
+    checkInterfaceOverlap
+    checkCidrOverlap
     checkObjectRefs
     normalizeTable
     ;

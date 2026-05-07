@@ -30,6 +30,8 @@ let
     checkZoneMatchable
     checkChainOverridePlacement
     checkSetNameCollisions
+    checkInterfaceOverlap
+    checkCidrOverlap
     checkObjectRefs
     normalizeTable
     ;
@@ -3360,5 +3362,303 @@ in
       "local"
       "wan"
     ];
+  };
+
+  # ===== checkInterfaceOverlap — empty zones =====
+
+  testCheckInterfaceOverlapEmpty = {
+    expr =
+      (runPipeline [
+        convertNodesToZones
+        checkInterfaceOverlap
+      ] emptyTable).errors;
+    expected = [ ];
+  };
+
+  # ===== checkInterfaceOverlap — disjoint interfaces =====
+
+  testCheckInterfaceOverlapDisjoint = {
+    expr =
+      (runEvalPipeline [
+        convertNodesToZones
+        checkInterfaceOverlap
+      ] {
+        zones = {
+          lan = {
+            interfaces = [ "eth1" ];
+          };
+          wan = {
+            interfaces = [ "eth0" ];
+          };
+        };
+      }).errors;
+    expected = [ ];
+  };
+
+  # ===== checkInterfaceOverlap — two unrelated zones share an interface =====
+
+  testCheckInterfaceOverlapUnrelated = {
+    expr =
+      (runEvalPipeline [
+        convertNodesToZones
+        checkInterfaceOverlap
+      ] {
+        zones = {
+          guest = {
+            interfaces = [ "eth1" ];
+          };
+          lan = {
+            interfaces = [ "eth1" ];
+          };
+        };
+      }).errors;
+    expected = [
+      {
+        name = "interfaceOverlap";
+        value = "interface 'eth1' is claimed by zones 'guest' and 'lan' (no ancestor/descendant relationship)";
+      }
+    ];
+  };
+
+  # ===== checkInterfaceOverlap — parent and child share an interface =====
+  # Hierarchy is intentional overlap; not flagged.
+
+  testCheckInterfaceOverlapHierarchyAllowed = {
+    expr =
+      (runEvalPipeline [
+        convertNodesToZones
+        checkInterfaceOverlap
+      ] {
+        zones = {
+          lan = {
+            interfaces = [ "eth1" ];
+          };
+          lan-guests = {
+            parent = "lan";
+            interfaces = [ "eth1" ];
+          };
+        };
+      }).errors;
+    expected = [ ];
+  };
+
+  # ===== checkInterfaceOverlap — same zone lists interface twice =====
+
+  testCheckInterfaceOverlapIntraZone = {
+    expr =
+      (runEvalPipeline [
+        convertNodesToZones
+        checkInterfaceOverlap
+      ] {
+        zones.lan = {
+          interfaces = [
+            "eth1"
+            "eth1"
+          ];
+        };
+      }).errors;
+    expected = [
+      {
+        name = "interfaceOverlap";
+        value = "zone 'lan' lists interface 'eth1' more than once";
+      }
+    ];
+  };
+
+  # ===== checkInterfaceOverlap — three unrelated zones, pair-wise errors =====
+
+  testCheckInterfaceOverlapThreeWay = {
+    expr =
+      builtins.length
+        (runEvalPipeline [
+          convertNodesToZones
+          checkInterfaceOverlap
+        ] {
+          zones = {
+            a = {
+              interfaces = [ "eth1" ];
+            };
+            b = {
+              interfaces = [ "eth1" ];
+            };
+            c = {
+              interfaces = [ "eth1" ];
+            };
+          };
+        }).errors;
+    # Pair-wise: (a,b), (a,c), (b,c) → 3 errors.
+    expected = 3;
+  };
+
+  # ===== checkCidrOverlap — empty zones =====
+
+  testCheckCidrOverlapEmpty = {
+    expr =
+      (runPipeline [
+        convertNodesToZones
+        checkCidrOverlap
+      ] emptyTable).errors;
+    expected = [ ];
+  };
+
+  # ===== checkCidrOverlap — disjoint CIDRs =====
+
+  testCheckCidrOverlapDisjoint = {
+    expr =
+      (runEvalPipeline [
+        convertNodesToZones
+        checkCidrOverlap
+      ] {
+        zones = {
+          lan = {
+            cidrs = [ "10.0.0.0/24" ];
+          };
+          guest = {
+            cidrs = [ "192.168.1.0/24" ];
+          };
+        };
+      }).errors;
+    expected = [ ];
+  };
+
+  # ===== checkCidrOverlap — two unrelated zones with overlapping CIDRs =====
+
+  testCheckCidrOverlapUnrelated = {
+    expr =
+      (runEvalPipeline [
+        convertNodesToZones
+        checkCidrOverlap
+      ] {
+        zones = {
+          lan = {
+            cidrs = [ "10.0.0.0/24" ];
+          };
+          mgmt = {
+            cidrs = [ "10.0.0.0/28" ];
+          };
+        };
+      }).errors;
+    expected = [
+      {
+        name = "cidrOverlap";
+        value = "zone 'lan' CIDR '10.0.0.0/24' overlaps zone 'mgmt' CIDR '10.0.0.0/28' (no ancestor/descendant relationship)";
+      }
+    ];
+  };
+
+  # ===== checkCidrOverlap — parent /24 contains child /28 =====
+  # Intentional hierarchical containment; not flagged.
+
+  testCheckCidrOverlapHierarchyAllowed = {
+    expr =
+      (runEvalPipeline [
+        convertNodesToZones
+        checkCidrOverlap
+      ] {
+        zones = {
+          dmz = {
+            cidrs = [ "10.0.0.0/24" ];
+          };
+          web = {
+            parent = "dmz";
+            cidrs = [ "10.0.0.0/28" ];
+          };
+        };
+      }).errors;
+    expected = [ ];
+  };
+
+  # ===== checkCidrOverlap — siblings sharing a parent overlap =====
+
+  testCheckCidrOverlapSiblings = {
+    expr =
+      (runEvalPipeline [
+        convertNodesToZones
+        checkCidrOverlap
+      ] {
+        zones = {
+          dmz = {
+            cidrs = [ "10.0.0.0/24" ];
+          };
+          a = {
+            parent = "dmz";
+            cidrs = [ "10.0.0.0/28" ];
+          };
+          b = {
+            parent = "dmz";
+            cidrs = [ "10.0.0.0/29" ];
+          };
+        };
+      }).errors;
+    # Parent ⊇ each sibling (ancestor relation, skipped),
+    # but a and b are siblings without ancestor relation → flagged.
+    expected = [
+      {
+        name = "cidrOverlap";
+        value = "zone 'a' CIDR '10.0.0.0/28' overlaps zone 'b' CIDR '10.0.0.0/29' (no ancestor/descendant relationship)";
+      }
+    ];
+  };
+
+  # ===== checkCidrOverlap — v4 vs v6 never overlap =====
+
+  testCheckCidrOverlapMixedFamily = {
+    expr =
+      (runEvalPipeline [
+        convertNodesToZones
+        checkCidrOverlap
+      ] {
+        zones = {
+          a = {
+            cidrs = [ "10.0.0.0/24" ];
+          };
+          b = {
+            cidrs = [ "fe80::/64" ];
+          };
+        };
+      }).errors;
+    expected = [ ];
+  };
+
+  # ===== checkCidrOverlap — intra-zone overlap =====
+
+  testCheckCidrOverlapIntraZone = {
+    expr =
+      (runEvalPipeline [
+        convertNodesToZones
+        checkCidrOverlap
+      ] {
+        zones.lan = {
+          cidrs = [
+            "10.0.0.0/24"
+            "10.0.0.0/28"
+          ];
+        };
+      }).errors;
+    expected = [
+      {
+        name = "cidrOverlap";
+        value = "zone 'lan' has overlapping CIDRs '10.0.0.0/24' and '10.0.0.0/28'";
+      }
+    ];
+  };
+
+  # ===== checkCidrOverlap — lowered node CIDR inside parent zone CIDR =====
+
+  testCheckCidrOverlapNodeInsideParent = {
+    expr =
+      (runEvalPipeline [
+        convertNodesToZones
+        checkCidrOverlap
+      ] {
+        zones.dmz = {
+          cidrs = [ "10.0.0.0/24" ];
+        };
+        nodes.web-server = {
+          zone = "dmz";
+          address.ipv4 = "10.0.0.5";
+        };
+      }).errors;
+    expected = [ ];
   };
 }

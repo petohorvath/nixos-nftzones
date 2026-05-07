@@ -136,7 +136,6 @@ filters.web-server-http = {
 
 - **No real-kernel VM tests yet** — module-level tests confirm the wiring, but actual `nft -f` behavior in a live kernel (conntrack survival, traffic flow) isn't yet exercised in CI.
 - **Bridge family supports `filter` chains only.** `nat` (not supported by the bridge family) and `route` (no `mangle` priority on bridge) placements are rejected at compile time by `checkChainPlacement` so users get a clear error rather than a kernel-level rejection.
-- **No interface- or CIDR-overlap detection between zones.** Two zones claiming the same interface or overlapping prefixes compile cleanly but produce ambiguous dispatch — the rule whose zone matches first wins. Audit your zone declarations manually for now. Design notes in [`docs/validation-zones-draft.md`](docs/validation-zones-draft.md).
 - See `Pending follow-ups` in [`docs/compile-pipeline-draft.md`](docs/compile-pipeline-draft.md) for tracked design gaps.
 
 ## Contributing

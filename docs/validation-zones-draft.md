@@ -1,6 +1,6 @@
 # Cross-Zone Validation (Draft — Superseded)
 
-> **Status**: this draft is preserved for historical context. The actual validation work landed inline in `lib/internal/normalize.nix` as a sequence of Phase 1 validators (`checkNameCollisions`, `checkSettings`, `checkZoneRefs`, `checkZoneMatchable`, `checkChainOverridePlacement`, `checkPolicyUniqueness`, `checkSetNameCollisions`, `checkObjectRefs`, `checkParentRefs`, `checkParentCycles`) — see `docs/compile-pipeline-draft.md` §1.3 for the current shape and `docs/specs/zone-parent.md` for the parent-related ones. The "Where the validation lives" / "Open questions" sections below reflect choices that were made differently in implementation.
+> **Status**: this draft is preserved for historical context. The actual validation work landed inline in `lib/internal/normalize.nix` as a sequence of Phase 1 validators (`checkNameCollisions`, `checkSettings`, `checkZoneRefs`, `checkZoneMatchable`, `checkChainOverridePlacement`, `checkPolicyUniqueness`, `checkSetNameCollisions`, `checkInterfaceOverlap`, `checkCidrOverlap`, `checkObjectRefs`, `checkParentRefs`, `checkParentCycles`) — see `docs/compile-pipeline-draft.md` §1.3 for the current shape and `docs/specs/zone-parent.md` for the parent-related ones. The "Where the validation lives" / "Open questions" sections below reflect choices that were made differently in implementation.
 
 This document captures the design discussion around validating zone configurations across the whole `zones` attrset, beyond what per-zone NixOS option types can express.
 
@@ -11,7 +11,7 @@ The `zone` submodule type validates one zone in isolation: that `name` is a vali
 - **Parent resolution.** A zone's `parent` (if non-null) must be a key in the same `zones` attrset; a `parent = "lan"` reference is meaningless if no `zones.lan` exists.
 - **Reserved names.** The zone language reserves the names `host`, `local`, `self`, `firewall`, `all`, and `any` for special meanings (the firewall machine itself, wildcard zones). User-defined zones must not collide with these.
 - **Parent cycles.** A chain like `lan → guest → lan` produces an infinite loop in any consumer that walks the parent relation. The validator must reject it.
-- **(Later) interface and CIDR overlap.** Two distinct zones claiming the same interface or overlapping prefixes is almost always a misconfiguration; flagging it requires comparing every pair of zones.
+- **Interface and CIDR overlap.** Two distinct zones claiming the same interface or overlapping prefixes is almost always a misconfiguration; flagging it requires comparing every pair of zones. Landed as `checkInterfaceOverlap` and `checkCidrOverlap` in `lib/internal/normalize.nix`; both skip ancestor/descendant pairs (intentional containment) and also flag intra-zone duplicates.
 
 ## Where the validation lives
 
@@ -114,7 +114,7 @@ A dedicated `lib/validate/` namespace is **not** an established Nix/NixOS conven
 3. **Return shape.** List of strings (framework-agnostic, the wiring site maps to assertion records) versus list of `{ assertion; message; }` records (drop-in for `config.assertions`, less reusable outside NixOS).
 4. **`checkCycles` reporting.** Tolerate duplicate-but-rotated cycle messages, or normalize to canonical form?
 5. **Reserved names list.** Hard-coded inside the validator, or expose as a configuration knob (`nftzones.reservedZoneNames`) consumers can extend?
-6. **Future overlap checks.** Interface- and CIDR-overlap detection between zones — same module, separate validator, or deferred until needed?
+6. ~~**Future overlap checks.** Interface- and CIDR-overlap detection between zones — same module, separate validator, or deferred until needed?~~ Resolved: separate validators (`checkInterfaceOverlap`, `checkCidrOverlap`) inline in `normalize.nix`, sharing a `relatedByHierarchy` helper that walks the parent chain to skip intentional parent/child overlap. CIDR overlap uses `libnet.cidr.overlaps` (family-aware).
 
 ## Status
 
@@ -127,5 +127,15 @@ hierarchical-dispatch model that gives `parent` its observable
 behaviour and the rejected validator-shape alternatives discussed
 above.
 
-Reserved-name and CIDR-overlap checks were not implemented; their
-absence is tolerated for now.
+Reserved-name checks were not implemented; their absence is
+tolerated for now.
+
+Interface- and CIDR-overlap detection landed in
+`lib/internal/normalize.nix` as `checkInterfaceOverlap` and
+`checkCidrOverlap`. Both validators skip pairs in
+ancestor/descendant relationship (intentional containment, e.g. a
+node lowered into its parent zone) and also flag intra-zone
+duplicates (`interfaces = [ "eth1" "eth1" ]` /
+`cidrs = [ "10.0.0.0/24" "10.0.0.0/28" ]`). CIDR overlap uses
+`libnet.cidr.overlaps`, which is family-aware (v4 vs v6 never
+overlap).
