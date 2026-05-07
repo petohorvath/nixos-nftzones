@@ -414,5 +414,21 @@ pkgs.testers.nixosTest {
             "expected uninitiated wan → lan ssh to be dropped by policy, "
             f"but it succeeded: {result[1]!r}"
         )
+
+    with subtest("non-DNAT'd wan port is not forwarded"):
+        # Only `tcp.dport 8080` has a DNAT match. A request to any
+        # other wan port must not reach the router (no wan→local
+        # filter; chain-policy drop) nor anything behind it (the
+        # wan→wan filter accepts only post-DNAT dport 80). Catches
+        # regressions that widen `dnats.public-http.rule.match`,
+        # widen `filters.dnat-http`, or open up wan→local.
+        result = external.execute(
+            "curl -sS --max-time 3 -o /dev/null "
+            "http://${routerWanIp}:8081/"
+        )
+        assert result[0] != 0, (
+            "expected curl to fail on non-DNAT'd wan port 8081 — "
+            f"firewall over-permits, got: {result[1]!r}"
+        )
   '';
 }
