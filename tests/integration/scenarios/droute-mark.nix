@@ -17,13 +17,33 @@ let
   inherit (nftypes.dsl.fields) meta;
 in
 {
-  zones.lan-remote = {
-    cidrs = [ "10.99.0.0/16" ];
+  body = {
+    zones.lan-remote = {
+      cidrs = [ "10.99.0.0/16" ];
+    };
+
+    droutes.lan-remote-via-vpn = {
+      to = [ "lan-remote" ];
+      rule = [ (mangle meta.mark 200) ];
+      comment = "local traffic to remote-lan via VPN";
+    };
   };
 
-  droutes.lan-remote-via-vpn = {
-    to = [ "lan-remote" ];
-    rule = [ (mangle meta.mark 200) ];
-    comment = "local traffic to remote-lan via VPN";
-  };
+  assertions = compiled: [
+    {
+      description = "droute lands at output-at-mangle__lan-remote";
+      expr = compiled.tables.droute-mark.chains ? "output-at-mangle__lan-remote";
+      expected = true;
+    }
+    {
+      description = "base chain type is route (output-hook routing decision tap)";
+      expr = compiled.tables.droute-mark.chains."output-at-mangle".type;
+      expected = "route";
+    }
+    {
+      description = "rule comment surfaces on the rendered rule";
+      expr = (builtins.elemAt compiled.tables.droute-mark.chains."output-at-mangle__lan-remote".rules 0).comment;
+      expected = "local traffic to remote-lan via VPN";
+    }
+  ];
 }

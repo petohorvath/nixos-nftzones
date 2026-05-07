@@ -14,14 +14,37 @@ let
   inherit (nftypes.dsl.fields) meta;
 in
 {
-  zones.guest = {
-    interfaces = [ "guest0" ];
-    cidrs = [ "10.0.1.0/24" ];
+  body = {
+    zones.guest = {
+      interfaces = [ "guest0" ];
+      cidrs = [ "10.0.1.0/24" ];
+    };
+
+    sroutes.guest-via-vpn = {
+      from = [ "guest" ];
+      rule = [ (mangle meta.mark 100) ];
+      comment = "guest traffic policy-routed via VPN";
+    };
   };
 
-  sroutes.guest-via-vpn = {
-    from = [ "guest" ];
-    rule = [ (mangle meta.mark 100) ];
-    comment = "guest traffic policy-routed via VPN";
-  };
+  assertions = compiled: [
+    {
+      description = "sroute lands at prerouting-at-mangle__guest";
+      expr = compiled.tables.sroute-mark.chains ? "prerouting-at-mangle__guest";
+      expected = true;
+    }
+    {
+      description = "base chain type is filter (mangle priority on filter type)";
+      expr = compiled.tables.sroute-mark.chains."prerouting-at-mangle".type;
+      expected = "filter";
+    }
+    {
+      description = "rule body is the bare mangle statement, comment-wrapped";
+      expr = builtins.elemAt compiled.tables.sroute-mark.chains."prerouting-at-mangle__guest".rules 0;
+      expected = {
+        expr = [ (mangle meta.mark 100) ];
+        comment = "guest traffic policy-routed via VPN";
+      };
+    }
+  ];
 }

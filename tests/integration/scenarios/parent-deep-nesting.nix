@@ -10,28 +10,43 @@ let
   inherit (nftypes.dsl.fields) tcp;
 in
 {
-  zones.corp = {
-    interfaces = [ "corp0" ];
-    cidrs = [ "10.0.0.0/16" ];
+  body = {
+    zones.corp = {
+      interfaces = [ "corp0" ];
+      cidrs = [ "10.0.0.0/16" ];
+    };
+
+    zones.dmz = {
+      parent = "corp";
+      interfaces = [ "dmz0" ];
+      cidrs = [ "10.0.0.0/24" ];
+    };
+
+    nodes.web-server = {
+      zone = "dmz";
+      address.ipv4 = "10.0.0.5";
+    };
+
+    filters.web-server-http = {
+      from = [ "web-server" ];
+      to = [ "local" ];
+      rule = [
+        (eq tcp.dport 80)
+        accept
+      ];
+    };
   };
 
-  zones.dmz = {
-    parent = "corp";
-    interfaces = [ "dmz0" ];
-    cidrs = [ "10.0.0.0/24" ];
-  };
-
-  nodes.web-server = {
-    zone = "dmz";
-    address.ipv4 = "10.0.0.5";
-  };
-
-  filters.web-server-http = {
-    from = [ "web-server" ];
-    to = [ "local" ];
-    rule = [
-      (eq tcp.dport 80)
-      accept
-    ];
-  };
+  assertions = compiled: [
+    {
+      description = "every level of the corp → dmz → web-server chain emits a sub-chain";
+      expr = builtins.attrNames compiled.tables.parent-deep-nesting.chains;
+      expected = [
+        "input-at-filter"
+        "input-at-filter__corp-to-local"
+        "input-at-filter__dmz-to-local"
+        "input-at-filter__web-server-to-local"
+      ];
+    }
+  ];
 }

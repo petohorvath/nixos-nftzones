@@ -10,24 +10,44 @@ let
   inherit (nftypes.dsl.fields) tcp;
 in
 {
-  zones.dmz = {
-    interfaces = [ "dmz0" ];
-    cidrs = [ "10.0.0.0/24" ];
+  body = {
+    zones.dmz = {
+      interfaces = [ "dmz0" ];
+      cidrs = [ "10.0.0.0/24" ];
+    };
+
+    nodes.web-server = {
+      zone = "dmz";
+      address.ipv4 = "10.0.0.5";
+    };
+
+    # Only the child has a rule. dmz must still get a sub-chain
+    # (the dispatcher) so traffic can reach web-server.
+    filters.web-server-http = {
+      from = [ "web-server" ];
+      to = [ "local" ];
+      rule = [
+        (eq tcp.dport 80)
+        accept
+      ];
+    };
   };
 
-  nodes.web-server = {
-    zone = "dmz";
-    address.ipv4 = "10.0.0.5";
-  };
-
-  # Only the child has a rule. dmz must still get a sub-chain
-  # (the dispatcher) so traffic can reach web-server.
-  filters.web-server-http = {
-    from = [ "web-server" ];
-    to = [ "local" ];
-    rule = [
-      (eq tcp.dport 80)
-      accept
-    ];
-  };
+  assertions = compiled: [
+    {
+      description = "parent dmz dispatcher is synthesized even with no own rules";
+      expr = compiled.tables.parent-empty-intermediate.chains ? "input-at-filter__dmz-to-local";
+      expected = true;
+    }
+    {
+      description = "intermediate dispatcher carries exactly one rule (child-dispatch jump)";
+      expr = builtins.length compiled.tables.parent-empty-intermediate.chains."input-at-filter__dmz-to-local".rules;
+      expected = 1;
+    }
+    {
+      description = "child sub-chain carries the user rule";
+      expr = compiled.tables.parent-empty-intermediate.chains ? "input-at-filter__web-server-to-local";
+      expected = true;
+    }
+  ];
 }

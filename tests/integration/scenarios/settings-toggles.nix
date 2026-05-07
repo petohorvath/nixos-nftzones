@@ -12,24 +12,44 @@ let
   inherit (nftypes.dsl.fields) tcp;
 in
 {
-  settings = {
-    rpfilter = true;
-    chainPolicy = "accept";
-    stateful = false;
-    loopback = false;
+  body = {
+    settings = {
+      rpfilter = true;
+      chainPolicy = "accept";
+      stateful = false;
+      loopback = false;
+    };
+
+    zones = {
+      lan.interfaces = [ "lan0" ];
+      wan.interfaces = [ "wan0" ];
+    };
+
+    filters.allow-ssh = {
+      from = [ "wan" ];
+      to = [ "local" ];
+      rule = [
+        (eq tcp.dport 22)
+        accept
+      ];
+    };
   };
 
-  zones = {
-    lan.interfaces = [ "lan0" ];
-    wan.interfaces = [ "wan0" ];
-  };
-
-  filters.allow-ssh = {
-    from = [ "wan" ];
-    to = [ "local" ];
-    rule = [
-      (eq tcp.dport 22)
-      accept
-    ];
-  };
+  assertions = compiled: [
+    {
+      description = "rpfilter=true synthesizes a prerouting-at-raw chain";
+      expr = compiled.tables.settings-toggles.chains ? "prerouting-at-raw";
+      expected = true;
+    }
+    {
+      description = "chainPolicy='accept' surfaces on the filter base chain";
+      expr = compiled.tables.settings-toggles.chains."input-at-filter".policy;
+      expected = "accept";
+    }
+    {
+      description = "stateful=false + loopback=false drops both preludes — base chain has only the dispatch jump";
+      expr = builtins.length compiled.tables.settings-toggles.chains."input-at-filter".rules;
+      expected = 1;
+    }
+  ];
 }

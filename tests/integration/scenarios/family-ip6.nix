@@ -10,22 +10,43 @@ let
   inherit (nftypes.dsl.fields) tcp;
 in
 {
-  family = "ip6";
+  body = {
+    family = "ip6";
 
-  zones = {
-    lan = {
-      interfaces = [ "lan0" ];
-      cidrs = [ "fd00:abcd::/64" ];
+    zones = {
+      lan = {
+        interfaces = [ "lan0" ];
+        cidrs = [ "fd00:abcd::/64" ];
+      };
+      wan.interfaces = [ "wan0" ];
     };
-    wan.interfaces = [ "wan0" ];
+
+    filters.allow-ssh-from-lan = {
+      from = [ "lan" ];
+      to = [ "local" ];
+      rule = [
+        (eq tcp.dport 22)
+        accept
+      ];
+    };
   };
 
-  filters.allow-ssh-from-lan = {
-    from = [ "lan" ];
-    to = [ "local" ];
-    rule = [
-      (eq tcp.dport 22)
-      accept
-    ];
-  };
+  assertions = compiled: [
+    {
+      description = "table family is ip6";
+      expr = compiled.tables.family-ip6.family;
+      expected = "ip6";
+    }
+    {
+      description = "lan zone has v6 set but no v4 set (v6-only family)";
+      expr = {
+        v4 = compiled.tables.family-ip6.sets ? lan_v4;
+        v6 = compiled.tables.family-ip6.sets ? lan_v6;
+      };
+      expected = {
+        v4 = false;
+        v6 = true;
+      };
+    }
+  ];
 }
