@@ -171,6 +171,20 @@ pkgs.testers.nixosTest {
                 rule.masquerade = { };
               };
 
+              # SNAT wan→wan masquerade — covers the DNAT
+              # port-forward return path. The test topology puts
+              # `external` and `server` on the same /24, so a
+              # bare DNAT would let the server reply directly to
+              # external (bypassing the router's un-DNAT). This
+              # masquerade rewrites the source to router-wan so
+              # the reply must come back through us. Mirrors the
+              # standard "hairpin SNAT" deployment pattern.
+              snats.wan-hairpin = {
+                from = [ "wan" ];
+                to = [ "wan" ];
+                rule.masquerade = { };
+              };
+
               # External 8080 → server:80.
               dnats.public-http = {
                 from = [ "wan" ];
