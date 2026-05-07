@@ -115,10 +115,6 @@ pkgs.testers.nixosTest {
 
           nftzones = {
             enable = true;
-            # Pretty-print rendering — works around a quirk in
-            # nftypes' compact `toTextBlock` where chain bodies
-            # are emitted without a trailing `;` before `}`.
-            pretty = true;
             tables.fw = {
               zones = {
                 lan = {
