@@ -167,6 +167,17 @@ let
     references from rule bodies (e.g. `counter name "X"`) are
     validated against the keys declared here by the compile
     pipeline.
+
+    Validation boundary: per-kind body validation defers to
+    nftypes' `<kind>ObjectBody` (shape, field types, enums).
+    Cross-field correlations that require nftables semantic
+    knowledge — e.g. that `sets.X.elem` values match the
+    declared `sets.X.type`, or that a `maps.Y.elem` key matches
+    `maps.Y.type` and value matches `maps.Y.map` — are NOT
+    checked at the Nix-types layer. They surface at build time
+    via `nft --check` (default-on through
+    `networking.nftables.checkRuleset`), with errors citing the
+    rendered ruleset rather than the source attribute path.
   */
   tableObjects = lib.types.submodule {
     options = {
