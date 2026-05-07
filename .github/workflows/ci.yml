@@ -3,6 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
+  # `pull_request` (NOT `pull_request_target`) is intentional. The
+  # plain trigger runs fork PRs with a read-only GITHUB_TOKEN and
+  # no access to secrets — safe given the workflow runs untrusted
+  # Nix evaluation. `pull_request_target` would check out the PR
+  # head while running with the *base* repo's token — the classic
+  # supply-chain footgun. Do not change without considering token
+  # scope and what the workflow runs.
   pull_request:
 
 # Default to read-only for all jobs. The CI runs untrusted code from
