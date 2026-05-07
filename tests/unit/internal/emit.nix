@@ -121,12 +121,30 @@ in
       {
         inherit (out) family name;
         hasSets = out ? sets;
+        hasFlags = out ? flags;
+        hasComment = out ? comment;
       };
     expected = {
       family = "inet";
       name = "fw";
       hasSets = false;
+      hasFlags = false;
+      hasComment = false;
     };
+  };
+
+  # ===== emitTable — non-empty table.flags surfaces on the output =====
+
+  testEmitTableFlagsHonored = {
+    expr = (runEmit { flags = [ "dormant" ]; }).output.flags;
+    expected = [ "dormant" ];
+  };
+
+  # ===== emitTable — non-null table.comment surfaces on the output =====
+
+  testEmitTableCommentHonored = {
+    expr = (runEmit { comment = "main firewall"; }).output.comment;
+    expected = "main firewall";
   };
 
   # ===== emitTable — zones flow through to body.sets =====
@@ -920,6 +938,70 @@ in
       comment = null;
     };
     expected = [ nftypes.dsl.drop ];
+  };
+
+  # ===== mkRuleBody — non-null comment wraps the statement list =====
+
+  testMkRuleBodyFilterWithComment = {
+    expr = mkRuleBody {
+      rule = [
+        (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 22)
+        nftypes.dsl.accept
+      ];
+      comment = "ssh from anywhere";
+    };
+    expected = {
+      expr = [
+        (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 22)
+        nftypes.dsl.accept
+      ];
+      comment = "ssh from anywhere";
+    };
+  };
+
+  testMkRuleBodyPolicyWithComment = {
+    expr = mkRuleBody {
+      verdict = "accept";
+      comment = "lan->wan default-allow";
+    };
+    expected = {
+      expr = [ nftypes.dsl.accept ];
+      comment = "lan->wan default-allow";
+    };
+  };
+
+  testMkRuleBodySnatMasqueradeWithComment = {
+    expr = mkRuleBody {
+      rule.masquerade = { };
+      comment = "nat lan to wan";
+    };
+    expected = {
+      expr = [ (nftypes.dsl.masquerade { }) ];
+      comment = "nat lan to wan";
+    };
+  };
+
+  testMkRuleBodyDnatWithComment = {
+    expr = mkRuleBody {
+      rule = {
+        match = [ (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 80) ];
+        action.dnat = {
+          addr = "10.0.0.5";
+          port = 8080;
+        };
+      };
+      comment = "web port forward";
+    };
+    expected = {
+      expr = [
+        (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 80)
+        (nftypes.dsl.dnat {
+          addr = "10.0.0.5";
+          port = 8080;
+        })
+      ];
+      comment = "web port forward";
+    };
   };
 
   # ===== mkSubChain — single cell, no children =====
