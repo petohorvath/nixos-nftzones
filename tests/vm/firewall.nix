@@ -50,23 +50,28 @@ pkgs.testers.nixosTest {
 
   nodes = {
     client =
-      { ... }:
+      { lib, ... }:
       {
         virtualisation.vlans = [ 1 ];
 
         networking = {
           useDHCP = false;
           firewall.enable = false;
+          # `lib.mkForce` overrides the default per-vlan IP that
+          # `nixosTest`'s `virtualisation.vlans` machinery assigns;
+          # without it, the auto-IP and our explicit one both land
+          # on the interface and the test topology becomes
+          # ambiguous.
           interfaces.eth1 = {
             useDHCP = false;
-            ipv4.addresses = [
+            ipv4.addresses = lib.mkForce [
               {
                 address = clientLanIp;
                 prefixLength = 24;
               }
             ];
           };
-          defaultGateway = routerLanIp;
+          defaultGateway = lib.mkForce routerLanIp;
         };
 
         environment.systemPackages = with pkgs; [
@@ -92,9 +97,12 @@ pkgs.testers.nixosTest {
           useDHCP = false;
           firewall.enable = false;
 
+          # `lib.mkForce` overrides the per-vlan auto-IP that
+          # `virtualisation.vlans` injects (see client config for
+          # rationale).
           interfaces.eth1 = {
             useDHCP = false;
-            ipv4.addresses = [
+            ipv4.addresses = lib.mkForce [
               {
                 address = routerLanIp;
                 prefixLength = 24;
@@ -103,7 +111,7 @@ pkgs.testers.nixosTest {
           };
           interfaces.eth2 = {
             useDHCP = false;
-            ipv4.addresses = [
+            ipv4.addresses = lib.mkForce [
               {
                 address = routerWanIp;
                 prefixLength = 24;
@@ -209,23 +217,25 @@ pkgs.testers.nixosTest {
       };
 
     server =
-      { pkgs, ... }:
+      { lib, pkgs, ... }:
       {
         virtualisation.vlans = [ 2 ];
 
         networking = {
           useDHCP = false;
           firewall.enable = false;
+          # `lib.mkForce` overrides the per-vlan auto-IP (see
+          # client config for rationale).
           interfaces.eth1 = {
             useDHCP = false;
-            ipv4.addresses = [
+            ipv4.addresses = lib.mkForce [
               {
                 address = serverWanIp;
                 prefixLength = 24;
               }
             ];
           };
-          defaultGateway = routerWanIp;
+          defaultGateway = lib.mkForce routerWanIp;
         };
 
         services.openssh = {
@@ -277,9 +287,14 @@ pkgs.testers.nixosTest {
   testScript = ''
     start_all()
 
-    client.wait_for_unit("network-online.target")
-    router.wait_for_unit("network-online.target")
-    server.wait_for_unit("network-online.target")
+    # `network-online.target` is only pulled in when systemd-networkd
+    # is active; the script-based networking nixosTest defaults to
+    # leaves it inactive. Wait for the broader `multi-user.target`
+    # instead — by then static-IP units have configured each
+    # interface (see network-addresses-eth*-start.service).
+    client.wait_for_unit("multi-user.target")
+    router.wait_for_unit("multi-user.target")
+    server.wait_for_unit("multi-user.target")
 
     server.wait_for_unit("sshd.service")
     server.wait_for_open_port(22)
