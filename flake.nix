@@ -58,11 +58,15 @@
           };
           runner = import ./tests/unit/runner.nix { inherit pkgs; };
           unitTests = import ./tests/unit/default.nix testArgs;
+          vmTestsLinux = nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+            vm = import ./tests/vm/default.nix testArgs;
+          };
         in
         {
           unit = runner.runTests unitTests;
           integration = import ./tests/integration/default.nix testArgs;
-        };
+        }
+        // vmTestsLinux;
     in
     {
       lib = forAllSystems mkLib;

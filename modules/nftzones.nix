@@ -9,6 +9,7 @@
 {
   lib,
   config,
+  options,
   nftzones,
   nftypes,
   ...
@@ -67,7 +68,18 @@ in
       }
     ]
     ++ lib.mapAttrsToList (name: _: {
-      assertion = !(config.networking.nftables.tables ? ${name});
+      # The nftzones module's own contribution (assigned a few
+      # lines below) shows up in `options.networking.nftables.
+      # tables.definitions` alongside any user-supplied ones, so
+      # the naive "is the key present?" check on the merged
+      # config always fires for every table this module owns.
+      # Counting contributors of this specific key against the
+      # pre-merge definitions list lets us flag the *real*
+      # collision: more than one source supplying the same name.
+      assertion =
+        (builtins.length (
+          builtins.filter (def: def ? ${name}) options.networking.nftables.tables.definitions
+        )) <= 1;
       message = ''
         networking.nftzones.tables.${name} collides with networking.nftables.tables.${name}.
         Declare each table in exactly one module.

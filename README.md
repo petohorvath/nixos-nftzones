@@ -134,9 +134,16 @@ filters.web-server-http = {
 
 ## Known limitations
 
-- **No real-kernel VM tests yet** — module-level tests confirm the wiring, but actual `nft -f` behavior in a live kernel (conntrack survival, traffic flow) isn't yet exercised in CI.
 - **Bridge family supports `filter` chains only.** `nat` (not supported by the bridge family) and `route` (no `mangle` priority on bridge) placements are rejected at compile time by `checkChainPlacement` so users get a clear error rather than a kernel-level rejection.
 - See `Pending follow-ups` in [`docs/compile-pipeline-draft.md`](docs/compile-pipeline-draft.md) for tracked design gaps.
+
+## Testing
+
+Three tiers, each runnable via `nix flake check`:
+
+- **Unit** (`tests/unit/`): per-module tests of the compile pipeline's helpers and validators.
+- **Integration** (`tests/integration/`): structured assertions on the rendered nftables JSON for representative scenarios, plus negative tests that confirm Phase 1 validators reject known-bad inputs in the live `mkRuleset` pipeline.
+- **VM** (`tests/vm/`): real-kernel multi-VM scenarios using `pkgs.testers.nixosTest` — three NixOS machines (client, router, server) on two virtual LANs, with the router running `nftzones`-managed rules. Asserts traffic-level behaviour: L3 forwarding, ICMP, SSH, SNAT masquerade, DNAT port-forward, DNS redirect, default-deny enforcement. Requires `/dev/kvm` on the builder.
 
 ## Contributing
 
