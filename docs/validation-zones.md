@@ -9,7 +9,6 @@ This document captures the design discussion around validating zone configuratio
 The `zone` submodule type validates one zone in isolation: that `name` is a valid identifier, that `parent` (if set) is a valid identifier, that `interfaces` is a list of `interfaceName` values, etc. It does not — and cannot — see other zones. Several useful checks need that whole-collection view:
 
 - **Parent resolution.** A zone's `parent` (if non-null) must be a key in the same `zones` attrset; a `parent = "lan"` reference is meaningless if no `zones.lan` exists.
-- **Reserved names.** The zone language reserves the names `host`, `local`, `self`, `firewall`, `all`, and `any` for special meanings (the firewall machine itself, wildcard zones). User-defined zones must not collide with these.
 - **Parent cycles.** A chain like `lan → guest → lan` produces an infinite loop in any consumer that walks the parent relation. The validator must reject it.
 - **Interface and CIDR overlap.** Two distinct zones claiming the same interface or overlapping prefixes is almost always a misconfiguration; flagging it requires comparing every pair of zones. Landed as `checkInterfaceOverlap` and `checkCidrOverlap` in `lib/internal/normalize.nix`; both skip ancestor/descendant pairs (intentional containment) and also flag intra-zone duplicates.
 
@@ -36,8 +35,7 @@ A pure function from a zones attrset to a list of error strings. Empty list mean
 ```nix
 # nftzones.<somewhere>.validateZones :: Attrset Zone -> [ String ]
 validateZones = zones:
-  checkReservedNames zones
-  ++ checkParents zones
+  checkParents zones
   ++ checkCycles zones;
 ```
 
@@ -51,16 +49,6 @@ checkParents = zones:
     else
       [ ]
   ) zones);
-```
-
-### Reserved names
-
-```nix
-reservedNames = [ "host" "local" "self" "firewall" "all" "any" ];
-
-checkReservedNames = zones:
-  let collisions = lib.intersectLists (lib.attrNames zones) reservedNames;
-  in map (n: "zone name '${n}' is reserved (special meaning)") collisions;
 ```
 
 ### Parent cycles (sketch)
@@ -113,8 +101,7 @@ A dedicated `lib/validate/` namespace is **not** an established Nix/NixOS conven
 2. **If keeping a function, where does it live?** Candidates: `lib/validate.nix` (single flat file), `lib/validate/zones.nix` (room for siblings), `lib/zones.nix` (zones-collection ops generally), `lib/internal/validate-zones.nix` (hidden building block). All work; none is conventional in the wider ecosystem.
 3. **Return shape.** List of strings (framework-agnostic, the wiring site maps to assertion records) versus list of `{ assertion; message; }` records (drop-in for `config.assertions`, less reusable outside NixOS).
 4. **`checkCycles` reporting.** Tolerate duplicate-but-rotated cycle messages, or normalize to canonical form?
-5. **Reserved names list.** Hard-coded inside the validator, or expose as a configuration knob (`nftzones.reservedZoneNames`) consumers can extend?
-6. ~~**Future overlap checks.** Interface- and CIDR-overlap detection between zones — same module, separate validator, or deferred until needed?~~ Resolved: separate validators (`checkInterfaceOverlap`, `checkCidrOverlap`) inline in `normalize.nix`, sharing a `relatedByHierarchy` helper that walks the parent chain to skip intentional parent/child overlap. CIDR overlap uses `libnet.cidr.overlaps` (family-aware).
+5. ~~**Future overlap checks.** Interface- and CIDR-overlap detection between zones — same module, separate validator, or deferred until needed?~~ Resolved: separate validators (`checkInterfaceOverlap`, `checkCidrOverlap`) inline in `normalize.nix`, sharing a `relatedByHierarchy` helper that walks the parent chain to skip intentional parent/child overlap. CIDR overlap uses `libnet.cidr.overlaps` (family-aware).
 
 ## Status
 
@@ -127,8 +114,11 @@ hierarchical-dispatch model that gives `parent` its observable
 behaviour and the rejected validator-shape alternatives discussed
 above.
 
-Reserved-name checks were not implemented; their absence is
-tolerated for now.
+There is no fixed reserved-names list. The only zone-name slots
+with reserved semantics are the configurable `settings.localZone`
+(default `"local"`) and `settings.wildcardZone` (default `"all"`),
+and `checkSettings` already enforces that they differ from each
+other and from any declared zone or node name.
 
 Interface- and CIDR-overlap detection landed in
 `lib/internal/normalize.nix` as `checkInterfaceOverlap` and
