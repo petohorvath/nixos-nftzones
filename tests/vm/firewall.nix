@@ -1,8 +1,9 @@
 /*
-  End-to-end VM test — three NixOS VMs (client, router, server) on
-  two virtual LANs. The router runs `nftzones`-managed nftables
-  with a realistic mix of features; the test asserts traffic
-  behaviour from a live kernel:
+  End-to-end VM test — six NixOS VMs (client, router, server,
+  external, vlan-iot, vlan-admin) across three virtual links.
+  The router runs `nftzones`-managed nftables with a realistic
+  mix of features; the test asserts traffic behaviour from a live
+  kernel:
 
     - L3 forwarding lan → wan
     - ICMP forwarding (echo)
@@ -13,6 +14,10 @@
     - DNS redirect (client query for an unreachable resolver bends
       to the router's local dnsmasq, which serves a fixed answer)
     - Default-deny wan → lan (uninitiated server-side ssh fails)
+    - Inter-VLAN routing allow (admin VLAN reaches iot VLAN through
+      a single trunk port via 802.1Q-tagged sub-interfaces)
+    - Inter-VLAN default-deny (iot cannot initiate to admin —
+      chain-level policy drops without a matching filter)
 
   Topology:
                       lan vlan 1                wan vlan 2
@@ -21,15 +26,26 @@
                                   (.1)            (.1)
                                                 ╲─── (.20) eth1 [external]
 
-  `external` is a fourth VM on the wan vlan that acts as an
-  off-net caller for the DNAT port-forward test. Doing the same
-  test from `server` would be hairpin NAT (server → router →
-  server) — Linux drops those packets unless explicit hairpin
-  SNAT is applied, which isn't what we're trying to verify here.
+                                trunk vlan 3 (untagged carrier)
+                                  router eth3 (no IP)
+                                ├── eth3.10 (vlan tag 10) 192.168.10.1/24  ── iot
+                                └── eth3.20 (vlan tag 20) 192.168.20.1/24  ── admin
 
-  Closes the README "no real-kernel VM tests yet" gap. This is the
-  slow tier of the suite — booting three VMs takes 30-60s per
-  build.
+    [vlan-iot]   eth1 (no IP), eth1.10 (vlan 10, 192.168.10.10/24)  ─┐
+                                                                     │ vlan 3
+    [vlan-admin] eth1 (no IP), eth1.20 (vlan 20, 192.168.20.10/24)  ─┘
+
+  `external` is on the wan vlan but not the server itself, so
+  the DNAT port-forward test isn't hairpin (which Linux drops
+  without explicit hairpin SNAT). The two VLAN hosts share a
+  single nixosTest vlan (3) acting as the trunk; their VLAN
+  sub-interfaces tag and demux frames so each VM only sees its
+  own broadcast domain. The router exposes both VLANs as
+  sub-interfaces on a single physical NIC — the textbook
+  router-on-a-stick pattern.
+
+  Booting six VMs takes ~60-90s per build. This is the slow tier
+  of the suite.
 */
 {
   pkgs,
@@ -46,12 +62,22 @@ let
 
   lanNet = "192.168.1";
   wanNet = "203.0.113";
+  iotNet = "192.168.10";
+  adminNet = "192.168.20";
 
   clientLanIp = "${lanNet}.10";
   routerLanIp = "${lanNet}.1";
   routerWanIp = "${wanNet}.1";
   serverWanIp = "${wanNet}.10";
   externalWanIp = "${wanNet}.20";
+
+  routerIotIp = "${iotNet}.1";
+  routerAdminIp = "${adminNet}.1";
+  vlanIotIp = "${iotNet}.10";
+  vlanAdminIp = "${adminNet}.10";
+
+  iotVlanId = 10;
+  adminVlanId = 20;
 in
 pkgs.testers.nixosTest {
   name = "nftzones-firewall";
@@ -97,6 +123,7 @@ pkgs.testers.nixosTest {
         virtualisation.vlans = [
           1
           2
+          3
         ];
 
         boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
@@ -126,6 +153,39 @@ pkgs.testers.nixosTest {
               }
             ];
           };
+          # eth3 is the trunk port — no IP of its own. The
+          # auto-assigned per-vlan IP would land on the parent
+          # otherwise; force it empty so all addressing lives on
+          # the VLAN sub-interfaces below.
+          interfaces.eth3 = {
+            useDHCP = false;
+            ipv4.addresses = lib.mkForce [ ];
+          };
+
+          # 802.1Q sub-interfaces on the trunk. Each tag
+          # corresponds to one zone-as-VLAN.
+          vlans = {
+            "eth3.${toString iotVlanId}" = {
+              id = iotVlanId;
+              interface = "eth3";
+            };
+            "eth3.${toString adminVlanId}" = {
+              id = adminVlanId;
+              interface = "eth3";
+            };
+          };
+          interfaces."eth3.${toString iotVlanId}".ipv4.addresses = [
+            {
+              address = routerIotIp;
+              prefixLength = 24;
+            }
+          ];
+          interfaces."eth3.${toString adminVlanId}".ipv4.addresses = [
+            {
+              address = routerAdminIp;
+              prefixLength = 24;
+            }
+          ];
 
           nftables.enable = true;
 
@@ -140,6 +200,18 @@ pkgs.testers.nixosTest {
                 wan = {
                   interfaces = [ "eth2" ];
                   cidrs = [ "${wanNet}.0/24" ];
+                };
+                # 802.1Q-tagged sub-interfaces on the trunk;
+                # zone membership keyed off the sub-interface name
+                # (and CIDR) means inter-VLAN matching is
+                # transparent to the rest of the rule set.
+                iot = {
+                  interfaces = [ "eth3.${toString iotVlanId}" ];
+                  cidrs = [ "${iotNet}.0/24" ];
+                };
+                admin = {
+                  interfaces = [ "eth3.${toString adminVlanId}" ];
+                  cidrs = [ "${adminNet}.0/24" ];
                 };
               };
 
@@ -215,6 +287,19 @@ pkgs.testers.nixosTest {
                 from = [ "wan" ];
                 to = [ "lan" ];
                 verdict = "drop";
+              };
+
+              # Inter-VLAN allow: admin manages iot devices.
+              # No reverse filter — iot → admin is dropped at the
+              # forward chain's `policy drop`. Return traffic for
+              # admin-initiated flows is accepted by the stateful
+              # prelude, so this single rule gives admin a working
+              # bidirectional channel without granting iot the
+              # ability to initiate.
+              filters.admin-to-iot = {
+                from = [ "admin" ];
+                to = [ "iot" ];
+                rule = [ accept ];
               };
             };
           };
@@ -327,6 +412,70 @@ pkgs.testers.nixosTest {
 
         environment.systemPackages = [ pkgs.curl ];
       };
+
+    # Two VLAN-tagged hosts share the trunk vlan (3). Each tags
+    # its frames with a distinct 802.1Q ID, so frames traversing
+    # the shared L2 broadcast domain are demuxed by the receiving
+    # sub-interface — the textbook router-on-a-stick pattern,
+    # mirrored at the host side.
+    vlan-iot =
+      { lib, ... }:
+      {
+        virtualisation.vlans = [ 3 ];
+
+        networking = {
+          useDHCP = false;
+          firewall.enable = false;
+          # Trunk parent — no IP of its own; tagged sub-interface
+          # below carries all traffic. Force-empty to override the
+          # per-vlan auto-IP virtualisation.vlans drops on eth1.
+          interfaces.eth1 = {
+            useDHCP = false;
+            ipv4.addresses = lib.mkForce [ ];
+          };
+
+          vlans."eth1.${toString iotVlanId}" = {
+            id = iotVlanId;
+            interface = "eth1";
+          };
+          interfaces."eth1.${toString iotVlanId}".ipv4.addresses = [
+            {
+              address = vlanIotIp;
+              prefixLength = 24;
+            }
+          ];
+
+          defaultGateway = lib.mkForce routerIotIp;
+        };
+      };
+
+    vlan-admin =
+      { lib, ... }:
+      {
+        virtualisation.vlans = [ 3 ];
+
+        networking = {
+          useDHCP = false;
+          firewall.enable = false;
+          interfaces.eth1 = {
+            useDHCP = false;
+            ipv4.addresses = lib.mkForce [ ];
+          };
+
+          vlans."eth1.${toString adminVlanId}" = {
+            id = adminVlanId;
+            interface = "eth1";
+          };
+          interfaces."eth1.${toString adminVlanId}".ipv4.addresses = [
+            {
+              address = vlanAdminIp;
+              prefixLength = 24;
+            }
+          ];
+
+          defaultGateway = lib.mkForce routerAdminIp;
+        };
+      };
   };
 
   testScript = ''
@@ -341,6 +490,8 @@ pkgs.testers.nixosTest {
     router.wait_for_unit("multi-user.target")
     server.wait_for_unit("multi-user.target")
     external.wait_for_unit("multi-user.target")
+    vlan_iot.wait_for_unit("multi-user.target")
+    vlan_admin.wait_for_unit("multi-user.target")
 
     server.wait_for_unit("sshd.service")
     server.wait_for_open_port(22)
@@ -429,6 +580,30 @@ pkgs.testers.nixosTest {
         assert result[0] != 0, (
             "expected curl to fail on non-DNAT'd wan port 8081 — "
             f"firewall over-permits, got: {result[1]!r}"
+        )
+
+    with subtest("inter-VLAN: admin-VLAN reaches iot-VLAN through router"):
+        # admin (vlan tag 20, 192.168.20.10) → router eth3.20
+        # → forward chain matches admin-to-iot filter → router
+        # eth3.10 → iot (vlan tag 10, 192.168.10.10). Stateful
+        # prelude carries the echo reply back. Confirms that
+        # zone membership keyed off VLAN sub-interface names
+        # (eth3.10, eth3.20) drives correct dispatch on a single
+        # physical trunk port.
+        out = vlan_admin.succeed("ping -c1 -W2 ${vlanIotIp}")
+        assert "0% packet loss" in out, (
+            f"expected admin → iot ping to succeed, got: {out!r}"
+        )
+
+    with subtest("inter-VLAN: iot-VLAN cannot initiate to admin-VLAN"):
+        # No iot-to-admin filter exists; the forward chain's
+        # `policy drop` catches the unmatched flow. Reverse of
+        # the previous test — proves the inter-VLAN allow is
+        # one-directional (admin→iot only) and does not leak.
+        result = vlan_iot.execute("ping -c1 -W2 ${vlanAdminIp}")
+        assert result[0] != 0, (
+            "expected iot → admin ping to be dropped by default "
+            f"forward policy, but it succeeded: {result[1]!r}"
         )
   '';
 }
