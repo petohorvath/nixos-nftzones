@@ -312,7 +312,7 @@ Where `<ifField>` is `iifname` (from-direction) or `oifname` (to-direction), and
 fromVariant ++ toVariant ++ [ (jump (subChainNameOf baseChainName subChainKey)) ]
 ```
 
-**Family-mismatch waste (deferred optimization).** When both directions are `(v4 + v6)` zones, the cartesian product produces `(v4-from, v6-to)` and `(v6-from, v4-to)` jumps in addition to the matched-family pairs. These are harmless (skip on family mismatch) but bloat the chain. Optimization deferred — variants would need a family tag for the consumer to filter mismatched pairs. Revisit if chain sizes ever matter.
+**Family-mismatch filtering.** When both directions are `(v4 + v6)` zones, the cartesian product produces `(v4-from, v6-to)` and `(v6-from, v4-to)` pairs in addition to the matched-family ones. These would be harmless at runtime (the kernel skips rules whose payload protocol doesn't match) but bloat the chain. `variantFamily` (in `internal.emit`) classifies each variant as `"ip"` / `"ip6"` / `null` (family-agnostic) by inspecting payload protocols on the variant's match statements, and `mkRootJumpRules` drops cross-family `(from, to)` pairs in the cartesian filter. Pinned by `tests/unit/internal/emit.nix`'s `testMkRootJumpRulesCartesian` — a `lan → wan` pair with both zones dual-stack emits 2 jumps, not 4.
 
 **Hook-direction semantics** — interface fields are not always available; use `nftypes.compatibility.hooksWithOifname` (`[ "forward" "output" "postrouting" ]`) to gate the `oifname` clause. `iifname` is valid at every hook except `output`. The interface prefix is suppressed when the hook makes the field unavailable; address clauses are always allowed.
 
