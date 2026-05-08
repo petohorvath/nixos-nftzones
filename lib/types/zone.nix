@@ -186,7 +186,9 @@ let
             `checkParentCycles`.
 
             Hierarchy applies to the **from**-side only; the
-            to-side stays a flat per-pair match.
+            to-side stays a flat per-pair match. Setting
+            `parent` on a zone that only ever appears on the
+            to-side has no effect on dispatch.
           '';
         };
 
