@@ -230,6 +230,44 @@ in
     };
   };
 
+  # ===== module — hand-written nftables.tables.<other> coexists =====
+
+  testModuleHandWrittenCoexists = {
+    # Users mixing zone-managed and hand-written tables under
+    # different names should hit no assertion. The collision check
+    # only fires on same-name conflicts (see the next test); raw
+    # tables under any other key flow through nixpkgs' own
+    # `networking.nftables.tables` machinery untouched.
+    expr =
+      let
+        cfg = evalSystem {
+          networking.nftables = {
+            enable = true;
+            tables.legacy-raw = {
+              family = "inet";
+              content = "# manual content";
+            };
+          };
+          networking.nftzones = {
+            enable = true;
+            tables.zonefw.zones.lan.interfaces = [ "lan0" ];
+          };
+        };
+      in
+      {
+        noFailingAssertions = (failingAssertions cfg) == [ ];
+        hasZonefw = cfg.networking.nftables.tables ? zonefw;
+        hasLegacyRaw = cfg.networking.nftables.tables ? legacy-raw;
+        legacyContent = cfg.networking.nftables.tables.legacy-raw.content;
+      };
+    expected = {
+      noFailingAssertions = true;
+      hasZonefw = true;
+      hasLegacyRaw = true;
+      legacyContent = "# manual content";
+    };
+  };
+
   # ===== module — collision with networking.nftables.tables.<n> trips assertion =====
 
   testModuleCollisionAssertion = {

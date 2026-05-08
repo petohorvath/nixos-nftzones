@@ -75,6 +75,26 @@ in
 
 The module compiles each table, renders to nftables block-form text via nftypes, and feeds the result into `networking.nftables.tables.<name>.content`. Build-time assertions catch missing `networking.nftables.enable` and table-name collisions.
 
+#### Mixing with hand-written tables
+
+Zone-managed and hand-written tables coexist freely as long as their names differ — the module's collision assertion only fires when the same name is declared in both `networking.nftzones.tables` and `networking.nftables.tables`. Use `networking.nftables.tables.<name>` directly for any table that doesn't fit the zone model:
+
+```nix
+networking.nftables = {
+  enable = true;
+  tables.legacy-raw = {
+    family = "inet";
+    content = ''
+      chain output { type filter hook output priority 0; ... }
+    '';
+  };
+};
+networking.nftzones.tables.zonefw = {
+  zones.lan.interfaces = [ "eth1" ];
+  # ...
+};
+```
+
 ### Direct library (without the NixOS module)
 
 ```nix
