@@ -26,4 +26,13 @@ args@{
 // import ./internal/dispatch.nix args
 // import ./internal/emit.nix args
 // import ./internal/compile.nix args
+// import ./types/zone.nix args
+// import ./types/node.nix args
+// import ./types/filter.nix args
+// import ./types/policy.nix args
+// import ./types/snat.nix args
+// import ./types/dnat.nix args
+// import ./types/sroute.nix args
+// import ./types/droute.nix args
+// import ./types/table.nix args
 // import ./module.nix args
