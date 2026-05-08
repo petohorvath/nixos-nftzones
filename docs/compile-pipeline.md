@@ -1,6 +1,6 @@
-# Compile Pipeline (Draft)
+# Compile Pipeline
 
-This document captures the design of the nftzones compile pipeline — the function chain that takes a `nftzones.types.table` value and produces an nftables ruleset suitable for `nft -f`.
+This document describes the nftzones compile pipeline — the function chain that takes a `nftzones.types.table` value and produces an nftables ruleset suitable for `nft -f`.
 
 ## Motivation
 
@@ -118,13 +118,17 @@ allZones = [ "lan" "wan" "dmz" "local" ]
 
 ### 1.3 Validation
 
-Ten validators run after the compute phases, all in `internal/normalize.nix`. Each appends `lib.nameValuePair "<errorTag>" <message>` records to `ctx.errors`; the orchestrator aggregates them and throws a single message listing every error, so users see all problems in one pass.
+Fourteen validators run after the compute phases, all in `internal/normalize.nix`. Each appends `lib.nameValuePair "<errorTag>" <message>` records to `ctx.errors` (or warning strings to `ctx.warnings`); the orchestrator aggregates errors and throws a single message listing every one, so users see all problems in one pass.
 
+- **`checkParentRefs`** — every non-null `zone.parent` must resolve to a zone in `ctx.mergedZones` and must not equal `settings.localZone`.
+- **`checkParentCycles`** — the parent chain must be acyclic.
 - **`checkNameCollisions`** — node names must not collide with zone names (lowering would silently overwrite).
 - **`checkSettings`** — `settings.localZone` and `settings.wildcardZone` must differ from each other and from any declared zone / node name.
 - **`checkZoneRefs`** — every zone reference (in `from`, `to`, `node.zone`) must resolve to a known zone or `settings.localZone`.
 - **`checkZoneMatchable`** — every direction-bound zone ref (`from` → ingress, `to` → egress) must point at a zone whose computed `match` is non-empty on the relevant side.
 - **`checkChainOverridePlacement`** — entries with a `chain` override must land at a hook where their `from` / `to` zones are actually matchable (interface fields aren't valid at every hook).
+- **`checkChainPlacement`** — every entry's resolved `(family, chainType, hook)` triple must be one the kernel accepts (via `nftypes.validChainPlacement`); rejects bridge nat, bridge sroute / droute (no `mangle` on bridge), route at non-output hooks, etc.
+- **`checkRpfilterOverride`** — emits a warning (not an error) when `settings.rpfilter = true` but a user chain override already claims `(prerouting, raw)`; the synthesized rpfilter chain is suppressed and the user-authored chain is used as-is.
 - **`checkPolicyUniqueness`** — at most one policy applies per `(from, to)` cell after wildcard expansion.
 - **`checkSetNameCollisions`** — user `objects.sets.<name>` must not collide with auto-generated zone-derived set names (`<zone>_iifs|v4|v6`).
 - **`checkInterfaceOverlap`** — distinct zones must not claim the same interface (ambiguous dispatch); ancestor/descendant pairs are skipped (intentional sharing in a zone hierarchy), and intra-zone duplicates in the `interfaces` list are also flagged.
@@ -378,14 +382,14 @@ lib/
                                chainAttrsOf).
 
     # Layer 1 — phase orchestrators (consume the leaves above)
-    normalize.nix            — Phase 1 orchestrator + 19 phases:
-                               compute — convertNodesToZones,
+    normalize.nix            — Phase 1 orchestrator: pipes 8 compute
+                               phases (convertNodesToZones,
                                computeZoneSets, computeChildrenOf,
                                computeRootZoneNames,
                                collectAllZoneNames,
                                expandWildcardZones, resolvePriorities,
-                               collectZoneRefs;
-                               check — checkParentRefs,
+                               collectZoneRefs) followed by 14
+                               validators (checkParentRefs,
                                checkParentCycles, checkNameCollisions,
                                checkSettings, checkZoneRefs,
                                checkZoneMatchable,
@@ -395,7 +399,7 @@ lib/
                                checkPolicyUniqueness,
                                checkSetNameCollisions,
                                checkInterfaceOverlap, checkCidrOverlap,
-                               checkObjectRefs.
+                               checkObjectRefs).
     expand.nix               — Phase 2 orchestrator: expandTable
                                (cartesian product per entry into cells).
     dispatch.nix             — Phase 3 orchestrator: dispatchAndSort
@@ -476,16 +480,22 @@ compile = table:
 normalizeTable = lib.pipe (mkInitialState table) [
   convertNodesToZones      # ctx.mergedZones
   computeZoneSets          # ctx.zoneSets   (consumed in P1 + P4)
+  computeChildrenOf        # ctx.childrenOf (inverse parent map)
+  computeRootZoneNames     # ctx.rootZoneNames
   collectAllZoneNames      # ctx.allZoneNames
   expandWildcardZones      # ctx.expandedGroups
   resolvePriorities        # ctx.resolvedPriorities
   collectZoneRefs          # ctx.zoneRefs
-  checkNameCollisions      # ─┐
+  checkParentRefs          # ─┐
+  checkParentCycles        #  │
+  checkNameCollisions      #  │
   checkSettings            #  │
   checkZoneRefs            #  │
-  checkZoneMatchable       #  │
-  checkChainOverridePlacement  # all append to ctx.errors;
-  checkPolicyUniqueness    #  │ orchestrator throws if non-empty
+  checkZoneMatchable       #  │ all append to ctx.errors;
+  checkChainOverridePlacement  # orchestrator throws if non-empty.
+  checkChainPlacement      #  │ checkRpfilterOverride is the one
+  checkRpfilterOverride    #  │ exception — appends to ctx.warnings
+  checkPolicyUniqueness    #  │ instead, surfaced via lib.warn.
   checkSetNameCollisions   #  │
   checkInterfaceOverlap    #  │
   checkCidrOverlap         #  │

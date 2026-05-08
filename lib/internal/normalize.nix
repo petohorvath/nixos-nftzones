@@ -419,7 +419,7 @@
   names internally (`<hook>-at-<priority>__<key>`) and does not
   document them as a stable surface, so manually-written jumps
   to those names are not validated. See follow-up #1 in
-  `docs/compile-pipeline-draft.md` for the design discussion.
+  `docs/compile-pipeline.md` for the design discussion.
 
   Resolves names against the union of two namespaces:
     - `table.objects.<kind>` keys (user-declared named objects)
@@ -428,7 +428,7 @@
       by Phase 4. This lets users write raw `match` clauses
       against zone membership when `from` / `to` mechanics
       aren't expressive enough — see open question 6 (decision
-      (a)) in `docs/compile-pipeline-draft.md`.
+      (a)) in `docs/compile-pipeline.md`.
 
   Each error is `lib.nameValuePair "objectRefUnknown" <message>`.
 

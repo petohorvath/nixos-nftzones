@@ -1,6 +1,6 @@
-# Cross-Zone Validation (Draft — Superseded)
+# Cross-Zone Validation (Superseded)
 
-> **Status**: this draft is preserved for historical context. The actual validation work landed inline in `lib/internal/normalize.nix` as a sequence of Phase 1 validators (`checkNameCollisions`, `checkSettings`, `checkZoneRefs`, `checkZoneMatchable`, `checkChainOverridePlacement`, `checkPolicyUniqueness`, `checkSetNameCollisions`, `checkInterfaceOverlap`, `checkCidrOverlap`, `checkObjectRefs`, `checkParentRefs`, `checkParentCycles`) — see `docs/compile-pipeline-draft.md` §1.3 for the current shape and `docs/specs/zone-parent.md` for the parent-related ones. The "Where the validation lives" / "Open questions" sections below reflect choices that were made differently in implementation.
+> **Status**: this document is preserved for historical context. The actual validation work landed inline in `lib/internal/normalize.nix` as a sequence of Phase 1 validators (`checkParentRefs`, `checkParentCycles`, `checkNameCollisions`, `checkSettings`, `checkZoneRefs`, `checkZoneMatchable`, `checkChainOverridePlacement`, `checkChainPlacement`, `checkRpfilterOverride`, `checkPolicyUniqueness`, `checkSetNameCollisions`, `checkInterfaceOverlap`, `checkCidrOverlap`, `checkObjectRefs`) — see `docs/compile-pipeline.md` §1.3 for the current shape and `docs/specs/zone-parent.md` for the parent-related ones. The "Where the validation lives" / "Open questions" sections below reflect choices that were made differently in implementation.
 
 This document captures the design discussion around validating zone configurations across the whole `zones` attrset, beyond what per-zone NixOS option types can express.
 

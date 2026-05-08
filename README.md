@@ -4,7 +4,7 @@ Compile zone-based firewall configurations into nftables rulesets, in Nix.
 
 > **Pre-release** (`0.1.0`, no tagged release yet). 278 unit tests pass; real-kernel VM tests are still deferred. Expect API tweaks before 1.0.
 
-Most nftables configs hardwire interfaces and addresses into every rule. nftzones describes zone membership once — "lan is `eth1` plus `10.0.0.0/24`", "wan is `eth0`" — and expresses rules between **zones** instead. The library compiles a zone-keyed config into a vanilla nftables ruleset; the underlying nftables knows nothing about zones. See [`docs/zone-based-firewall.md`](docs/zone-based-firewall.md) for the model and [`docs/compile-pipeline-draft.md`](docs/compile-pipeline-draft.md) for the four-phase pipeline.
+Most nftables configs hardwire interfaces and addresses into every rule. nftzones describes zone membership once — "lan is `eth1` plus `10.0.0.0/24`", "wan is `eth0`" — and expresses rules between **zones** instead. The library compiles a zone-keyed config into a vanilla nftables ruleset; the underlying nftables knows nothing about zones. See [`docs/zone-based-firewall.md`](docs/zone-based-firewall.md) for the model and [`docs/compile-pipeline.md`](docs/compile-pipeline.md) for the four-phase pipeline.
 
 ## Quick start
 
@@ -125,7 +125,7 @@ filters.web-server-http = {
 | File | Audience |
 |---|---|
 | [`docs/zone-based-firewall.md`](docs/zone-based-firewall.md) | Newcomers to the zone-based firewall model. |
-| [`docs/compile-pipeline-draft.md`](docs/compile-pipeline-draft.md) | Integrators, debuggers, contributors. |
+| [`docs/compile-pipeline.md`](docs/compile-pipeline.md) | Integrators, debuggers, contributors. |
 | [`docs/specs/zone-parent.md`](docs/specs/zone-parent.md) | Zone hierarchy semantics, dispatch model, prior art. |
 
 ## Requirements
@@ -135,7 +135,7 @@ filters.web-server-http = {
 ## Known limitations
 
 - **Bridge family supports `filter` chains only.** `nat` (not supported by the bridge family) and `route` (no `mangle` priority on bridge) placements are rejected at compile time by `checkChainPlacement` so users get a clear error rather than a kernel-level rejection.
-- See `Pending follow-ups` in [`docs/compile-pipeline-draft.md`](docs/compile-pipeline-draft.md) for tracked design gaps.
+- See `Pending follow-ups` in [`docs/compile-pipeline.md`](docs/compile-pipeline.md) for tracked design gaps.
 
 ## Testing
 
