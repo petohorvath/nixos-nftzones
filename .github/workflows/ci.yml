@@ -35,24 +35,51 @@ jobs:
       - name: Verify no formatting drift
         run: git diff --exit-code
 
+  # Unit and integration jobs run across both Linux systems the
+  # flake exposes. Nix can't cross-build between architectures
+  # without a remote builder, so each `system` runs on a matching
+  # GitHub-hosted runner: x86_64-linux on `ubuntu-latest`,
+  # aarch64-linux on `ubuntu-24.04-arm` (free for public repos).
+  # Darwin is not built — the integration scenarios depend on
+  # `lklWithFirewall`, which is Linux-only.
   unit:
-    name: unit tests
-    runs-on: ubuntu-latest
+    name: unit tests (${{ matrix.system }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-latest
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72 # v30
       - name: Build unit checks
-        run: nix build --print-build-logs .#checks.x86_64-linux.unit
+        run: nix build --print-build-logs .#checks.${{ matrix.system }}.unit
 
   integration:
-    name: integration tests
-    runs-on: ubuntu-latest
+    name: integration tests (${{ matrix.system }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-latest
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72 # v30
       - name: Build integration checks
-        run: nix build --print-build-logs .#checks.x86_64-linux.integration
+        run: nix build --print-build-logs .#checks.${{ matrix.system }}.integration
 
+  # VM tests run on x86_64-linux only. Nested KVM is reliably
+  # available on free `ubuntu-latest` runners; the equivalent on
+  # `ubuntu-24.04-arm` is not guaranteed and pkgs.testers.nixosTest
+  # would refuse to start without `/dev/kvm`.
   vm:
     name: vm tests
     runs-on: ubuntu-latest
