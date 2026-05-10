@@ -6,7 +6,7 @@
   prelude; `loopback = false` drops the `iif lo accept` prelude
   on input. None of these have integration coverage otherwise.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;

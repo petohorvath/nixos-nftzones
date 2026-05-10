@@ -6,7 +6,7 @@
   lenient about unknown fields and would silently accept a
   regression that dropped the comment during emit.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;

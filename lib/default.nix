@@ -23,6 +23,16 @@ let
   types = lib.mergeAttrsList (lib.attrValues typeModules);
 
   /*
+    Rule-body shorthand under `nftzones.snippets.*`. Each leaf is
+    a function returning an `nftypes.dsl.*` statement list ready
+    to splice into `filters.<name>.rule = ...`. Inert until used —
+    the compile pipeline never sees these helpers; the returned
+    statements are validated by the same primitive type as any
+    hand-written body.
+  */
+  snippets = import ./snippets.nix { inherit inputs; };
+
+  /*
     Validate a raw user `body` (an attrset) against `types.table`
     by running it through `lib.evalModules`, using `name` as the
     option attribute key so the table's read-only `name` field
@@ -55,6 +65,7 @@ in
   inherit
     internal
     types
+    snippets
     mkTable
     mkRuleset
     ;

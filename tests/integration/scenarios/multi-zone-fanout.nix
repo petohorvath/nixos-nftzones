@@ -3,7 +3,7 @@
   produces four sub-chains, all sharing the same rule body.
   Exercises the cartesian expansion over both directions.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) accept;
 in

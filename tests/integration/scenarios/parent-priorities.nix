@@ -5,7 +5,7 @@
   child dispatch); `late` (priority >= 100) lands in
   postChildCells (fires after child returns).
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept drop;
   inherit (nftypes.dsl.fields) tcp ip;

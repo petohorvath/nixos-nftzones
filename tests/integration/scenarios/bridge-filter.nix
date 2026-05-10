@@ -8,7 +8,7 @@
   are rejected upstream by `checkChainPlacement`, so this
   scenario stays L2-pure.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) accept;
 in

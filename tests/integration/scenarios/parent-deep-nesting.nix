@@ -4,7 +4,7 @@
   intermediate parents synthesize transparent dispatchers, and
   base-chain jumps emit only for the root (corp).
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;

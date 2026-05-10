@@ -92,6 +92,8 @@ rule guest -> lan drop                                       # isolate guests
 
 Rule order within a zone pair follows the same first-match semantics as nftables. A rule that issues `accept` or `drop` ends evaluation for that pair; the policy applies only when no rule matches.
 
+For the common "open / drop / reject these ports" patterns, `nftzones.snippets.*` returns a ready-made rule body so the user does not have to construct match + verdict by hand against the underlying DSL. See the README "Snippets" section for the surface and the plan document for the input contract.
+
 ## Intra-Zone Traffic
 
 A zone may have rules to itself. This is the natural place for "members of this zone may (or may not) talk to each other":

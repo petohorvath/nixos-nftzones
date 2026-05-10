@@ -5,7 +5,7 @@
   non-default coordinates. Assertions pin the override
   destination chain.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq drop expr;
   inherit (nftypes.dsl.fields) ip;

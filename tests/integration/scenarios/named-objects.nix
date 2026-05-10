@@ -3,7 +3,7 @@
   set declared in `objects`. Exercises object-ref validation and
   user-object pass-through into the rendered table.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl)
     inSet

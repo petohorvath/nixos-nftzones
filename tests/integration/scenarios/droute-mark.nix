@@ -11,7 +11,7 @@
   kernels also accept it is an open question tracked in the
   upstream prompt at `../nix-nftypes/prompt-fix.md` §3.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) mangle;
   inherit (nftypes.dsl.fields) meta;

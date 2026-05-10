@@ -4,7 +4,7 @@
   scenario covers `inet` with both families; this one pins the
   v6-only path on its own.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;

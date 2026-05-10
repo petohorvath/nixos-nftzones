@@ -58,7 +58,7 @@ let
 
   scenarios = map (name: {
     inherit name;
-    path = mkScenarioCheck name (import (scenarioDir + "/${name}.nix") { inherit nftypes; });
+    path = mkScenarioCheck name (import (scenarioDir + "/${name}.nix") { inherit nftypes nftzones; });
   }) (listNixFiles scenarioDir);
 
   rejections = map (name: {

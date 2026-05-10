@@ -4,7 +4,7 @@
   parent's transparent dispatcher, and the parent's own rule lands
   in `postChildCells` as fallback.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;

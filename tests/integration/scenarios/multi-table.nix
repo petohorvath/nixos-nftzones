@@ -3,7 +3,7 @@
   composed into one ruleset. Exercises the multi-table render path
   and verifies both family-pinned outputs validate together.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;

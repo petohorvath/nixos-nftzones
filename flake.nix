@@ -55,6 +55,7 @@
             inherit pkgs nftzonesModule;
             nftzones = mkLib pkgs;
             nftypes = nftypes.lib;
+            libnet = libnet.lib.withLib pkgs.lib;
           };
           runner = import ./tests/unit/runner.nix { inherit pkgs; };
           unitTests = import ./tests/unit/default.nix testArgs;

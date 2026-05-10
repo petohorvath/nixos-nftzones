@@ -4,7 +4,7 @@
   sub-chain should be synthesized as a transparent dispatcher
   (just the child-dispatch jump, no own rules).
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;

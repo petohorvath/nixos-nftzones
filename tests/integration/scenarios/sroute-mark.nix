@@ -8,7 +8,7 @@
   forwarded traffic). Exercises the sroute group dispatch path
   end-to-end.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) mangle;
   inherit (nftypes.dsl.fields) meta;

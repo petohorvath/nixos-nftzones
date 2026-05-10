@@ -6,7 +6,7 @@
   `checkObjectRefs` resolution touch every kind's nftypes body
   shape.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;

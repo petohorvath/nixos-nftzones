@@ -3,7 +3,7 @@
   postrouting@srcnat base chain with type=nat. Exercises the
   snat-via-rule.masquerade dispatch path.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) masquerade;
 in

@@ -3,7 +3,7 @@
   every declared zone plus `localZone`. Validates the expanded
   cell stream renders to a multi-jump base chain that parses.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;

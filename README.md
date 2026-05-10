@@ -123,6 +123,31 @@ in {
 
 `mkTable` returns an `nftypes.dsl.table` value; `mkRuleset name body` is a shortcut that wraps a single table in `nftypes.dsl.ruleset`. Either is renderable to JSON (`toJson`) for `nft -j -f`, or to text (`toText`) for `nft -f`.
 
+### Snippets — rule-body shorthand
+
+Constructing rule bodies by hand requires reaching into the `nftypes.dsl` surface (`eq`, `accept`, `inSet`, `tcp.dport`, …). For the common "open / drop / reject these ports" case, `nftzones.snippets.*` returns a ready-made statement list:
+
+```nix
+{ inputs, ... }:
+let
+  inherit (inputs.nftzones.lib.${pkgs.system}.snippets) accept drop reject;
+  inherit (inputs.libnet.lib.registry) wellKnownPorts;
+in
+{
+  networking.nftzones.tables.fw = {
+    zones.lan.interfaces = [ "eth1" ];
+
+    filters.allow-ssh   = { from = [ "all" ]; to = [ "local" ]; rule = accept.tcp 22; };
+    filters.allow-web   = { from = [ "all" ]; to = [ "local" ]; rule = accept.tcp [ 80 443 "8000-8100" ]; };
+    filters.allow-dns-u = { from = [ "lan" ]; to = [ "local" ]; rule = accept.udp wellKnownPorts.udp.dns; };
+    filters.allow-ping  = { from = [ "all" ]; to = [ "local" ]; rule = accept.icmp.v4 8; };
+    filters.kick-rdp    = { from = [ "all" ]; to = [ "local" ]; rule = reject.tcp wellKnownPorts.tcp.rdp; };
+  };
+}
+```
+
+Twelve leaf functions across `accept` / `drop` / `reject` × `tcp` / `udp` / `icmp.v4` / `icmp.v6`. Port arguments accept ints, decimal strings, range strings (`"8000-8100"` / `"8000:8100"`), `libnet.port` / `libnet.portRange` values, or lists thereof — validation routes through `libnet`. ICMP-type arguments accept ints (`0`..`255`) or symbolic strings (`"echo-request"`); mixed-form lists throw. See [`docs/plans/snippets.md`](docs/plans/snippets.md) for the full input / output contract.
+
 ### Hierarchical zones
 
 Zones can declare a `parent` (and a node's `zone` field becomes its lowered child's parent). Traffic dispatches into the most-specific child sub-chain via the parent's chain; rules attached to the parent run as fallbacks if no child handles the packet first. See [`docs/specs/zone-parent.md`](docs/specs/zone-parent.md) for semantics.

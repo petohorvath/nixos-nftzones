@@ -9,7 +9,7 @@
   escape hatch for raw `match`-against-zone-membership without
   declaring a parallel user set.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) inSet accept expr;
   inherit (nftypes.dsl.fields) ip;

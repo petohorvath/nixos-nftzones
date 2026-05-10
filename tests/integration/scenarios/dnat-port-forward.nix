@@ -4,7 +4,7 @@
   type=nat. Exercises the action.dnat dispatch path and verifies
   rule-body emission for `{ match; action.dnat; }` shape.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq dnat;
   inherit (nftypes.dsl.fields) tcp;

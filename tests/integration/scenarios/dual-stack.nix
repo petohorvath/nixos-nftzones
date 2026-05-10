@@ -4,7 +4,7 @@
   fan out one variant per family. Pin that the dual-family
   output renders into a valid `inet`-family table.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) accept;
 in

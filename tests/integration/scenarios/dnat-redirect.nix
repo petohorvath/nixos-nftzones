@@ -5,7 +5,7 @@
   the `action.redirect` rule-body emission path (distinct from
   `action.dnat` which uses a `natBody`-shaped target).
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq redirect;
   inherit (nftypes.dsl.fields) tcp;

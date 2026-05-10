@@ -5,7 +5,7 @@
   in the base chain. Assertions pin the sub-chain name and rule
   body.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;

@@ -6,7 +6,7 @@
   covers the family-segregated section overrides that
   `mkDirectionVariants` flows separately.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept expr;
   inherit (nftypes.dsl.fields) ip ip6;

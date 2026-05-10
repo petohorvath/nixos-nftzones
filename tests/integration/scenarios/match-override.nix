@@ -4,7 +4,7 @@
   Exercises the `extra`-only direction-variant path (single
   prefix-only variant produced).
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) meta;

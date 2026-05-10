@@ -9,7 +9,7 @@
   → preChild, ≥ 100 → postChild). Base chain only carries
   stateful preludes plus the dispatch jump.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) accept;
 in

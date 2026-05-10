@@ -36,3 +36,4 @@ args@{
 // import ./types/droute.nix args
 // import ./types/table.nix args
 // import ./module.nix args
+// import ./snippets.nix args

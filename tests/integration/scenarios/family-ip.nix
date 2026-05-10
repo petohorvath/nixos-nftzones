@@ -4,7 +4,7 @@
   `priorityNameOf "ip"` and `chainTypeFor "ip" ...` lookups
   separately from the inet/bridge paths already covered.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;

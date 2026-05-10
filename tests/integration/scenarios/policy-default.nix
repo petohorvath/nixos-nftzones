@@ -4,7 +4,7 @@
   the filter rule. Exercises the policy-as-tail-rule sort
   contract.
 */
-{ nftypes }:
+{ nftypes, ... }:
 let
   inherit (nftypes.dsl) eq accept drop;
   inherit (nftypes.dsl.fields) tcp;
