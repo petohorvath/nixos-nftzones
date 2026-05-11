@@ -35,6 +35,8 @@ A zone is a named grouping of one or more:
 
 A zone may mix kinds. Membership of a packet is determined per packet by checking its ingress (or egress) interface and/or its source (or destination) address against the zone's members.
 
+Zones can also declare a **parent** zone, which builds a tree of zones. Traffic is dispatched into the most-specific child sub-chain; rules attached to the parent run as fallbacks if no child handles the packet first. See [`specs/zone-parent.md`](specs/zone-parent.md) for hierarchy semantics, dispatch model, and the `node` shorthand for single-host children.
+
 | Member kind | Matched against (source side) | Matched against (destination side) |
 |---|---|---|
 | interface | `iif` / `iifname` | `oif` / `oifname` |
@@ -92,6 +94,8 @@ rule guest -> lan drop                                       # isolate guests
 
 Rule order within a zone pair follows the same first-match semantics as nftables. A rule that issues `accept` or `drop` ends evaluation for that pair; the policy applies only when no rule matches.
 
+In the API, this construct is exposed as `filters.<name>` rather than `rules.<name>` — the word *filter* disambiguates the zone-pair-scoped exception (the concept this section describes) from an nftables `rule`, which is one statement-list line inside a chain. A single nftzones filter can compile to several nftables rules (one per cell in the cartesian `from × to` expansion).
+
 For the common "open / drop / reject these ports" patterns, `nftzones.snippets.*` returns a ready-made rule body so the user does not have to construct match + verdict by hand against the underlying DSL. See the README "Snippets" section for the surface and the plan document for the input contract.
 
 ## Intra-Zone Traffic
@@ -123,6 +127,102 @@ The local zone is interpreted by direction:
 | local on neither side | Forwarded packet. Matches in the `forward` hook. |
 
 The wildcard zone is mostly used in policies (`policy all -> all drop`) and broad allow rules (`rule local -> all accept`).
+
+Both names default as listed but are configurable per table via the `settings` field, which lets tables that already use `local` or `all` for an ordinary zone rename the special ones out of the way:
+
+```nix
+networking.nftzones.tables.fw = {
+  settings = {
+    localZone    = "host";   # default "local"
+    wildcardZone = "any";    # default "all"
+  };
+  zones.lan.interfaces = [ "lan0" ];
+  filters.allow-ssh = { from = [ "any" ]; to = [ "host" ]; rule = [ … ]; };
+};
+```
+
+Other compile-time knobs live alongside on `settings` — `stateful` (default `true`), `loopback` (default `true`), `rpfilter` (default `false`), `chainPolicy` (default `"drop"`). See `lib/types/table.nix` for the full set.
+
+## NAT and Policy Routing
+
+Filters and policies cover the *filter* hooks — what is allowed, what is dropped. Four further entry groups cover the *NAT* and *route* hooks, where a packet's addresses or routing fate are rewritten rather than verdict-checked. All four reuse the directed-zone-pair model: an entry names a `from` and / or `to` zone list and carries a rule body. The compile pipeline routes each group to the appropriate base chain (postrouting / prerouting / output, at the canonical NAT / mangle priority).
+
+| Group | Hook + priority | Directions | Typical use |
+|---|---|---|---|
+| `snats.<name>`   | `postrouting + srcnat` | `from` and `to` | Source NAT — rewrite outbound source addresses (masquerade, fixed-source SNAT) |
+| `dnats.<name>`   | `prerouting + dstnat`  | `from` only     | Destination NAT — port forwarding, redirect to localhost |
+| `sroutes.<name>` | `prerouting + mangle`  | `from` only     | Source-zone-keyed mark-set for policy routing of forwarded traffic |
+| `droutes.<name>` | `output + mangle`      | `to` only       | Destination-zone-keyed mark-set for policy routing of locally-generated traffic |
+
+`dnats` / `sroutes` carry no `to` because prerouting fires *before* the routing decision — the destination zone (which depends on routing) is undefined at that point. `droutes` carry no `from` because output-hook chains only see locally-generated packets, so the source zone is always `localZone`.
+
+### Source NAT (`snats`)
+
+Rewrite the source address of outbound traffic. `rule.masquerade = { }` picks the source automatically from the outgoing interface (the common "share one WAN address" case). `rule.snat = { addr; port?; … }` sets a fixed source.
+
+```nix
+snats.lan-masquerade = {
+  from = [ "lan" "guest" ];
+  to   = [ "wan" ];
+  rule.masquerade = { };
+  comment = "outbound NAT";
+};
+
+snats.web-snat = {
+  from = [ "lan" ];
+  to   = [ "wan" ];
+  rule.snat = { addr = "203.0.113.5"; port = 8080; };
+};
+```
+
+### Destination NAT (`dnats`)
+
+Rewrite the destination address of inbound traffic — port forwarding. `rule.match` constrains *which* packets are rewritten (typically a destination port); `rule.action.dnat = { addr; port; }` is the rewrite. `rule.action.redirect = { port; }` is a shorthand for "redirect to localhost on this port."
+
+```nix
+dnats.public-https = {
+  from = [ "wan" ];
+  rule = {
+    match = [ (eq tcp.dport 443) ];
+    action.dnat = { addr = "10.0.0.5"; port = 443; };
+  };
+  comment = "expose internal web on :443";
+};
+
+dnats.ssh-redirect = {
+  from = [ "wan" ];
+  rule = {
+    match = [ (eq tcp.dport 2222) ];
+    action.redirect = { port = 22; };
+  };
+};
+```
+
+### Source policy routing (`sroutes`)
+
+Tag inbound packets from a specific source zone with a firewall mark, so a `ip rule fwmark` outside nftables can steer them onto an alternate routing table — the kernel-correct way to do per-zone policy routing of *forwarded* traffic. The rule body carries no verdict; it sets the mark and falls through to the routing decision.
+
+```nix
+sroutes.guest-via-vpn = {
+  from = [ "guest" ];
+  rule = [ (mangle meta.mark 100) ];
+  comment = "guest traffic policy-routed via VPN";
+};
+```
+
+A matching `ip rule fwmark 100 table 100` plus a default route in routing table 100 finishes the picture. nftzones owns the mark-set; the routing rules live in `services.networkd` / `iproute2` config alongside.
+
+### Destination policy routing (`droutes`)
+
+Same idea as `sroutes`, but for *locally-generated* traffic and keyed on the destination zone — useful for multi-WAN selection (e.g. all traffic destined for `lan-remote` goes via VPN).
+
+```nix
+droutes.lan-via-vpn = {
+  to = [ "lan-remote" ];
+  rule = [ (mangle meta.mark 200) ];
+  comment = "local traffic to remote-lan via VPN";
+};
+```
 
 ## Zones beyond interfaces and CIDRs
 
