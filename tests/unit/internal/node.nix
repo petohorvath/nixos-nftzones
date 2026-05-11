@@ -30,7 +30,7 @@ in
 {
   # ===== toZone — v4-only node =====
 
-  testV4Only = {
+  testToZoneV4Only = {
     expr = inputFields (toZone {
       name = "web";
       zone = "dmz";
@@ -49,7 +49,7 @@ in
 
   # ===== toZone — v6-only node =====
 
-  testV6Only = {
+  testToZoneV6Only = {
     expr = inputFields (toZone {
       name = "ipv6-host";
       zone = "lan";
@@ -68,7 +68,7 @@ in
 
   # ===== toZone — dual-stack node =====
 
-  testDualStack = {
+  testToZoneDualStack = {
     expr = inputFields (toZone {
       name = "dual";
       zone = "dmz";
@@ -90,7 +90,7 @@ in
 
   # ===== toZone — interfaces is always empty =====
 
-  testInterfacesEmpty = {
+  testToZoneInterfacesEmpty = {
     expr =
       (toZone {
         name = "x";
@@ -105,7 +105,7 @@ in
 
   # ===== toZone — parent reflects node.zone =====
 
-  testParentPropagation = {
+  testToZoneParentPropagation = {
     expr =
       (toZone {
         name = "x";
@@ -121,7 +121,7 @@ in
   # ===== toZone — produces full zone-submodule shape =====
   # All fields the evaluated zone submodule has must be present.
 
-  testProducesFullShape = {
+  testToZoneProducesFullShape = {
     expr = pkgs.lib.sort (a: b: a < b) (
       builtins.attrNames (toZone {
         name = "x";
@@ -143,7 +143,7 @@ in
 
   # ===== toZone — submodule-default field values =====
 
-  testSubmoduleDefaults = {
+  testToZoneSubmoduleDefaults = {
     expr =
       let
         z = toZone {

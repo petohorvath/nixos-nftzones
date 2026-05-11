@@ -306,7 +306,7 @@ let
       };
 
       localZone = lib.mkOption {
-        type = primitives.identifier;
+        type = zone.zoneName;
         default = "local";
         example = "host";
         description = ''
@@ -319,7 +319,7 @@ let
       };
 
       wildcardZone = lib.mkOption {
-        type = primitives.identifier;
+        type = zone.zoneName;
         default = "all";
         example = "any";
         description = ''
