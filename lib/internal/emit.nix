@@ -680,7 +680,7 @@ let
     sub-chain at a given hook. Returns a list of variants — each
     variant is a list of statements ANDed within a single rule.
     Multiple variants → multiple rules (the cartesian product is
-    taken in `mkJumpRules`).
+    taken in `mkRootJumpRules` / `mkChildDispatchJumpRules`).
 
     Why per-variant rather than ANDed clauses: in `inet` family,
     `ip <addr>` and `ip6 <addr>` cannot be ANDed in the same
@@ -718,7 +718,8 @@ let
     guarantee a referenced zone has at least one matchable section at
     its hook, so the `[ ]` empty-result branch shouldn't fire for
     non-localZone refs. If it does (defense), the cartesian product
-    in `mkJumpRules` drops the entire jump for that sub-chain.
+    in `mkRootJumpRules` / `mkChildDispatchJumpRules` drops the entire
+    jump for that sub-chain.
   */
   mkDirectionVariants =
     {
@@ -784,8 +785,9 @@ let
     family in a single fold: `"ip"` / `"ip6"` if any statement
     carries that payload protocol, `null` (family-agnostic) for
     interface-only, extra-only, or empty variants. Used by
-    `mkJumpRules` to drop cross-family cartesian-product pairs that
-    nft rejects with "conflicting network layer protocols specified".
+    `mkRootJumpRules` to drop cross-family cartesian-product pairs
+    that nft rejects with "conflicting network layer protocols
+    specified".
   */
   variantFamily =
     variant:
