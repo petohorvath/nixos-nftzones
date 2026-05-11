@@ -22,6 +22,12 @@ in
   # ===== compile — runs all four phases, ctx carries every artifact =====
 
   testCompileFullCtx = {
+    # Shape, not just presence: a regression that set, e.g.,
+    # `errors = "broken"` (string instead of list) would pass a
+    # bare `ctx ? errors` check. Asserting on the type of each
+    # value catches structural regressions while still being cheap
+    # — the actual content is exercised by the per-phase tests in
+    # `tests/unit/internal/<phase>.nix`.
     expr =
       let
         ctx =
@@ -33,39 +39,41 @@ in
       in
       {
         # Phase 1 artifacts
-        hasMergedZones = ctx ? mergedZones;
-        hasAllZoneNames = ctx ? allZoneNames;
-        hasExpandedGroups = ctx ? expandedGroups;
-        hasResolvedPriorities = ctx ? resolvedPriorities;
-        hasZoneRefs = ctx ? zoneRefs;
-        hasErrors = ctx ? errors;
+        mergedZones = builtins.isAttrs ctx.mergedZones;
+        allZoneNames = builtins.isList ctx.allZoneNames;
+        expandedGroups = builtins.isAttrs ctx.expandedGroups;
+        resolvedPriorities = builtins.isAttrs ctx.resolvedPriorities;
+        zoneRefs = builtins.isList ctx.zoneRefs;
+        errors = builtins.isList ctx.errors;
+        warnings = builtins.isList ctx.warnings;
         # Phase 2 artifact
-        hasCells = ctx ? cells;
+        cells = builtins.isAttrs ctx.cells;
         # Phase 3 artifacts
-        hasGroupedByChain = ctx ? groupedByChain;
-        hasChainBuckets = ctx ? chainBuckets;
+        groupedByChain = builtins.isAttrs ctx.groupedByChain;
+        chainBuckets = builtins.isAttrs ctx.chainBuckets;
         # Phase 4 artifacts
-        hasZoneSets = ctx ? zoneSets;
-        hasBaseChains = ctx ? baseChains;
-        hasSubChains = ctx ? subChains;
-        hasUserObjects = ctx ? userObjects;
-        hasOutput = ctx ? output;
+        zoneSets = builtins.isAttrs ctx.zoneSets;
+        baseChains = builtins.isAttrs ctx.baseChains;
+        subChains = builtins.isAttrs ctx.subChains;
+        userObjects = builtins.isAttrs ctx.userObjects;
+        output = builtins.isAttrs ctx.output;
       };
     expected = {
-      hasMergedZones = true;
-      hasAllZoneNames = true;
-      hasExpandedGroups = true;
-      hasResolvedPriorities = true;
-      hasZoneRefs = true;
-      hasErrors = true;
-      hasCells = true;
-      hasGroupedByChain = true;
-      hasChainBuckets = true;
-      hasZoneSets = true;
-      hasBaseChains = true;
-      hasSubChains = true;
-      hasUserObjects = true;
-      hasOutput = true;
+      mergedZones = true;
+      allZoneNames = true;
+      expandedGroups = true;
+      resolvedPriorities = true;
+      zoneRefs = true;
+      errors = true;
+      warnings = true;
+      cells = true;
+      groupedByChain = true;
+      chainBuckets = true;
+      zoneSets = true;
+      baseChains = true;
+      subChains = true;
+      userObjects = true;
+      output = true;
     };
   };
 

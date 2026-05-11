@@ -1563,7 +1563,16 @@ in
   # ===== mkRootJumpRules — cartesian product drops cross-family pairs =====
 
   testMkRootJumpRulesCartesian = {
-    expr = builtins.length (mkRootJumpRules {
+    # With both lan and wan exposing v4 *and* v6 sets, the
+    # cartesian product is 4 (lan_v4×wan_v4, lan_v4×wan_v6,
+    # lan_v6×wan_v4, lan_v6×wan_v6). nft rejects mixed-family
+    # match in `inet`, so emit drops the 2 cross-family pairs
+    # and keeps the 2 matching-family pairs. Assert on the
+    # actual jump bodies, not just the count — a regression
+    # that kept the cross-family pairs (and dropped the matching
+    # ones) would still produce length 2 and pass a count-only
+    # assertion.
+    expr = mkRootJumpRules {
       hook = "forward";
       baseChainName = "forward-at-filter";
       effectiveSubChains = {
@@ -1585,8 +1594,19 @@ in
         wan_v6 = { };
       };
       localZone = "local";
-    });
-    expected = 2;
+    };
+    expected = [
+      [
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip.daddr (nftypes.dsl.expr.setRef "wan_v4"))
+        (nftypes.dsl.jump "forward-at-filter__lan-to-wan")
+      ]
+      [
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.daddr (nftypes.dsl.expr.setRef "wan_v6"))
+        (nftypes.dsl.jump "forward-at-filter__lan-to-wan")
+      ]
+    ];
   };
 
   # ===== mkChildDispatchJumpRules — emits jumps for matching children =====
