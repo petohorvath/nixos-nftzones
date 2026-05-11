@@ -48,6 +48,29 @@ in
     expected = "bridge";
   };
 
+  testTableFamilyAcceptsIp = {
+    expr = (evalTable { family = "ip"; }).family;
+    expected = "ip";
+  };
+
+  testTableFamilyAcceptsIp6 = {
+    expr = (evalTable { family = "ip6"; }).family;
+    expected = "ip6";
+  };
+
+  # `arp` and `netdev` are admitted by nftypes' family enum but
+  # not by ours — see the type comment on `tableFamily` and the
+  # README "Known limitations" section for rationale.
+  testTableFamilyRejectsArp = {
+    expr = evalFails (evalTable { family = "arp"; }).family;
+    expected = true;
+  };
+
+  testTableFamilyRejectsNetdev = {
+    expr = evalFails (evalTable { family = "netdev"; }).family;
+    expected = true;
+  };
+
   testTableFamilyRejectsBogus = {
     expr = evalFails (evalTable { family = "wat"; }).family;
     expected = true;

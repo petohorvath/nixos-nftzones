@@ -5,8 +5,9 @@
   Exported types:
     - `table`            — submodule for one table definition
     - `tableName`        — string identifier for a table
-    - `tableFamily`      — nftables family enum (reuses
-                           `nftypes.types.family`)
+    - `tableFamily`      — nftables family enum (`nftypes.enums.family`
+                           with `arp` / `netdev` filtered out;
+                           those two are unsupported)
     - `tableFlags`       — list of nftables table flags (reuses
                            `nftypes.types.tableFlag`)
     - `tableComment`     — optional free-form comment
@@ -37,7 +38,8 @@
   (name, family, flags, comment), compile knobs (stateful /
   loopback / rpfilter / chainPolicy), and an escape hatch for
   user-defined nftables objects (`objects`). The compile pipeline
-  produces one `inet`-family nftables table from a `table` value.
+  produces one nftables table per `table` value, in the family the
+  user picks (`inet` / `ip` / `ip6` / `bridge`).
 
   Field categories:
 
@@ -106,7 +108,12 @@ let
 
   tableName = primitives.identifier;
 
-  tableFamily = nftypes.types.family;
+  # `nftypes.enums.family` is the upstream list; we subtract the
+  # families we don't support end-to-end. `arp` and `netdev` would
+  # need extra plumbing (e.g. per-chain `device` binding for
+  # netdev) before the pipeline could emit valid tables for them.
+  # See README "Known limitations".
+  tableFamily = lib.types.enum (lib.subtractLists [ "arp" "netdev" ] nftypes.enums.family);
 
   tableFlags = lib.types.listOf nftypes.types.tableFlag;
 
@@ -354,8 +361,9 @@ let
           example = "inet";
           description = ''
             nftables address family — `inet` (combined v4/v6),
-            `ip`, `ip6`, `arp`, `bridge`, or `netdev`. Defaults to
-            `inet`; most use cases want it.
+            `ip`, `ip6`, or `bridge`. Defaults to `inet`; most use
+            cases want it. `arp` and `netdev` are not supported;
+            see the README's "Known limitations" for rationale.
           '';
         };
 
