@@ -16,7 +16,7 @@
   optional comment. Consumers wire it as `lib.mkOption {
   type = lib.types.attrsOf nftzones.types.snat; }`.
 
-  `from` / `to` use the shared `entryZones` type and the same
+  `from` / `to` use the shared `zoneNames` type and the same
   wildcard / localZone behaviour as filter — see
   `types/filter.nix` for the full discussion. Cross-cutting
   checks belong in module assertions on the enclosing `snats`
@@ -73,7 +73,7 @@
 }:
 let
   inherit (inputs) lib nftypes;
-  inherit (zone) entryZones;
+  inherit (zone) zoneNames;
   inherit (primitives) chainOverride;
 
   snatName = primitives.identifier;
@@ -114,7 +114,7 @@ let
         };
 
         from = lib.mkOption {
-          type = entryZones;
+          type = zoneNames;
           example = [ "lan" ];
           description = ''
             Source zones for the snat — non-empty. Each entry is
@@ -126,7 +126,7 @@ let
         };
 
         to = lib.mkOption {
-          type = entryZones;
+          type = zoneNames;
           example = [ "wan" ];
           description = ''
             Destination zones for the snat. Same shape rules as

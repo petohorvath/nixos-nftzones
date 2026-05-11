@@ -24,7 +24,7 @@
   match. Filter and snat both have `to` because they fire after
   routing — dnat is the structural exception.
 
-  `from` uses the shared `entryZones` type and the same wildcard
+  `from` uses the shared `zoneNames` type and the same wildcard
   / localZone behaviour as filter and snat — see
   `types/filter.nix` for the full discussion. Cross-cutting
   checks belong in module assertions on the enclosing `dnats`
@@ -88,7 +88,7 @@
 }:
 let
   inherit (inputs) lib nftypes;
-  inherit (zone) entryZones;
+  inherit (zone) zoneNames;
   inherit (primitives) chainOverride;
 
   dnatName = primitives.identifier;
@@ -160,7 +160,7 @@ let
         };
 
         from = lib.mkOption {
-          type = entryZones;
+          type = zoneNames;
           example = [ "wan" ];
           description = ''
             Source zones for the dnat — non-empty. Each entry is

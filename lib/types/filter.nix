@@ -14,7 +14,7 @@
   Consumers wire it as `lib.mkOption { type = lib.types.attrsOf
   nftzones.types.filter; }`.
 
-  `from` / `to` use the shared `entryZones` type (non-empty list
+  `from` / `to` use the shared `zoneNames` type (non-empty list
   of `zoneName` strings) — see `lib/types/zone.nix`. Whether each
   entry resolves to a declared zone, `settings.localZone`, or
   `settings.wildcardZone` is a cross-cutting check that belongs in
@@ -79,7 +79,7 @@
 }:
 let
   inherit (inputs) lib;
-  inherit (zone) entryZones;
+  inherit (zone) zoneNames;
   inherit (primitives) chainOverride;
 
   filterName = primitives.identifier;
@@ -107,7 +107,7 @@ let
         };
 
         from = lib.mkOption {
-          type = entryZones;
+          type = zoneNames;
           example = [ "wan" ];
           description = ''
             Source zones for the filter — non-empty. Each entry is
@@ -119,7 +119,7 @@ let
         };
 
         to = lib.mkOption {
-          type = entryZones;
+          type = zoneNames;
           example = [
             "wan"
             "vpn"

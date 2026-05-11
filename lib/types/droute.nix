@@ -23,7 +23,7 @@
   Including `from = [ <localZone> ]` as boilerplate would add
   noise without informing dispatch.
 
-  `to` uses the shared `entryZones` type and the same wildcard /
+  `to` uses the shared `zoneNames` type and the same wildcard /
   localZone behaviour as filter / snat / dnat / sroute — see
   `types/filter.nix` for the full discussion.
 
@@ -56,7 +56,7 @@
 }:
 let
   inherit (inputs) lib;
-  inherit (zone) entryZones;
+  inherit (zone) zoneNames;
 
   drouteName = primitives.identifier;
 
@@ -83,7 +83,7 @@ let
         };
 
         to = lib.mkOption {
-          type = entryZones;
+          type = zoneNames;
           example = [ "lan-remote" ];
           description = ''
             Destination zones for the droute — non-empty. Each

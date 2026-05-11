@@ -21,7 +21,7 @@
   destination zone (which depends on routing) isn't determined
   when the entry's emitted rules fire. Same structural reason dnat omits `to`.
 
-  `from` uses the shared `entryZones` type and the same wildcard
+  `from` uses the shared `zoneNames` type and the same wildcard
   / localZone behaviour as filter / snat / dnat — see
   `types/filter.nix` for the full discussion.
 
@@ -54,7 +54,7 @@
 }:
 let
   inherit (inputs) lib;
-  inherit (zone) entryZones;
+  inherit (zone) zoneNames;
 
   srouteName = primitives.identifier;
 
@@ -81,7 +81,7 @@ let
         };
 
         from = lib.mkOption {
-          type = entryZones;
+          type = zoneNames;
           example = [ "guest" ];
           description = ''
             Source zones for the sroute — non-empty. Each entry

@@ -41,7 +41,7 @@
     per-pair compilation, with explicit policies winning over
     wildcard fills.
 
-  `from` / `to` use the shared `entryZones` type and the same
+  `from` / `to` use the shared `zoneNames` type and the same
   wildcard / localZone behaviour as filter / snat / dnat — see
   `types/filter.nix` for the full discussion.
 
@@ -88,7 +88,7 @@
 }:
 let
   inherit (inputs) lib;
-  inherit (zone) entryZones;
+  inherit (zone) zoneNames;
 
   policyName = primitives.identifier;
 
@@ -116,7 +116,7 @@ let
         };
 
         from = lib.mkOption {
-          type = entryZones;
+          type = zoneNames;
           example = [ "lan" ];
           description = ''
             Source zones for the policy — non-empty. Each entry
@@ -128,7 +128,7 @@ let
         };
 
         to = lib.mkOption {
-          type = entryZones;
+          type = zoneNames;
           example = [ "wan" ];
           description = ''
             Destination zones for the policy. Same shape rules as
