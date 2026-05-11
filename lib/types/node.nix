@@ -141,17 +141,12 @@ let
           example = {
             ipv4 = "10.0.0.5";
           };
-          apply =
-            addr:
-            if addr.ipv4 == null && addr.ipv6 == null then
-              throw "nftzones.types.node ${name}: address must set at least one of ipv4 / ipv6"
-            else
-              addr;
           description = ''
             IP address(es) of the node. At least one of `ipv4` /
-            `ipv6` must be set — enforced at access time via the
-            option's `apply` function (with a descriptive error
-            message naming the offending node).
+            `ipv6` must be set — enforced by Phase 1's
+            `checkNodeAddresses` validator so the error aggregates
+            with other validation errors instead of throwing
+            immediately at type-apply time.
           '';
         };
       };

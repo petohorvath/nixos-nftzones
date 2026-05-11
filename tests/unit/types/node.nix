@@ -100,16 +100,22 @@ in
     };
   };
 
-  testNodeAddressBothNullRejected = {
-    # Both null fires the option's `apply` throw with a descriptive
-    # message naming the offending node.
+  testNodeAddressBothNullTypeAccepts = {
+    # The type accepts both-null (both fields default to `null`).
+    # The "at least one address required" rule is enforced by
+    # Phase 1's `checkNodeAddresses` validator so the error
+    # aggregates with the rest of Phase 1 instead of throwing at
+    # type-apply time. See `tests/unit/internal/normalize.nix` for
+    # the validator's rejection tests.
     expr =
-      evalFails
-        (nodeIn {
-          zone = "dmz";
-          address = { };
-        }).address;
-    expected = true;
+      (nodeIn {
+        zone = "dmz";
+        address = { };
+      }).address;
+    expected = {
+      ipv4 = null;
+      ipv6 = null;
+    };
   };
 
   # ===== node.address.ipv4 / ipv6 — libnet's strict address checks =====

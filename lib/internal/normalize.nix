@@ -34,6 +34,7 @@
         ↓ checkChainOverridePlacement   ctx.errors   (appends)
         ↓ checkChainPlacement           ctx.errors   (appends)
         ↓ checkRpfilterOverride         ctx.warnings (appends)
+        ↓ checkNodeAddresses            ctx.errors   (appends)
         ↓ checkNatBodies                ctx.errors   (appends)
         ↓ checkPolicyUniqueness         ctx.errors   (appends)
         ↓ checkSetNameCollisions        ctx.errors   (appends)
@@ -1033,6 +1034,40 @@ let
     activation. Catches the empty-body case here with a clear error
     pointing to `masquerade` / `redirect` as the no-target alternative.
   */
+  /*
+    Reject `nodes.<name>.address` shapes with both `ipv4` and
+    `ipv6` set to `null`. The type accepts the all-null shape
+    (both fields are `nullOr str` defaulting to `null`), but a
+    node with no address can't produce any CIDR for its lowered
+    zone — `internal.node.toZone` would emit `cidrs = [ ]` and
+    the zone would be unmatchable at every direction.
+
+    Surfaced here (rather than at type `apply` time) so the error
+    aggregates with the rest of Phase 1's findings instead of
+    halting on the first node.
+  */
+  checkNodeAddresses =
+    { table, ctx }:
+    let
+      newErrors = lib.concatLists (
+        lib.mapAttrsToList (
+          name: node:
+          lib.optional (node.address.ipv4 == null && node.address.ipv6 == null) (
+            lib.nameValuePair "nodeAddressMissing" (
+              "nodes.${name}: address must set at least one of `ipv4` / `ipv6` — "
+              + "a node with no address contributes no CIDR to its lowered zone."
+            )
+          )
+        ) (table.nodes or { })
+      );
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
   checkNatBodies =
     { table, ctx }:
     let
@@ -1626,6 +1661,7 @@ let
         checkChainOverridePlacement
         checkChainPlacement
         checkRpfilterOverride
+        checkNodeAddresses
         checkNatBodies
         checkPolicyUniqueness
         checkSetNameCollisions
@@ -1666,6 +1702,7 @@ in
     checkChainOverridePlacement
     checkChainPlacement
     checkRpfilterOverride
+    checkNodeAddresses
     checkNatBodies
     checkSetNameCollisions
     checkInterfaceOverlap

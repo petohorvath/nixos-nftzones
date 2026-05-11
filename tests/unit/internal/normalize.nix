@@ -15,6 +15,7 @@ let
     computeZoneSets
     checkChainPlacement
     checkRpfilterOverride
+    checkNodeAddresses
     checkNatBodies
     checkParentRefs
     checkParentCycles
@@ -679,6 +680,78 @@ in
         + "manually if you want rpfilter behavior in that chain."
       )
     ];
+  };
+
+  # ===== checkNodeAddresses — node with ipv4 passes =====
+
+  testCheckNodeAddressesV4Only = {
+    expr =
+      (runEvalPipeline [ checkNodeAddresses ] {
+        zones.dmz.interfaces = [ "dmz0" ];
+        nodes.web = {
+          zone = "dmz";
+          address.ipv4 = "10.0.0.5";
+        };
+      }).errors;
+    expected = [ ];
+  };
+
+  # ===== checkNodeAddresses — node with ipv6 passes =====
+
+  testCheckNodeAddressesV6Only = {
+    expr =
+      (runEvalPipeline [ checkNodeAddresses ] {
+        zones.dmz.interfaces = [ "dmz0" ];
+        nodes.web = {
+          zone = "dmz";
+          address.ipv6 = "fe80::1";
+        };
+      }).errors;
+    expected = [ ];
+  };
+
+  # ===== checkNodeAddresses — both-null rejected =====
+
+  testCheckNodeAddressesBothNull = {
+    expr =
+      (runEvalPipeline [ checkNodeAddresses ] {
+        zones.dmz.interfaces = [ "dmz0" ];
+        nodes.web = {
+          zone = "dmz";
+          address = { };
+        };
+      }).errors;
+    expected = [
+      {
+        name = "nodeAddressMissing";
+        value =
+          "nodes.web: address must set at least one of `ipv4` / `ipv6` — "
+          + "a node with no address contributes no CIDR to its lowered zone.";
+      }
+    ];
+  };
+
+  # ===== checkNodeAddresses — aggregates across multiple nodes =====
+
+  testCheckNodeAddressesAggregates = {
+    expr =
+      builtins.length
+        (runEvalPipeline [ checkNodeAddresses ] {
+          zones.dmz.interfaces = [ "dmz0" ];
+          nodes.a = {
+            zone = "dmz";
+            address = { };
+          };
+          nodes.b = {
+            zone = "dmz";
+            address = { };
+          };
+          nodes.c = {
+            zone = "dmz";
+            address.ipv4 = "10.0.0.5";
+          };
+        }).errors;
+    expected = 2;
   };
 
   # ===== checkNatBodies — well-formed snat passes =====
