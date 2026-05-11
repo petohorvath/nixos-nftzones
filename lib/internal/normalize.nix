@@ -34,6 +34,7 @@
         ↓ checkChainOverridePlacement   ctx.errors   (appends)
         ↓ checkChainPlacement           ctx.errors   (appends)
         ↓ checkRpfilterOverride         ctx.warnings (appends)
+        ↓ checkNatBodies                ctx.errors   (appends)
         ↓ checkPolicyUniqueness         ctx.errors   (appends)
         ↓ checkSetNameCollisions        ctx.errors   (appends)
         ↓ checkInterfaceOverlap         ctx.errors   (appends)
@@ -1023,6 +1024,53 @@ let
       };
     };
 
+  /*
+    Reject `snats.<x>.rule.snat = { }` and
+    `dnats.<x>.rule.action.dnat = { }` where `addr` is null. nftypes'
+    `natBody` lets every field default to `null` (so the user-shape
+    validates), but the rendered `snat to` / `dnat to` statement with
+    no target is invalid nftables syntax and `nft -f` rejects it at
+    activation. Catches the empty-body case here with a clear error
+    pointing to `masquerade` / `redirect` as the no-target alternative.
+  */
+  checkNatBodies =
+    { table, ctx }:
+    let
+      snatErrors = lib.concatLists (
+        lib.mapAttrsToList (
+          name: entry:
+          lib.optional ((entry.rule ? snat) && entry.rule.snat.addr == null) (
+            lib.nameValuePair "natBodyMissingAddr" (
+              "snats.${name}: rule.snat.addr is null — `snat` requires a target "
+              + "address. Use `rule.masquerade = { }` for auto-target via the "
+              + "outgoing interface, or set `rule.snat.addr` explicitly."
+            )
+          )
+        ) (table.snats or { })
+      );
+
+      dnatErrors = lib.concatLists (
+        lib.mapAttrsToList (
+          name: entry:
+          lib.optional ((entry.rule.action ? dnat) && entry.rule.action.dnat.addr == null) (
+            lib.nameValuePair "natBodyMissingAddr" (
+              "dnats.${name}: rule.action.dnat.addr is null — `dnat` requires a "
+              + "target address. Use `rule.action.redirect = { port = N; }` for "
+              + "redirect-to-localhost, or set `rule.action.dnat.addr` explicitly."
+            )
+          )
+        ) (table.dnats or { })
+      );
+
+      newErrors = snatErrors ++ dnatErrors;
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
   checkSettings =
     { table, ctx }:
     let
@@ -1578,6 +1626,7 @@ let
         checkChainOverridePlacement
         checkChainPlacement
         checkRpfilterOverride
+        checkNatBodies
         checkPolicyUniqueness
         checkSetNameCollisions
         checkInterfaceOverlap
@@ -1617,6 +1666,7 @@ in
     checkChainOverridePlacement
     checkChainPlacement
     checkRpfilterOverride
+    checkNatBodies
     checkSetNameCollisions
     checkInterfaceOverlap
     checkCidrOverlap

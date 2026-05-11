@@ -15,6 +15,7 @@ let
     computeZoneSets
     checkChainPlacement
     checkRpfilterOverride
+    checkNatBodies
     checkParentRefs
     checkParentCycles
     computeChildrenOf
@@ -678,6 +679,152 @@ in
         + "manually if you want rpfilter behavior in that chain."
       )
     ];
+  };
+
+  # ===== checkNatBodies — well-formed snat passes =====
+
+  testCheckNatBodiesValidSnat = {
+    expr =
+      (runEvalPipeline [ checkNatBodies ] {
+        zones.lan.interfaces = [ "lan0" ];
+        zones.wan.interfaces = [ "wan0" ];
+        snats.outbound = {
+          from = [ "lan" ];
+          to = [ "wan" ];
+          rule.snat.addr = "203.0.113.5";
+        };
+      }).errors;
+    expected = [ ];
+  };
+
+  # ===== checkNatBodies — masquerade has no addr requirement =====
+
+  testCheckNatBodiesValidMasquerade = {
+    expr =
+      (runEvalPipeline [ checkNatBodies ] {
+        zones.lan.interfaces = [ "lan0" ];
+        zones.wan.interfaces = [ "wan0" ];
+        snats.outbound = {
+          from = [ "lan" ];
+          to = [ "wan" ];
+          rule.masquerade = { };
+        };
+      }).errors;
+    expected = [ ];
+  };
+
+  # ===== checkNatBodies — empty snat body rejected =====
+
+  testCheckNatBodiesEmptySnat = {
+    # `rule.snat = { }` selects the `snat` tag with an all-null
+    # body. Type accepts it (every natBody field is nullable);
+    # nft rejects `snat to;` with no target at activation. This
+    # validator catches it earlier with a clear error.
+    expr =
+      (runEvalPipeline [ checkNatBodies ] {
+        zones.lan.interfaces = [ "lan0" ];
+        zones.wan.interfaces = [ "wan0" ];
+        snats.outbound = {
+          from = [ "lan" ];
+          to = [ "wan" ];
+          rule.snat = { };
+        };
+      }).errors;
+    expected = [
+      {
+        name = "natBodyMissingAddr";
+        value =
+          "snats.outbound: rule.snat.addr is null — `snat` requires a target "
+          + "address. Use `rule.masquerade = { }` for auto-target via the "
+          + "outgoing interface, or set `rule.snat.addr` explicitly.";
+      }
+    ];
+  };
+
+  # ===== checkNatBodies — well-formed dnat passes =====
+
+  testCheckNatBodiesValidDnat = {
+    expr =
+      (runEvalPipeline [ checkNatBodies ] {
+        zones.wan.interfaces = [ "wan0" ];
+        dnats.web-fwd = {
+          from = [ "wan" ];
+          rule = {
+            match = [ ];
+            action.dnat = {
+              addr = "10.0.0.5";
+              port = 443;
+            };
+          };
+        };
+      }).errors;
+    expected = [ ];
+  };
+
+  # ===== checkNatBodies — redirect has no addr requirement =====
+
+  testCheckNatBodiesValidRedirect = {
+    expr =
+      (runEvalPipeline [ checkNatBodies ] {
+        zones.wan.interfaces = [ "wan0" ];
+        dnats.ssh-redirect = {
+          from = [ "wan" ];
+          rule = {
+            match = [ ];
+            action.redirect.port = 22;
+          };
+        };
+      }).errors;
+    expected = [ ];
+  };
+
+  # ===== checkNatBodies — empty dnat action body rejected =====
+
+  testCheckNatBodiesEmptyDnat = {
+    expr =
+      (runEvalPipeline [ checkNatBodies ] {
+        zones.wan.interfaces = [ "wan0" ];
+        dnats.bad-fwd = {
+          from = [ "wan" ];
+          rule = {
+            match = [ ];
+            action.dnat = { };
+          };
+        };
+      }).errors;
+    expected = [
+      {
+        name = "natBodyMissingAddr";
+        value =
+          "dnats.bad-fwd: rule.action.dnat.addr is null — `dnat` requires a "
+          + "target address. Use `rule.action.redirect = { port = N; }` for "
+          + "redirect-to-localhost, or set `rule.action.dnat.addr` explicitly.";
+      }
+    ];
+  };
+
+  # ===== checkNatBodies — errors aggregate across both groups =====
+
+  testCheckNatBodiesAggregates = {
+    expr =
+      builtins.length
+        (runEvalPipeline [ checkNatBodies ] {
+          zones.lan.interfaces = [ "lan0" ];
+          zones.wan.interfaces = [ "wan0" ];
+          snats.bad-s = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule.snat = { };
+          };
+          dnats.bad-d = {
+            from = [ "wan" ];
+            rule = {
+              match = [ ];
+              action.dnat = { };
+            };
+          };
+        }).errors;
+    expected = 2;
   };
 
   # ===== checkSettings — defaults are conflict-free =====
