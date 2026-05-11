@@ -109,7 +109,7 @@ nodes.web-server = {
 filters.dmz-rate-limit = {
   from = [ "dmz" ];
   to = [ "local" ];
-  rule = [ (eq tcp.dport 22) (limit "100/second") accept ];
+  rule = [ (eq tcp.dport 22) (limit { rate = 100; per = "second"; }) accept ];
 };
 
 filters.web-server-http = {
