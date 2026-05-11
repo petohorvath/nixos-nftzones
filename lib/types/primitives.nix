@@ -43,20 +43,26 @@ let
 
   /*
     Entry priority — nftzones-internal sort key for ordering an
-    entry's emitted rules within its chain. NOT the nftables
+    entry's emitted rules within its sub-chain. NOT the nftables
     chain priority (that's `chainPriority`). Symbols and their
     resolved int values:
 
       first        → 1    earliest
-      preDispatch  → 50   before per-zone dispatch jumps
-      postDispatch → 100  after per-zone dispatch jumps
-      default      → 500  main user rules
+      preDispatch  → 50   before child-dispatch jumps in the
+                          enclosing sub-chain
+      postDispatch → 100  after child-dispatch jumps in the
+                          enclosing sub-chain
+      default      → 500  main user rules (also post-dispatch)
       last         → 999  latest
 
     Or any int directly. Compile pipeline sorts cells by
     `(resolved-priority asc, name asc)`. The cutoff at 100 splits
-    pre-dispatch (< 100) from post-dispatch (>= 100) in the
-    generated chain layout.
+    a sub-chain's `preChildCells` slot (< 100, emitted before
+    child-dispatch jumps) from `postChildCells` (≥ 100, emitted
+    after). The symbol names are historical — originally cells
+    landed in the *base chain* on either side of zone-dispatch
+    jumps; after zone-parent landed, cells always live inside
+    sub-chains and the slot is relative to *child*-dispatch.
 
     Symbol → int resolution lives in `internal.priority`;
     consumers don't need to do it themselves at type-check time.

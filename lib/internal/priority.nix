@@ -26,13 +26,15 @@
   | symbol         | int |
   |----------------|-----|
   | `first`        | 1   |  earliest
-  | `preDispatch`  | 50  |  before per-zone dispatch jumps
-  | `postDispatch` | 100 |  after per-zone dispatch jumps
-  | `default`      | 500 |  main user rules
+  | `preDispatch`  | 50  |  before child-dispatch jumps
+  | `postDispatch` | 100 |  after child-dispatch jumps
+  | `default`      | 500 |  main user rules (also post-dispatch)
   | `last`         | 999 |  latest
 
-  The cutoff at 100 splits cells into pre-dispatch (< 100, emitted
-  before zone matchers) and post-dispatch (>= 100, emitted after).
+  The cutoff at 100 splits a sub-chain's `preChildCells` slot
+  (< 100, emitted before child-dispatch jumps) from
+  `postChildCells` (≥ 100, emitted after). Symbol names are
+  historical — see `lib/types/primitives.nix` for the long form.
 */
 { inputs }:
 let
