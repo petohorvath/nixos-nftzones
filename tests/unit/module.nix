@@ -12,7 +12,8 @@
   of importing the module file directly means tests exercise the
   same wiring production consumers see.
 
-  VM tests live elsewhere (deferred for v1).
+  VM tests live elsewhere — `tests/vm/firewall.nix` boots a
+  real router under nixosTest and asserts traffic-level behaviour.
 */
 {
   pkgs,
