@@ -330,6 +330,7 @@ let
     ;
   inherit (nftypes) chainTypeFor priorityNameOf;
   inherit (internal.zone) getActiveMatchOverrides;
+  inherit (internal.placement) baseChainNameOf;
 
   # Boilerplate rule constants (each rule = list of statements).
   statefulRules = [
@@ -949,7 +950,14 @@ let
       # only when the user hasn't already claimed the slot —
       # Phase 1's `checkRpfilterOverride` warns when both are
       # set so the user knows their override took precedence.
-      needsRpfilter = settings.rpfilter && !(fromBuckets ? "prerouting-at-raw");
+      # Bucket key is built via `baseChainNameOf` (same helper Phase
+      # 3 uses) so int and symbol priority forms collapse to the
+      # same key regardless of which form the user wrote.
+      rpfilterBucketKey = baseChainNameOf family {
+        hook = "prerouting";
+        priority = "raw";
+      };
+      needsRpfilter = settings.rpfilter && !(fromBuckets ? ${rpfilterBucketKey});
       synthesizedRpfilterChain = {
         type = "filter";
         hook = "prerouting";
@@ -957,7 +965,7 @@ let
         rules = rpfilterRules;
       };
       rpfilterAddition = lib.optionalAttrs needsRpfilter {
-        "prerouting-at-raw" = synthesizedRpfilterChain;
+        ${rpfilterBucketKey} = synthesizedRpfilterChain;
       };
     in
     fromBuckets // rpfilterAddition;

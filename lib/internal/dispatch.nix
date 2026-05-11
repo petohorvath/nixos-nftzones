@@ -125,7 +125,12 @@ let
   inherit (inputs) lib nftypes;
   inherit (nftypes) priorityNameOf;
   inherit (internal.priority) entryPriorities;
-  inherit (internal.placement) defaultGroupChainAttrs filterChainHook filterChainPriority;
+  inherit (internal.placement)
+    defaultGroupChainAttrs
+    filterChainHook
+    filterChainPriority
+    baseChainNameOf
+    ;
 
   # Sub-chain pre/post-child-dispatch cutoff. Cells with resolved
   # priority below this fall in the `preChildCells` slot (fire
@@ -154,22 +159,6 @@ let
       }
     else
       defaultGroupChainAttrs.${group};
-
-  # Base chain name — `"<hook>-at-<priority>"` (e.g.
-  # `"input-at-filter"`). Used as the bucket key in `chainBuckets`
-  # *and* as the chain name Phase 4 emits in the nftables output.
-  # The format is a naming convention; bucket carries the
-  # structured `{ hook; priority; }` separately so Phase 4 reads
-  # fields, not parsed strings.
-  #
-  # Priority is canonicalized via `nftypes.compatibility.priorityNameOf`
-  # so int and symbol forms of the same value share one bucket
-  # (`chain.priority = 0` and the default `"filter"` collapse into
-  # `"input-at-filter"`). The lookup is family-aware — bridge's
-  # `filter = -200` canonicalizes correctly, unlike the prior
-  # inet-only inline implementation.
-  baseChainNameOf =
-    family: chainAttrs: "${chainAttrs.hook}-at-${toString (priorityNameOf family chainAttrs.priority)}";
 
   # Sub-chain key for a cell within its chain bucket —
   # `"<from>-to-<to>"` for bidirectional cells, bare `"<from>"` or

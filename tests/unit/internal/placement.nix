@@ -13,6 +13,7 @@ let
     defaultGroupChainAttrs
     filterChainHook
     filterChainPriority
+    baseChainNameOf
     ;
 in
 {
@@ -97,5 +98,45 @@ in
   testFilterChainPriority = {
     expr = filterChainPriority;
     expected = "filter";
+  };
+
+  # ===== baseChainNameOf — bucket-key / chain-name format =====
+
+  testBaseChainNameOfSymbol = {
+    expr = baseChainNameOf "inet" {
+      hook = "input";
+      priority = "filter";
+    };
+    expected = "input-at-filter";
+  };
+
+  # Int form of a canonical symbol must collapse to the same key
+  # (so user-overrides written as int don't bypass collision
+  # checks that consult the key).
+  testBaseChainNameOfIntCanonicalizes = {
+    expr = baseChainNameOf "inet" {
+      hook = "prerouting";
+      priority = -300;
+    };
+    expected = "prerouting-at-raw";
+  };
+
+  # Family-aware: bridge's `filter = -200` canonicalizes through
+  # `priorityIntsBridge`, not `priorityIntsDefault`.
+  testBaseChainNameOfBridgeFamily = {
+    expr = baseChainNameOf "bridge" {
+      hook = "input";
+      priority = -200;
+    };
+    expected = "input-at-filter";
+  };
+
+  # Non-canonical ints (no symbol matches) pass through unchanged.
+  testBaseChainNameOfUnknownInt = {
+    expr = baseChainNameOf "inet" {
+      hook = "input";
+      priority = 42;
+    };
+    expected = "input-at-42";
   };
 }
