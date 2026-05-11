@@ -24,6 +24,11 @@
     - `chainPriority` — symbol-or-int for the nftables chain
                         priority (the netfilter `priority` attribute
                         on a base chain).
+    - `chainOverride` — optional `{ hook; priority; }` submodule.
+                        Pins a filter / snat / dnat entry to a
+                        specific base chain instead of the group's
+                        default placement. `null` (the default at
+                        each consumer) keeps the default.
 */
 { inputs }:
 let
@@ -94,6 +99,37 @@ let
     time. Or pass any int directly.
   */
   chainPriority = lib.types.either (lib.types.enum (builtins.attrNames nftypes.compatibility.priorityIntsDefault)) lib.types.int;
+
+  /*
+    Optional chain-placement override — `null` (the default at
+    each consumer) keeps the group's default placement. A
+    submodule with `hook` + `priority` pins the entry to a
+    specific base chain. Shared shape for filters / snats / dnats;
+    sroutes / droutes have no override path (their placement is
+    fixed by group semantics).
+  */
+  chainOverride = lib.types.nullOr (
+    lib.types.submodule {
+      options = {
+        hook = lib.mkOption {
+          type = nftypes.types.hook;
+          example = "prerouting";
+          description = ''
+            nftables hook the chain attaches to.
+          '';
+        };
+        priority = lib.mkOption {
+          type = chainPriority;
+          example = "raw";
+          description = ''
+            Chain priority. Either an nftables symbol (`raw`,
+            `mangle`, `dstnat`, `filter`, `security`, `srcnat`)
+            or any int.
+          '';
+        };
+      };
+    }
+  );
 in
 {
   inherit
@@ -102,5 +138,6 @@ in
     rule
     entryPriority
     chainPriority
+    chainOverride
     ;
 }

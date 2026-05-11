@@ -4,14 +4,10 @@
   Exported types:
     - `dnat`         — submodule for one dnat definition
     - `dnatName`     — string identifier for a dnat
-    - `dnatZones`    — non-empty list of zone references (the shape
-                       of `from`)
     - `dnatRule`     — submodule with `match` (required) and
                        `action` (attrTag of `dnat` / `redirect`)
     - `dnatPriority` — symbol-or-int entry sort key (`first` /
                        `preDispatch` / `default` / …)
-    - `dnatChain`    — optional chain-placement override
-                       (submodule with `hook` + `priority`)
     - `dnatComment`  — optional free-form comment
 
   A dnat is a directed `from` zone NAT rule that applies in
@@ -28,11 +24,12 @@
   match. Filter and snat both have `to` because they fire after
   routing — dnat is the structural exception.
 
-  `dnatZones` and the wildcard / localZone behaviour are identical
-  to filter and snat — see `types/filter.nix` for the full
-  discussion. Cross-cutting checks (resolves to a declared zone,
-  `settings.localZone`, or `settings.wildcardZone`) belong in
-  module assertions on the enclosing `dnats` attrset.
+  `from` uses the shared `entryZones` type and the same wildcard
+  / localZone behaviour as filter and snat — see
+  `types/filter.nix` for the full discussion. Cross-cutting
+  checks belong in module assertions on the enclosing `dnats`
+  attrset. The `chain` field is the shared
+  `primitives.chainOverride`.
 
   `dnatRule` has two fields:
     - `match`  — a list of nftypes statements matched against the
@@ -54,14 +51,13 @@
 
   `dnatPriority` is the entry sort key — symbol or int, default
   `"default"` (= 500). NOT the nftables chain priority (that's
-  `dnatChain.priority`). See `primitives.entryPriority` for the
-  symbol → int mapping.
+  the `chain.priority` field on the submodule). See
+  `primitives.entryPriority` for the symbol → int mapping.
 
-  `dnatChain` is an optional override for chain placement. `null`
-  (the default) uses prerouting at `dstnat` priority. Setting it
-  pins the entry to a specific base chain via a
-  submodule with `hook` and `priority` — useful for output-hook
-  DNAT on locally-generated traffic.
+  The default chain placement is prerouting at `dstnat` priority.
+  Setting the `chain` field pins the entry to a specific base
+  chain instead — useful for output-hook DNAT on locally-generated
+  traffic.
 
   Example:
     options.dnats = lib.mkOption {
@@ -92,16 +88,10 @@
 }:
 let
   inherit (inputs) lib nftypes;
-  inherit (zone) zoneName;
+  inherit (zone) entryZones;
+  inherit (primitives) chainOverride;
 
   dnatName = primitives.identifier;
-
-  /*
-    Non-empty list of `zoneName` strings. Empty fan-out is never
-    meaningful, so emptiness is rejected at the type level rather
-    than deferred to module assertions.
-  */
-  dnatZones = lib.types.nonEmptyListOf zoneName;
 
   dnatComment = primitives.comment;
 
@@ -153,36 +143,6 @@ let
 
   dnatPriority = primitives.entryPriority;
 
-  /*
-    Chain-placement override — `null` means default prerouting
-    placement (`type nat hook prerouting priority dstnat`). A
-    submodule pins the entry to a specific base chain at the given
-    priority, e.g. for output-hook DNAT on locally-generated
-    traffic.
-  */
-  dnatChain = lib.types.nullOr (
-    lib.types.submodule {
-      options = {
-        hook = lib.mkOption {
-          type = nftypes.types.hook;
-          example = "output";
-          description = ''
-            nftables hook the chain attaches to.
-          '';
-        };
-        priority = lib.mkOption {
-          type = primitives.chainPriority;
-          example = "dstnat";
-          description = ''
-            Chain priority. Either an nftables symbol (`raw`,
-            `mangle`, `dstnat`, `filter`, `security`, `srcnat`)
-            or any int.
-          '';
-        };
-      };
-    }
-  );
-
   dnat = lib.types.submodule (
     { name, ... }:
     {
@@ -200,7 +160,7 @@ let
         };
 
         from = lib.mkOption {
-          type = dnatZones;
+          type = entryZones;
           example = [ "wan" ];
           description = ''
             Source zones for the dnat — non-empty. Each entry is
@@ -238,7 +198,7 @@ let
         };
 
         chain = lib.mkOption {
-          type = dnatChain;
+          type = chainOverride;
           default = null;
           example = {
             hook = "output";
@@ -268,10 +228,8 @@ in
 {
   inherit
     dnatName
-    dnatZones
     dnatRule
     dnatPriority
-    dnatChain
     dnatComment
     dnat
     ;

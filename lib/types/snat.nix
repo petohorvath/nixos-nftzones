@@ -4,14 +4,10 @@
   Exported types:
     - `snat`         — submodule for one snat definition
     - `snatName`     — string identifier for an snat
-    - `snatZones`    — non-empty list of zone references (the shape
-                       of `from` and `to`)
     - `snatRule`     — attrTag union of `snat` and `masquerade`
                        bodies (the rule body)
     - `snatPriority` — symbol-or-int entry sort key (`first` /
                        `preDispatch` / `default` / …)
-    - `snatChain`    — optional chain-placement override
-                       (submodule with `hook` + `priority`)
     - `snatComment`  — optional free-form comment
 
   An snat is a directed `from → to` zone-pair NAT rule that applies
@@ -20,11 +16,12 @@
   optional comment. Consumers wire it as `lib.mkOption {
   type = lib.types.attrsOf nftzones.types.snat; }`.
 
-  `snatZones` and the wildcard / localZone behaviour are identical
-  to filter — see `types/filter.nix` for the full discussion.
-  Cross-cutting checks (resolves to a declared zone,
-  `settings.localZone`, or `settings.wildcardZone`) belong in
-  module assertions on the enclosing `snats` attrset.
+  `from` / `to` use the shared `entryZones` type and the same
+  wildcard / localZone behaviour as filter — see
+  `types/filter.nix` for the full discussion. Cross-cutting
+  checks belong in module assertions on the enclosing `snats`
+  attrset. The `chain` field is the shared
+  `primitives.chainOverride`.
 
   `snatRule` is an `attrTag` of two nftypes-derived submodules:
     - `snat`       — full address translation; fields `addr`,
@@ -40,14 +37,13 @@
 
   `snatPriority` is the entry sort key — symbol or int, default
   `"default"` (= 500). NOT the nftables chain priority (that's
-  `snatChain.priority`). See `primitives.entryPriority` for the
-  symbol → int mapping.
+  the `chain.priority` field on the submodule). See
+  `primitives.entryPriority` for the symbol → int mapping.
 
-  `snatChain` is an optional override for chain placement.
-  `null` (the default) uses postrouting at `srcnat` priority.
-  Setting it pins the entry to a specific base chain via a
-  submodule with `hook` and `priority` — useful for output-hook
-  SNAT on locally-generated traffic.
+  The default chain placement is postrouting at `srcnat` priority.
+  Setting the `chain` field pins the entry to a specific base
+  chain instead — useful for output-hook SNAT on locally-generated
+  traffic.
 
   Example:
     options.snats = lib.mkOption {
@@ -77,16 +73,10 @@
 }:
 let
   inherit (inputs) lib nftypes;
-  inherit (zone) zoneName;
+  inherit (zone) entryZones;
+  inherit (primitives) chainOverride;
 
   snatName = primitives.identifier;
-
-  /*
-    Non-empty list of `zoneName` strings. Empty fan-out is never
-    meaningful, so emptiness is rejected at the type level rather
-    than deferred to module assertions.
-  */
-  snatZones = lib.types.nonEmptyListOf zoneName;
 
   snatComment = primitives.comment;
 
@@ -107,36 +97,6 @@ let
 
   snatPriority = primitives.entryPriority;
 
-  /*
-    Chain-placement override — `null` means default postrouting
-    placement (`type nat hook postrouting priority srcnat`). A
-    submodule pins the entry to a specific base chain at the given
-    priority, e.g. for output-hook SNAT on locally-generated
-    traffic.
-  */
-  snatChain = lib.types.nullOr (
-    lib.types.submodule {
-      options = {
-        hook = lib.mkOption {
-          type = nftypes.types.hook;
-          example = "output";
-          description = ''
-            nftables hook the chain attaches to.
-          '';
-        };
-        priority = lib.mkOption {
-          type = primitives.chainPriority;
-          example = "srcnat";
-          description = ''
-            Chain priority. Either an nftables symbol (`raw`,
-            `mangle`, `dstnat`, `filter`, `security`, `srcnat`)
-            or any int.
-          '';
-        };
-      };
-    }
-  );
-
   snat = lib.types.submodule (
     { name, ... }:
     {
@@ -154,7 +114,7 @@ let
         };
 
         from = lib.mkOption {
-          type = snatZones;
+          type = entryZones;
           example = [ "lan" ];
           description = ''
             Source zones for the snat — non-empty. Each entry is
@@ -166,7 +126,7 @@ let
         };
 
         to = lib.mkOption {
-          type = snatZones;
+          type = entryZones;
           example = [ "wan" ];
           description = ''
             Destination zones for the snat. Same shape rules as
@@ -200,7 +160,7 @@ let
         };
 
         chain = lib.mkOption {
-          type = snatChain;
+          type = chainOverride;
           default = null;
           example = {
             hook = "output";
@@ -230,10 +190,8 @@ in
 {
   inherit
     snatName
-    snatZones
     snatRule
     snatPriority
-    snatChain
     snatComment
     snat
     ;

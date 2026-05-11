@@ -4,8 +4,6 @@
   Exported types:
     - `droute`         — submodule for one droute definition
     - `drouteName`     — string identifier for a droute
-    - `drouteZones`    — non-empty list of zone references (the
-                         shape of `to`)
     - `drouteRule`     — list of nftypes statements (mangle / match
                          body)
     - `droutePriority` — symbol-or-int entry sort key (lower runs first)
@@ -25,8 +23,8 @@
   Including `from = [ <localZone> ]` as boilerplate would add
   noise without informing dispatch.
 
-  `drouteZones` and the wildcard / localZone behaviour are
-  identical to filter / snat / dnat / sroute — see
+  `to` uses the shared `entryZones` type and the same wildcard /
+  localZone behaviour as filter / snat / dnat / sroute — see
   `types/filter.nix` for the full discussion.
 
   `drouteRule` is a flat list of nftypes statements — typically
@@ -58,16 +56,9 @@
 }:
 let
   inherit (inputs) lib;
-  inherit (zone) zoneName;
+  inherit (zone) entryZones;
 
   drouteName = primitives.identifier;
-
-  /*
-    Non-empty list of `zoneName` strings. Empty fan-out is never
-    meaningful, so emptiness is rejected at the type level rather
-    than deferred to module assertions.
-  */
-  drouteZones = lib.types.nonEmptyListOf zoneName;
 
   drouteComment = primitives.comment;
 
@@ -92,7 +83,7 @@ let
         };
 
         to = lib.mkOption {
-          type = drouteZones;
+          type = entryZones;
           example = [ "lan-remote" ];
           description = ''
             Destination zones for the droute — non-empty. Each
@@ -144,7 +135,6 @@ in
 {
   inherit
     drouteName
-    drouteZones
     drouteRule
     droutePriority
     drouteComment

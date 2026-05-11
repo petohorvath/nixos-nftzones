@@ -1,6 +1,6 @@
 /*
   Unit tests for `lib/types/sroute.nix` (exposed as
-  `nftzones.types.{sroute,srouteName,srouteZones,srouteRule,
+  `nftzones.types.{sroute,srouteName,srouteRule,
   sroutePriority,srouteComment}`). Same
   `testFoo = { expr; expected; }` shape as every other unit test;
   aggregated by `tests/unit/default.nix`.

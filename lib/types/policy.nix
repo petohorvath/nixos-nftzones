@@ -4,8 +4,6 @@
   Exported types:
     - `policy`        — submodule for one policy definition
     - `policyName`    — string identifier for a policy
-    - `policyZones`   — non-empty list of zone references (the
-                        shape of `from` and `to`)
     - `policyVerdict` — `"accept"` or `"drop"` (reuses
                         `nftypes.types.policy`)
     - `policyComment` — optional free-form comment
@@ -43,9 +41,9 @@
     per-pair compilation, with explicit policies winning over
     wildcard fills.
 
-  `policyZones` and the wildcard / localZone behaviour are
-  identical to filter / snat / dnat — see `types/filter.nix` for
-  the full discussion.
+  `from` / `to` use the shared `entryZones` type and the same
+  wildcard / localZone behaviour as filter / snat / dnat — see
+  `types/filter.nix` for the full discussion.
 
   `policyVerdict` is `enum [ "accept" "drop" ]` — the two
   verdicts nftables permits in a chain-level `policy <X>;`
@@ -90,16 +88,9 @@
 }:
 let
   inherit (inputs) lib;
-  inherit (zone) zoneName;
+  inherit (zone) entryZones;
 
   policyName = primitives.identifier;
-
-  /*
-    Non-empty list of `zoneName` strings. Empty fan-out is never
-    meaningful, so emptiness is rejected at the type level rather
-    than deferred to module assertions.
-  */
-  policyZones = lib.types.nonEmptyListOf zoneName;
 
   policyVerdict = lib.types.enum [
     "accept"
@@ -125,7 +116,7 @@ let
         };
 
         from = lib.mkOption {
-          type = policyZones;
+          type = entryZones;
           example = [ "lan" ];
           description = ''
             Source zones for the policy — non-empty. Each entry
@@ -137,7 +128,7 @@ let
         };
 
         to = lib.mkOption {
-          type = policyZones;
+          type = entryZones;
           example = [ "wan" ];
           description = ''
             Destination zones for the policy. Same shape rules as
@@ -173,7 +164,6 @@ in
 {
   inherit
     policyName
-    policyZones
     policyVerdict
     policyComment
     policy

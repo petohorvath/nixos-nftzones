@@ -1,6 +1,6 @@
 /*
   Unit tests for `lib/types/droute.nix` (exposed as
-  `nftzones.types.{droute,drouteName,drouteZones,drouteRule,
+  `nftzones.types.{droute,drouteName,drouteRule,
   droutePriority,drouteComment}`). Same
   `testFoo = { expr; expected; }` shape as every other unit test;
   aggregated by `tests/unit/default.nix`.

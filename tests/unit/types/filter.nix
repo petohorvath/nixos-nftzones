@@ -1,7 +1,7 @@
 /*
   Unit tests for `lib/types/filter.nix` (exposed as
-  `nftzones.types.{filter,filterName,filterZones,filterRule,
-  filterPriority,filterChain,filterComment}`). Same
+  `nftzones.types.{filter,filterName,filterRule,
+  filterPriority,filterComment}`). Same
   `testFoo = { expr; expected; }` shape as every other unit test;
   aggregated by `tests/unit/default.nix`.
 */

@@ -4,8 +4,6 @@
   Exported types:
     - `sroute`         — submodule for one sroute definition
     - `srouteName`     — string identifier for an sroute
-    - `srouteZones`    — non-empty list of zone references (the
-                         shape of `from`)
     - `srouteRule`     — list of nftypes statements (mangle / match
                          body)
     - `sroutePriority` — symbol-or-int entry sort key (lower runs first)
@@ -23,9 +21,9 @@
   destination zone (which depends on routing) isn't determined
   when the entry's emitted rules fire. Same structural reason dnat omits `to`.
 
-  `srouteZones` and the wildcard / localZone behaviour are
-  identical to filter / snat / dnat — see `types/filter.nix` for
-  the full discussion.
+  `from` uses the shared `entryZones` type and the same wildcard
+  / localZone behaviour as filter / snat / dnat — see
+  `types/filter.nix` for the full discussion.
 
   `srouteRule` is a flat list of nftypes statements — typically
   match conditions plus mangle statements like `meta mark set N`.
@@ -56,16 +54,9 @@
 }:
 let
   inherit (inputs) lib;
-  inherit (zone) zoneName;
+  inherit (zone) entryZones;
 
   srouteName = primitives.identifier;
-
-  /*
-    Non-empty list of `zoneName` strings. Empty fan-out is never
-    meaningful, so emptiness is rejected at the type level rather
-    than deferred to module assertions.
-  */
-  srouteZones = lib.types.nonEmptyListOf zoneName;
 
   srouteComment = primitives.comment;
 
@@ -90,7 +81,7 @@ let
         };
 
         from = lib.mkOption {
-          type = srouteZones;
+          type = entryZones;
           example = [ "guest" ];
           description = ''
             Source zones for the sroute — non-empty. Each entry
@@ -142,7 +133,6 @@ in
 {
   inherit
     srouteName
-    srouteZones
     srouteRule
     sroutePriority
     srouteComment

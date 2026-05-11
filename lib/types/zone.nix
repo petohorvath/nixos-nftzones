@@ -7,6 +7,15 @@
     - `zoneParent`        — optional reference to a parent zone
     - `zoneInterfaces`    — list of interface names
     - `zoneCidrs`         — list of CIDR prefixes (mixed v4/v6)
+    - `entryZones`        — non-empty list of `zoneName` strings;
+                            the shape every rule-bearing group
+                            (filters / snats / dnats / sroutes /
+                            droutes / policies) uses for its
+                            `from` / `to` direction fields. Empty
+                            fan-out is never meaningful, so
+                            emptiness is rejected at the type
+                            level rather than deferred to module
+                            assertions.
     - `zoneMatchOverride` — per-direction, per-section match override
                             (`{ ingress; egress; }` × four sections:
                             `interfaces`, `ipv4`, `ipv6`, `extra`).
@@ -48,6 +57,8 @@ let
   inherit (inputs) lib libnet;
 
   zoneName = primitives.identifier;
+
+  entryZones = lib.types.nonEmptyListOf zoneName;
 
   zoneParent = lib.types.nullOr zoneName;
 
@@ -240,6 +251,7 @@ in
 {
   inherit
     zoneName
+    entryZones
     zoneParent
     zoneInterfaces
     zoneCidrs

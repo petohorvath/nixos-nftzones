@@ -45,7 +45,7 @@ The same string travels from Phase 3 (as an attrset key) through to Phase 4 (as 
 
 The pair shows up under two names depending on context:
 
-- **Chain placement** — user-facing term, used in type docstrings (`filterChain`, `snatChain`, `dnatChain` overrides). Describes what the override *does*: pins the entry to a specific base chain.
+- **Chain placement** — user-facing term, used in type docstrings (the `chain` override on `filters` / `snats` / `dnats`, typed as `primitives.chainOverride`). Describes what the override *does*: pins the entry to a specific base chain.
 - **Chain attrs** — implementation term, used in `internal.dispatch` / `internal.emit`. Describes the attrset shape `{ hook; priority; }` carried alongside cells.
 
 Same concept, different framings.

@@ -1,7 +1,7 @@
 /*
   Unit tests for `lib/types/dnat.nix` (exposed as
-  `nftzones.types.{dnat,dnatName,dnatZones,dnatRule,dnatPriority,
-  dnatChain,dnatComment}`). Same `testFoo = { expr; expected; }`
+  `nftzones.types.{dnat,dnatName,dnatRule,dnatPriority,
+  dnatComment}`). Same `testFoo = { expr; expected; }`
   shape as every other unit test; aggregated by
   `tests/unit/default.nix`.
 */

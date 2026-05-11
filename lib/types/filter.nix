@@ -4,12 +4,8 @@
   Exported types:
     - `filter`         — submodule for one filter definition
     - `filterName`     — string identifier for a filter
-    - `filterZones`    — non-empty list of zone references (the shape
-                         of `from` and `to`)
     - `filterRule`     — list of nftypes DSL statements (rule body)
     - `filterPriority` — symbol-or-int entry sort key (lower runs first)
-    - `filterChain`    — optional chain-placement override
-                         (submodule with `hook` + `priority`)
     - `filterComment`  — optional free-form comment
 
   A filter is a directed `from → to` zone-pair rule. It carries a
@@ -18,13 +14,11 @@
   Consumers wire it as `lib.mkOption { type = lib.types.attrsOf
   nftzones.types.filter; }`.
 
-  `filterZones` is a non-empty list of `zoneName` strings; it lets a
-  single entry fan out across multiple zones on either side (e.g.
-  `from = [ "lan" "guest" ]`). Each entry's shape is validated
-  against `zoneName`; whether it resolves to a declared zone, the
-  configured `settings.localZone`, or `settings.wildcardZone` is a
-  cross-cutting check that belongs in module assertions on the
-  enclosing `filters` attrset.
+  `from` / `to` use the shared `entryZones` type (non-empty list
+  of `zoneName` strings) — see `lib/types/zone.nix`. Whether each
+  entry resolves to a declared zone, `settings.localZone`, or
+  `settings.wildcardZone` is a cross-cutting check that belongs in
+  module assertions on the enclosing `filters` attrset.
 
   `filterRule` entries pass through nftypes' attrTag validation, so
   consumers cannot smuggle hand-rolled libnftables-json shapes. The
@@ -40,21 +34,19 @@
   cutoff at 100 splits cells into pre-dispatch (< 100, emitted
   before per-zone matchers) and post-dispatch (>= 100, after).
 
-  `filterChain` is an optional override for chain placement. By
-  default (`chain = null`), the entry is dispatched to `input`,
+  The `chain` field is the shared `primitives.chainOverride`
+  (optional `{ hook; priority; }` submodule). By default
+  (`chain = null`), the entry is dispatched to `input`,
   `forward`, or `output` based on `settings.localZone`:
     - `to` references `settings.localZone` → `input`
     - `from` references `settings.localZone` → `output`
     - neither → `forward`
-  Setting `chain` pins the entry to a specific base chain via a
-  submodule with `hook` (the nftables hook to attach to) and
-  `priority` (the nftables chain priority — `raw`, `filter`, etc.).
-  Useful for rpfilter
-  (`chain = { hook = "prerouting"; priority = "raw"; }`). At a
-  non-default hook, `to` and `from` may not have their usual
-  match semantics (notably `to` is meaningless in `prerouting`
-  since routing hasn't happened yet); the compiler treats them as
-  match expressions where applicable and skips them otherwise.
+  Setting `chain` pins the entry to a specific base chain (useful
+  for rpfilter at `prerouting + raw`). At a non-default hook, `to`
+  and `from` may not have their usual match semantics (notably
+  `to` is meaningless in `prerouting` since routing hasn't
+  happened yet); the compiler treats them as match expressions
+  where applicable and skips them otherwise.
 
   Example:
     options.filters = lib.mkOption {
@@ -86,53 +78,17 @@
   zone,
 }:
 let
-  inherit (inputs) lib nftypes;
-  inherit (zone) zoneName;
+  inherit (inputs) lib;
+  inherit (zone) entryZones;
+  inherit (primitives) chainOverride;
 
   filterName = primitives.identifier;
-
-  /*
-    Non-empty list of `zoneName` strings. Empty fan-out is never
-    meaningful, so emptiness is rejected at the type level rather
-    than deferred to module assertions.
-  */
-  filterZones = lib.types.nonEmptyListOf zoneName;
 
   filterComment = primitives.comment;
 
   filterRule = primitives.rule;
 
   filterPriority = primitives.entryPriority;
-
-  /*
-    Chain-placement override — `null` means dispatch via the
-    localZone-position rule (input/forward/output). A submodule
-    pins the entry to a specific base chain at the given priority.
-    `hook` and `priority` are the two attributes that uniquely
-    identify a base chain at compile time.
-  */
-  filterChain = lib.types.nullOr (
-    lib.types.submodule {
-      options = {
-        hook = lib.mkOption {
-          type = nftypes.types.hook;
-          example = "prerouting";
-          description = ''
-            nftables hook the chain attaches to.
-          '';
-        };
-        priority = lib.mkOption {
-          type = primitives.chainPriority;
-          example = "raw";
-          description = ''
-            Chain priority. Either an nftables symbol (`raw`,
-            `mangle`, `dstnat`, `filter`, `security`, `srcnat`)
-            or any int.
-          '';
-        };
-      };
-    }
-  );
 
   filter = lib.types.submodule (
     { name, ... }:
@@ -151,7 +107,7 @@ let
         };
 
         from = lib.mkOption {
-          type = filterZones;
+          type = entryZones;
           example = [ "wan" ];
           description = ''
             Source zones for the filter — non-empty. Each entry is
@@ -163,7 +119,7 @@ let
         };
 
         to = lib.mkOption {
-          type = filterZones;
+          type = entryZones;
           example = [
             "wan"
             "vpn"
@@ -206,7 +162,7 @@ let
         };
 
         chain = lib.mkOption {
-          type = filterChain;
+          type = chainOverride;
           default = null;
           example = {
             hook = "prerouting";
@@ -241,10 +197,8 @@ in
 {
   inherit
     filterName
-    filterZones
     filterRule
     filterPriority
-    filterChain
     filterComment
     filter
     ;

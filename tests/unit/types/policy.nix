@@ -1,6 +1,6 @@
 /*
   Unit tests for `lib/types/policy.nix` (exposed as
-  `nftzones.types.{policy,policyName,policyZones,policyVerdict,
+  `nftzones.types.{policy,policyName,policyVerdict,
   policyComment}`). Same `testFoo = { expr; expected; }` shape as
   every other unit test; aggregated by `tests/unit/default.nix`.
 */

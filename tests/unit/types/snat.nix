@@ -1,7 +1,7 @@
 /*
   Unit tests for `lib/types/snat.nix` (exposed as
-  `nftzones.types.{snat,snatName,snatZones,snatRule,snatPriority,
-  snatChain,snatComment}`). Same `testFoo = { expr; expected; }`
+  `nftzones.types.{snat,snatName,snatRule,snatPriority,
+  snatComment}`). Same `testFoo = { expr; expected; }`
   shape as every other unit test; aggregated by
   `tests/unit/default.nix`.
 */
