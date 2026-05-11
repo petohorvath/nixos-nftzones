@@ -307,4 +307,113 @@ in
       lib.any (a: lib.hasInfix "requires networking.nftables.enable" a.message) (failingAssertions cfg);
     expected = true;
   };
+
+  # ===== module — table-level `flags` rendered as block prefix =====
+  # `nftypes.toTextBlock` drops the `add table` self-command (the
+  # nixpkgs wrapper supplies `table <fam> <name> { ... }`), so the
+  # module prepends `flags` / `comment` to the block content
+  # itself. Verifies the prefix actually lands in the rendered
+  # text.
+
+  testModuleRendersTableFlags = {
+    expr =
+      let
+        cfg = evalSystem {
+          networking.nftables.enable = true;
+          networking.nftzones = {
+            enable = true;
+            tables.fw = {
+              flags = [ "owner" ];
+              zones.lan.interfaces = [ "lan0" ];
+            };
+          };
+        };
+      in
+      lib.hasInfix "flags owner;" cfg.networking.nftables.tables.fw.content;
+    expected = true;
+  };
+
+  testModuleRendersTableFlagsMulti = {
+    expr =
+      let
+        cfg = evalSystem {
+          networking.nftables.enable = true;
+          networking.nftzones = {
+            enable = true;
+            tables.fw = {
+              flags = [
+                "dormant"
+                "owner"
+              ];
+              zones.lan.interfaces = [ "lan0" ];
+            };
+          };
+        };
+      in
+      lib.hasInfix "flags dormant, owner;" cfg.networking.nftables.tables.fw.content;
+    expected = true;
+  };
+
+  testModuleRendersTableComment = {
+    expr =
+      let
+        cfg = evalSystem {
+          networking.nftables.enable = true;
+          networking.nftzones = {
+            enable = true;
+            tables.fw = {
+              comment = "main firewall";
+              zones.lan.interfaces = [ "lan0" ];
+            };
+          };
+        };
+      in
+      lib.hasInfix ''comment "main firewall";'' cfg.networking.nftables.tables.fw.content;
+    expected = true;
+  };
+
+  # Quotes / backslashes in the comment must be escaped per
+  # nftables string syntax, not passed through raw (which would
+  # close the string and create a parse error at activation).
+  testModuleEscapesCommentSpecials = {
+    expr =
+      let
+        cfg = evalSystem {
+          networking.nftables.enable = true;
+          networking.nftzones = {
+            enable = true;
+            tables.fw = {
+              comment = ''with "quote" and \slash'';
+              zones.lan.interfaces = [ "lan0" ];
+            };
+          };
+        };
+      in
+      lib.hasInfix ''comment "with \"quote\" and \\slash";'' cfg.networking.nftables.tables.fw.content;
+    expected = true;
+  };
+
+  # Default values must not leak into the content — verifies the
+  # prefix is empty when neither field is set.
+  testModuleNoMetadataPrefixByDefault = {
+    expr =
+      let
+        cfg = evalSystem {
+          networking.nftables.enable = true;
+          networking.nftzones = {
+            enable = true;
+            tables.fw.zones.lan.interfaces = [ "lan0" ];
+          };
+        };
+        content = cfg.networking.nftables.tables.fw.content;
+      in
+      {
+        hasFlags = lib.hasInfix "flags" content;
+        hasComment = lib.hasInfix "comment " content;
+      };
+    expected = {
+      hasFlags = false;
+      hasComment = false;
+    };
+  };
 }

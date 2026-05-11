@@ -19,6 +19,26 @@ let
 
   renderTable = if cfg.pretty then nftypes.toTextBlockPretty else nftypes.toTextBlock;
 
+  # `nftypes.toTextBlock` drops the `add table` self-command (its
+  # consumer — here nixpkgs' `networking.nftables.tables` — supplies
+  # the `table <fam> <name> { ... }` wrapper itself). That self-
+  # command is where `flags` and `comment` live, so the block
+  # renderer silently strips them. nftables block syntax permits
+  # both inside the braces, so we prepend them ourselves.
+  escapeComment =
+    builtins.replaceStrings
+      [ "\\" "\"" "\n" "\r" "\t" ]
+      [ "\\\\" "\\\"" "\\n" "\\r" "\\t" ];
+
+  renderTableMetadata =
+    table:
+    let
+      flagsLine = lib.optional (table.flags != [ ]) "flags ${lib.concatStringsSep ", " table.flags};";
+      commentLine = lib.optional (table.comment != null) ''comment "${escapeComment table.comment}";'';
+      lines = flagsLine ++ commentLine;
+    in
+    lib.optionalString (lines != [ ]) (lib.concatStringsSep "\n" lines + "\n");
+
   compiledTables = lib.mapAttrs (
     _name: tableValue:
     let
@@ -26,7 +46,11 @@ let
     in
     {
       inherit (table) family;
-      content = renderTable table;
+      # `tableValue` carries the user-shape with submodule defaults
+      # filled in; `table` is the compiled nftypes value which drops
+      # empty / null fields. Reading metadata from the user-shape
+      # keeps the prefix renderer predictable.
+      content = renderTableMetadata tableValue + renderTable table;
     }
   ) cfg.tables;
 in
