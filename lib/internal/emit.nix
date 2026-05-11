@@ -330,7 +330,7 @@ let
     ;
   inherit (nftypes) chainTypeFor priorityNameOf;
   inherit (internal.zone) getActiveMatchOverrides;
-  inherit (internal.placement) baseChainNameOf;
+  inherit (internal.placement) baseChainNameOf walkParents hooksWithIifname;
 
   # Boilerplate rule constants (each rule = list of statements).
   statefulRules = [
@@ -479,29 +479,11 @@ let
   buildEffectiveSubChains =
     bucket: mergedZones:
     let
-      # Walk the parent chain. Returns ancestors in root-toward
-      # order (immediate parent first). Phase 1's
-      # `checkParentCycles` should have rejected any cycle before
-      # we get here; the `visited` guard is defensive so unit-test
-      # fixtures that bypass Phase 1 don't infinite-loop.
-      ancestorsOf =
-        start:
-        let
-          step =
-            visited: name:
-            if name == null then
-              [ ]
-            else
-              let
-                zone = mergedZones.${name} or null;
-                parent = if zone == null then null else zone.parent or null;
-              in
-              if parent == null || builtins.elem parent visited then
-                [ ]
-              else
-                [ parent ] ++ step (visited ++ [ parent ]) parent;
-        in
-        step [ start ] start;
+      # Strict ancestor walk lives in `internal.placement.walkParents`.
+      # Phase 1's `checkParentCycles` rejects any cycle before we get
+      # here; the helper's own `visited` guard is defensive so unit-
+      # test fixtures that bypass Phase 1 don't infinite-loop.
+      ancestorsOf = name: walkParents mergedZones name;
 
       mkEmptyRecord =
         fromZone: toZone:
@@ -735,12 +717,7 @@ let
     else
       let
         isFromDirection = direction == "from";
-        iifAvailable = builtins.elem hook [
-          "prerouting"
-          "input"
-          "forward"
-          "postrouting"
-        ];
+        iifAvailable = builtins.elem hook hooksWithIifname;
         oifAvailable = builtins.elem hook nftypes.compatibility.hooksWithOifname;
         ifAvailable = if isFromDirection then iifAvailable else oifAvailable;
 

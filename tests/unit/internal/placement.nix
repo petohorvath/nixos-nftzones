@@ -14,6 +14,9 @@ let
     filterChainHook
     filterChainPriority
     baseChainNameOf
+    subChainKeyOf
+    walkParents
+    hooksWithIifname
     ;
 in
 {
@@ -138,5 +141,97 @@ in
       priority = 42;
     };
     expected = "input-at-42";
+  };
+
+  # ===== subChainKeyOf — bucket-local sub-chain key =====
+
+  testSubChainKeyOfBidirectional = {
+    expr = subChainKeyOf {
+      from = "lan";
+      to = "wan";
+    };
+    expected = "lan-to-wan";
+  };
+
+  testSubChainKeyOfFromOnly = {
+    expr = subChainKeyOf { from = "lan"; };
+    expected = "lan";
+  };
+
+  testSubChainKeyOfToOnly = {
+    expr = subChainKeyOf { to = "wan"; };
+    expected = "wan";
+  };
+
+  # Extra fields (rule, priority, etc.) are ignored — works on
+  # cell-shaped inputs directly.
+  testSubChainKeyOfIgnoresExtraFields = {
+    expr = subChainKeyOf {
+      from = "lan";
+      to = "wan";
+      rule = [ ];
+      priority = "default";
+    };
+    expected = "lan-to-wan";
+  };
+
+  # ===== walkParents — strict ancestor walk =====
+
+  testWalkParentsRoot = {
+    expr = walkParents {
+      a.parent = null;
+    } "a";
+    expected = [ ];
+  };
+
+  testWalkParentsChain = {
+    # c → b → a (root). Result is ancestors of c in root-toward
+    # order: immediate parent first, root last.
+    expr = walkParents {
+      a.parent = null;
+      b.parent = "a";
+      c.parent = "b";
+    } "c";
+    expected = [
+      "b"
+      "a"
+    ];
+  };
+
+  # Unresolved parent stops the walk gracefully (returns the
+  # ancestors gathered so far, doesn't throw).
+  testWalkParentsUnresolved = {
+    expr = walkParents {
+      a.parent = "missing";
+    } "a";
+    expected = [ ];
+  };
+
+  # Cycle-safe: defensive even if `checkParentCycles` were bypassed.
+  testWalkParentsCycle = {
+    expr = walkParents {
+      a.parent = "b";
+      b.parent = "a";
+    } "a";
+    expected = [ "b" ];
+  };
+
+  # Null input (e.g. a single-direction cell with no `from`) is
+  # safe — walker returns empty rather than throwing.
+  testWalkParentsNullName = {
+    expr = walkParents { } null;
+    expected = [ ];
+  };
+
+  # ===== hooksWithIifname — constant =====
+
+  testHooksWithIifname = {
+    expr = hooksWithIifname;
+    expected = [
+      "prerouting"
+      "input"
+      "forward"
+      "postrouting"
+    ];
   };
 }

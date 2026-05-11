@@ -130,6 +130,7 @@ let
     filterChainHook
     filterChainPriority
     baseChainNameOf
+    subChainKeyOf
     ;
 
   # Sub-chain pre/post-child-dispatch cutoff. Cells with resolved
@@ -159,19 +160,6 @@ let
       }
     else
       defaultGroupChainAttrs.${group};
-
-  # Sub-chain key for a cell within its chain bucket —
-  # `"<from>-to-<to>"` for bidirectional cells, bare `"<from>"` or
-  # `"<to>"` for single-direction. Decorative; sub-chain carries
-  # `from` / `to` as fields.
-  subChainKeyOf =
-    cell:
-    if cell ? from && cell ? to then
-      "${cell.from}-to-${cell.to}"
-    else if cell ? from then
-      cell.from
-    else
-      cell.to;
 
   # Sort by `(priority asc, name asc)`. Caller filters out
   # policies first if needed (policies have no `priority`).

@@ -34,6 +34,25 @@
                                   via `nftypes.priorityNameOf` so
                                   int and symbol forms of the same
                                   value collapse to one key.
+    - `subChainKeyOf`           — `{ from?; to?; ... } →
+                                  "<from>-to-<to>"` / `"<from>"` /
+                                  `"<to>"`. The local sub-chain
+                                  key inside a bucket; accepts
+                                  cell-shaped attrsets (extra
+                                  fields ignored).
+    - `walkParents`             — `mergedZones → zoneName →
+                                  [ancestor]`. Walks the parent
+                                  chain (strict ancestors), cycle-
+                                  safe. Single helper for both
+                                  validators (overlap, hierarchy)
+                                  and emit's intermediate-chain
+                                  synthesis.
+    - `hooksWithIifname`        — hooks where the `iifname` /
+                                  `iif` match field is available.
+                                  Mirror of `nftypes.compatibility.
+                                  hooksWithOifname` for the input-
+                                  side. Local because upstream
+                                  doesn't expose it (yet).
 
   Wired into the surface from `lib/internal/default.nix` as a
   layer-0 leaf with no inter-module dependencies.
@@ -43,6 +62,23 @@ let
   inherit (inputs) lib nftypes;
   inherit (nftypes) priorityNameOf;
   inherit (nftypes.compatibility) priorityIntsDefault;
+
+  /*
+    Hooks where the input interface (`iifname` / `iif`) match
+    field carries a real value. Mirror of `nftypes.compatibility.
+    hooksWithOifname`. `output` is excluded — locally-generated
+    packets have no input device. `ingress` is excluded too —
+    nftzones' zone-firewall model doesn't currently use device-
+    bound ingress chains, and including it would invite false
+    positives from validators that ask the question without
+    having a `device` binding to qualify the answer.
+  */
+  hooksWithIifname = [
+    "prerouting"
+    "input"
+    "forward"
+    "postrouting"
+  ];
 
   hookNames = lib.genAttrs nftypes.enums.hook lib.id;
   priorityNames = lib.genAttrs (builtins.attrNames priorityIntsDefault) lib.id;
@@ -96,6 +132,72 @@ let
   # collision check) must build the same key by calling this.
   baseChainNameOf =
     family: chainAttrs: "${chainAttrs.hook}-at-${toString (priorityNameOf family chainAttrs.priority)}";
+
+  /*
+    Sub-chain key for a cell within its chain bucket —
+    `"<from>-to-<to>"` for bidirectional cells, bare `"<from>"`
+    or `"<to>"` for single-direction. Accepts any attrset with
+    optional `from` / `to` keys (other fields ignored), so it
+    works on cells, sub-chains, or hand-built attrsets alike.
+
+    Throws if neither key is present, since the resulting key
+    would be empty — a sub-chain must be reachable by at least
+    one of from/to.
+  */
+  subChainKeyOf =
+    {
+      from ? null,
+      to ? null,
+      ...
+    }:
+    if from != null && to != null then
+      "${from}-to-${to}"
+    else if from != null then
+      from
+    else if to != null then
+      to
+    else
+      throw "internal.placement.subChainKeyOf: at least one of `from` / `to` must be non-null";
+
+  /*
+    Walk the strict ancestor chain of `name` in `mergedZones` —
+    parent, grandparent, … excluding `name` itself. Returns a
+    list ordered root-ward (immediate parent first, root last).
+
+    Stops at:
+      - `null` parent (root reached, return list as built),
+      - an unresolved parent name (not in `mergedZones`),
+      - a name already visited (cycle — defensive against
+        fixtures that bypass `checkParentCycles`).
+
+    Used by:
+      - `internal.normalize.relatedByHierarchy` (overlap
+        validators skip pairs in an ancestor relation),
+      - `internal.emit.buildEffectiveSubChains` (synthesize
+        empty intermediate sub-chains for the dispatch chain).
+
+    Both consumers want "list of ancestors" and don't care about
+    cycle detection; `checkParentCycles` is the dedicated cycle
+    validator.
+  */
+  walkParents =
+    mergedZones: name:
+    let
+      step =
+        visited: cur:
+        if cur == null then
+          [ ]
+        else
+          let
+            zone = mergedZones.${cur} or null;
+            parent = if zone == null then null else zone.parent or null;
+          in
+          if parent == null || builtins.elem parent visited || !(mergedZones ? ${parent}) then
+            [ ]
+          else
+            [ parent ] ++ step (visited ++ [ parent ]) parent;
+    in
+    step [ name ] name;
 in
 {
   inherit
@@ -103,5 +205,8 @@ in
     filterChainHook
     filterChainPriority
     baseChainNameOf
+    subChainKeyOf
+    walkParents
+    hooksWithIifname
     ;
 }

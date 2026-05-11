@@ -455,6 +455,7 @@ let
   inherit (inputs) lib libnet nftypes;
   inherit (internal.node) toZone;
   inherit (internal.zone) genSets getActiveMatchOverrides;
+  inherit (internal.placement) walkParents hooksWithIifname;
 
   /*
     Build the pipeline's initial `{ table; ctx }` from a fresh
@@ -544,39 +545,15 @@ let
   parentOf = zone: zone.parent or null;
 
   /*
-    `strictAncestorsOf mergedZones name` returns the strict
-    ancestor chain of `name` (its parent, grandparent, …),
-    excluding `name` itself. Walks until reaching a null parent
-    or an unresolved one. Cycle-safe via `visited` membership —
-    `checkParentCycles` rejects cycles upstream, but the walk
-    short-circuits anyway so the helper works on raw fixtures.
-  */
-  strictAncestorsOf =
-    mergedZones: name:
-    let
-      step =
-        visited: cur:
-        let
-          zone = mergedZones.${cur} or null;
-          parent = if zone == null then null else parentOf zone;
-        in
-        if parent == null || builtins.elem parent visited || !(mergedZones ? ${parent}) then
-          visited
-        else
-          step (visited ++ [ parent ]) parent;
-    in
-    step [ ] name;
-
-  /*
     Are zones `a` and `b` in an ancestor/descendant relation in
     `mergedZones`? True iff one is in the other's strict ancestor
     chain. Used by overlap validators to skip pairs whose overlap
-    is intentional (parent CIDR contains child CIDR).
+    is intentional (parent CIDR contains child CIDR). Strict
+    ancestor walks live in `internal.placement.walkParents`.
   */
   relatedByHierarchy =
     mergedZones: a: b:
-    builtins.elem a (strictAncestorsOf mergedZones b)
-    || builtins.elem b (strictAncestorsOf mergedZones a);
+    builtins.elem a (walkParents mergedZones b) || builtins.elem b (walkParents mergedZones a);
 
   checkParentRefs =
     { table, ctx }:
@@ -1192,14 +1169,7 @@ let
       inherit (table.settings) localZone;
       inherit (ctx) mergedZones expandedGroups;
 
-      iifAvailableAtHook =
-        hook:
-        builtins.elem hook [
-          "prerouting"
-          "input"
-          "forward"
-          "postrouting"
-        ];
+      iifAvailableAtHook = hook: builtins.elem hook hooksWithIifname;
       oifAvailableAtHook = hook: builtins.elem hook nftypes.compatibility.hooksWithOifname;
 
       ifFieldName = direction: if direction == "from" then "iifname" else "oifname";
