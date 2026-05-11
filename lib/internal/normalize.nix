@@ -484,16 +484,32 @@ let
     to = "egress";
   };
 
-  # Rule-bearing groups, in pipeline-canonical order. Used by
-  # validators and bookkeeping that need to iterate every group.
-  groupNames = [
-    "filters"
-    "policies"
-    "snats"
-    "dnats"
-    "sroutes"
-    "droutes"
-  ];
+  # Rule-bearing groups paired with the direction fields each one
+  # carries (`from` and/or `to`). Single source of truth for the
+  # per-group direction config — `expandWildcardZones`,
+  # `resolvePriorities`, `checkChainOverridePlacement`, and
+  # `collectZoneRefs` all consume it. Adding a new group means
+  # updating this one constant; previously the same per-group
+  # mapping was open-coded across three call sites.
+  groupDirections = {
+    filters = [
+      "from"
+      "to"
+    ];
+    policies = [
+      "from"
+      "to"
+    ];
+    snats = [
+      "from"
+      "to"
+    ];
+    dnats = [ "from" ];
+    sroutes = [ "from" ];
+    droutes = [ "to" ];
+  };
+
+  groupNames = builtins.attrNames groupDirections;
 
   # Subset of `groupNames` whose entry types expose a `chain`
   # override field (filters / snats / dnats). Sroutes, droutes,
@@ -740,14 +756,7 @@ let
 
       expandGroup = directions: lib.mapAttrs (_: expandEntry directions);
 
-      expandedGroups = {
-        filters = expandGroup [ "from" "to" ] table.filters;
-        policies = expandGroup [ "from" "to" ] table.policies;
-        snats = expandGroup [ "from" "to" ] table.snats;
-        dnats = expandGroup [ "from" ] table.dnats;
-        sroutes = expandGroup [ "from" ] table.sroutes;
-        droutes = expandGroup [ "to" ] table.droutes;
-      };
+      expandedGroups = lib.mapAttrs (group: dirs: expandGroup dirs table.${group}) groupDirections;
     in
     {
       inherit table;
@@ -763,13 +772,11 @@ let
 
       resolveGroup = lib.mapAttrs (_: entry: resolvePriority entry.priority);
 
-      resolvedPriorities = {
-        filters = resolveGroup table.filters;
-        snats = resolveGroup table.snats;
-        dnats = resolveGroup table.dnats;
-        sroutes = resolveGroup table.sroutes;
-        droutes = resolveGroup table.droutes;
-      };
+      # Every group except policies — policies have no `priority`
+      # field (they're tail rules with implicit `last` priority).
+      priorityGroups = lib.removeAttrs groupDirections [ "policies" ];
+
+      resolvedPriorities = lib.mapAttrs (group: _: resolveGroup table.${group}) priorityGroups;
     in
     {
       inherit table;
@@ -1207,20 +1214,14 @@ let
           || (zone.interfaces != [ ] && ifAvailable);
 
       /*
-        Per-group iteration. Only filter / snat / dnat carry a
-        `chain` override field; sroute / droute / policy don't.
+        Per-group iteration over the groups whose entry types
+        expose a `chain` override field. Filter the file-level
+        `groupDirections` by `chainOverrideGroups` so sroute /
+        droute / policy (no override path) are skipped.
       */
-      groupDirections = {
-        filters = [
-          "from"
-          "to"
-        ];
-        snats = [
-          "from"
-          "to"
-        ];
-        dnats = [ "from" ];
-      };
+      chainOverrideDirections = lib.filterAttrs (
+        g: _: builtins.elem g chainOverrideGroups
+      ) groupDirections;
 
       /*
         Walk one entry and emit a flat record per (direction,
@@ -1271,7 +1272,7 @@ let
         in
         lib.nameValuePair "chainOverrideUnreachable" msg;
 
-      newErrors = lib.pipe groupDirections [
+      newErrors = lib.pipe chainOverrideDirections [
         (lib.mapAttrsToList enumerateGroup)
         lib.concatLists
         (builtins.filter (r: !(reachable r.zoneName r.hook r.direction)))
