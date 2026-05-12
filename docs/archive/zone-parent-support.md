@@ -4,6 +4,13 @@
 > for the current behavior contract and `git log` for the
 > commit-by-commit progression. Preserved here for the historical
 > rationale (decisions, behavioural shift, rejected alternatives).
+>
+> File names in the "Documentation updates" / "Files touched"
+> sections below are point-in-time — the `*-draft.md` suffix the
+> plan used was dropped before merge. The actual landed files
+> are `docs/compile-pipeline.md` and `docs/archive/validation-zones.md`
+> (the latter superseded by inline validator docstrings in
+> `lib/internal/normalize.nix`).
 
 ## Outcome
 

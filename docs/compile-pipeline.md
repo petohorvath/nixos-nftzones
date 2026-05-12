@@ -24,14 +24,14 @@ The pipeline (and the surrounding code) names the data-model levels consistently
 
 ### nftables vocabulary
 
-These are nftables's own concepts; we adopt the same terms verbatim:
+These are nftables's own concepts; nftzones adopts the same terms verbatim:
 
 - **Hook** — netfilter attachment point. One of `prerouting` / `input` / `forward` / `output` / `postrouting` / `ingress` / `egress`. Field name in code: `hook`.
 - **Chain priority** — orders chains attached to the same hook. Symbol (`raw` / `mangle` / `dstnat` / `filter` / `security` / `srcnat`) or int. NOT to be confused with **entry priority**. Field name: `chainAttrs.priority`.
 - **Entry priority** — orders entries within their slot in a sub-chain (or pre/postDispatch in a base chain). Symbol (`first` / `preDispatch` / `postDispatch` / `default` / `last`) or int. Resolved by `internal.priority.resolvePriority`. Type: `primitives.entryPriority`.
 - **Chain type** — `filter` / `nat` / `route`. Phase 4 derives this from `(hook, priority)` via `chainTypeOf`.
 - **Base chain** — chain attached to a hook (carries `type` / `hook` / `priority` / `policy`).
-- **Sub-chain** — regular chain (only reachable via `jump`). One per `(from, to)` pair in our model.
+- **Sub-chain** — regular chain (only reachable via `jump`). One per `(from, to)` pair in nftzones' compile model.
 
 ### Naming convention for chain identifiers
 
@@ -456,10 +456,10 @@ contributors hitting the same forks benefit from the prior thinking.
    - **Special-case extractor** — pattern-match on the ~12 statement variants that can carry named-object refs, plus the expression-level set/map lookups inside matches. Smaller surface; brittle to nftypes adding variants.
    - **Generic walker** — recurse over any statement / expression tree, parameterized by a per-node visitor. Schema knowledge (which sub-fields of each variant are sub-statements / sub-expressions) lives naturally in nftypes alongside the schemas, so the walker would be upstreamed there (`nftypes.lib.walk.statements` / `walk.expressions` / `walk.rule`) rather than living in `internal/statements.nix`.
 
-   `nftypes` currently doesn't expose a walker. Its `lib/dsl/structure/render.nix` walks the *table* tree (table → chains → rules) with stock `lib.concatMap` iteration but never recurses into statement bodies; `lib/dsl/internal/validate.nix` runs bodies through `lib.evalModules` for shape checking, which doesn't traverse content. What `nftypes` *does* hand us is the inputs both approaches need: `nftypes.lib.types.statements` enumerates the variant tags, the `attrTag` shape (single-key attrset where the key is the tag) makes dispatch a one-liner, and `<variant>Body` schemas tell us where references live in each body.
+   `nftypes` currently doesn't expose a walker. Its `lib/dsl/structure/render.nix` walks the *table* tree (table → chains → rules) with stock `lib.concatMap` iteration but never recurses into statement bodies; `lib/dsl/internal/validate.nix` runs bodies through `lib.evalModules` for shape checking, which doesn't traverse content. What `nftypes` *does* expose are the inputs both approaches need: `nftypes.lib.types.statements` enumerates the variant tags, the `attrTag` shape (single-key attrset where the key is the tag) makes dispatch a one-liner, and `<variant>Body` schemas locate where references live in each body.
 
    **Decision:** implement the special-case extractor in nftzones first. One consumer, small surface, no speculative API design. If a second use case appears (Phase 4 emit doing structural transforms, a future linter, etc.), upstream the generalized walker to nftypes then — designing the walker API with a single consumer risks the wrong abstraction.
-4. **Error aggregation strategy.** Phase 1 validators return error lists. Should Phase 4 emission also return errors, or is "we got here, so emission can't fail" reasonable? The latter assumes Phases 1-3 fully validate.
+4. **Error aggregation strategy.** Phase 1 validators return error lists. Should Phase 4 emission also return errors, or is "if execution reached Phase 4, emission can't fail" reasonable? The latter assumes Phases 1-3 fully validate.
 5. **Single-table vs multi-table compile.** `mkTable` takes one table; multi-table consumers compose externally. Reconsider only if a real consumer wants a single function call.
 6. **Zone-derived auto-sets in user rule bodies.** Phase 1's `computeZoneSets` materializes `<zone>_iifs` / `<zone>_v4` / `<zone>_v6` into `ctx.zoneSets`, which Phase 4 emits into `table.objects.sets` at output time. A user could in principle reference one of those names from a `match` clause inside their own rule body (e.g. `right = "@lan_v4"`). At Phase 1 validation time those names are not yet in `table.objects.sets` — they're synthesized later — so a naive `checkObjectRefs` would falsely flag them as unknown.
 

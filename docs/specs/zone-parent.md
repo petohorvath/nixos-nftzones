@@ -171,7 +171,7 @@ Without parent at all, a "DMZ-wide" rule would have to be repeated
 on every node inside DMZ. Doesn't scale, breaks silently when a
 node is added without copying every parent-level rule.
 
-## Why petohorvath-style "child first, parent fallback" wins
+## Why "child first, parent fallback" wins
 
 - **No match duplication** — each rule states only its own zone's
   conditions; the parent's match is implicit because traffic only
