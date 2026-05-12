@@ -69,6 +69,18 @@
   from submodule evaluation, so `ctx.mergedZones` is uniformly
   shaped — downstream phases can consume it without re-evaluation.
 
+  Per-function docstring convention used throughout this file
+  (and `internal/expand.nix`, `internal/dispatch.nix`,
+  `internal/emit.nix`): each `===== fnName =====` section uses
+  `Reads:` / `Writes:` lines naming the ctx and table fields the
+  function consumes and produces. Pure leaf helpers (e.g. in
+  `internal/zone.nix`, `internal/placement.nix`) use `Inputs:` /
+  `Output:` instead, since they don't touch the pipeline ctx.
+  The two-form split is intentional: phase orchestrators thread
+  `{ table; ctx }`, so listing `Reads:` / `Writes:` clarifies
+  which ctx fields the orchestrator touches; leaves take and
+  return ordinary values.
+
   ===== computeZoneSets =====
 
   Reads:  ctx.mergedZones
