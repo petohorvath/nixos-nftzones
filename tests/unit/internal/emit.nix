@@ -24,6 +24,7 @@ let
     mkChildDispatchJumpRules
     isRootFrom
     mkSubChainKey
+    subChainNameOf
     buildEffectiveSubChains
     assembleTable
     emitTable
@@ -274,6 +275,18 @@ in
   testSubChainKeyForToOnly = {
     expr = mkSubChainKey null "vpn";
     expected = "vpn";
+  };
+
+  # ===== subChainNameOf — `<base>__<sub>` format =====
+
+  testSubChainNameOf = {
+    # Single source of truth for the double-underscore separator
+    # between base chain name and sub-chain key. Both emit (chain
+    # naming) and dispatch (jump targets) build full sub-chain
+    # names through this helper — pin the format so a regression
+    # to a different separator surfaces with a clear failure.
+    expr = subChainNameOf "forward-at-filter" "lan-to-wan";
+    expected = "forward-at-filter__lan-to-wan";
   };
 
   # ===== isRootFrom — null parent → root =====
