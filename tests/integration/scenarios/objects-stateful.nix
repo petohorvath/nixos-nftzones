@@ -2,7 +2,7 @@
   Stateful-object scenario — exercises object kinds beyond the
   counters + sets covered by `named-objects.nix`. Declares one
   of each common stateful kind (limit, quota, ctHelper,
-  ctTimeout, map) so `mkUserObjects` passthrough and
+  ctTimeout, map) so `emitUserObjects` passthrough and
   `checkObjectRefs` resolution touch every kind's nftypes body
   shape.
 */

@@ -261,24 +261,18 @@
   Pipeline phase that wraps `mkSubChains` and stashes the sub-chain
   attrset on `ctx`.
 
-  ===== mkUserObjects =====
-
-  Pure passthrough: `table.objects.<kind>.<name>` flows into
-  `body.<kind>.<name>` of the assembled table value. The type
-  layer's `asUserBody` (in `lib/types/table.nix`) has already
-  stripped `family` / `name` / `table` / `handle`; the nftypes
-  renderer fills them back in from the parent table.
-
-  Identity for now — placeholder for future kind-aware transforms.
-  Named-object reference validation lives upstream in Phase 1's
-  `internal.normalize.checkObjectRefs`.
-
   ===== emitUserObjects =====
 
   Reads:  table.objects
   Writes: ctx.userObjects
 
-  Pipeline phase that wraps `mkUserObjects`.
+  Pure passthrough: `table.objects.<kind>.<name>` flows into
+  `ctx.userObjects.<kind>.<name>` and then `body.<kind>.<name>` of
+  the assembled table value. The type layer's `asUserBody` (in
+  `lib/types/table.nix`) has already stripped `family` / `name` /
+  `table` / `handle`; the nftypes renderer fills them back in
+  from the parent table. Named-object reference validation lives
+  upstream in Phase 1's `internal.normalize.checkObjectRefs`.
 
   ===== assembleOutput =====
 
@@ -1018,22 +1012,17 @@ let
   /*
     Pure passthrough: `table.objects.<kind>.<name>` maps directly to
     `body.<kind>.<name>` in the assembled `nftypes.dsl.table` value.
-    The type layer's `asUserBody` (in `lib/types/table.nix`) has
-    already stripped `family` / `name` / `table` / `handle`; the
-    nftypes renderer fills them back in from the parent table.
-
-    Identity for now — placeholder for future kind-aware transforms
-    (e.g., named-object reference validation per design doc open
-    question 3).
+    Pure passthrough — the type layer's `asUserBody` (in
+    `lib/types/table.nix`) has already stripped `family` / `name`
+    / `table` / `handle`; the nftypes renderer fills them back in
+    from the parent table.
   */
-  mkUserObjects = objects: objects;
-
   emitUserObjects =
     { table, ctx }:
     {
       inherit table;
       ctx = ctx // {
-        userObjects = mkUserObjects table.objects;
+        userObjects = table.objects;
       };
     };
 
@@ -1098,7 +1087,6 @@ in
     mkRootJumpRules
     mkBaseChain
     mkBaseChains
-    mkUserObjects
     assembleTable
     computeEffectiveSubChains
     emitBaseChains

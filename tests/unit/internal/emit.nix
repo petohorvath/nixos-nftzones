@@ -25,7 +25,6 @@ let
     isRootFrom
     mkSubChainKey
     buildEffectiveSubChains
-    mkUserObjects
     assembleTable
     emitTable
     ;
@@ -1806,17 +1805,6 @@ in
     expected = {
       baseRuleCount = 4; # stateful (2) + loopback (1) + jump (1)
       subRuleCount = 3; # early, normal, late
-    };
-  };
-
-  testMkUserObjectsIdentity = {
-    expr = mkUserObjects {
-      counters.web = { };
-      quotas = { };
-    };
-    expected = {
-      counters.web = { };
-      quotas = { };
     };
   };
 
