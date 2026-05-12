@@ -43,12 +43,12 @@ in
   assertions = compiled: [
     {
       description = "override zone produces no auto interface set — `interfaces` section takes over";
-      expr = compiled.tables.match-override-interfaces.sets ? vlans_iifs;
+      expr = compiled.table.sets ? vlans_iifs;
       expected = false;
     }
     {
       description = "lan-to-vlans sub-chain emits with the user rule";
-      expr = compiled.tables.match-override-interfaces.chains ? "forward-at-filter__lan-to-vlans";
+      expr = compiled.table.chains ? "forward-at-filter__lan-to-vlans";
       expected = true;
     }
   ];

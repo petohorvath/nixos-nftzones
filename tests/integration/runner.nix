@@ -25,13 +25,22 @@
     3. `{ body; assertions ? compiled: [ ]; }` (wrapper) — parse-
        check plus structured assertions. `body` is either form 1
        or form 2 nested. `assertions` is a function from the
-       compiled value (`{ tables = { <name> = <dsl.table>; ...}; }`)
-       to a list of `{ expr; expected; description ? null; }`
-       records. Any record where `expr != expected` throws at
-       evaluation time, before the derivation is built — failures
-       surface during `nix flake check` rather than buried in
-       build logs. Scenarios without a `body` attribute fall
-       through to form 1 / 2 (unchanged behaviour).
+       compiled value to a list of `{ expr; expected;
+       description ? null; }` records. Any record where
+       `expr != expected` throws at evaluation time, before the
+       derivation is built — failures surface during
+       `nix flake check` rather than buried in build logs.
+       Scenarios without a `body` attribute fall through to
+       form 1 / 2 (unchanged behaviour).
+
+       The `compiled` argument is `{ tables = { <name> =
+       <dsl.table>; ...}; }`, plus a convenience `compiled.table`
+       shortcut pointing at the one table for single-table
+       scenarios (form 1 body). The shortcut lets assertions
+       reference `compiled.table.chains` without hardcoding the
+       scenario's filename. Multi-table scenarios (form 2 body)
+       have no shortcut and must disambiguate via
+       `compiled.tables.<X>`.
 
   Form 3 lets a scenario assert specific properties of the
   compiled output (rule comments present, policy emitted as tail
@@ -85,27 +94,38 @@ let
       nftypes.toJson (nftzones.mkRuleset name body);
 
   /*
-    Walk every assertion record; throw on the first whose `expr`
-    does not equal `expected`. Returns a sentinel value (`null`)
-    when all pass; callers should `seq` it before returning the
-    derivation so failures surface at evaluation time.
+    Walk every assertion record and collect every failure (not
+    just the first) before throwing. Returns `null` if all pass;
+    throws an aggregated message listing every failed assertion
+    if any fail. Callers should `seq` the result so failures
+    surface at evaluation time, before the derivation builds.
+
+    Aggregating beats fail-fast for integration assertions: a
+    single scenario typically asserts on a handful of compiled-
+    output properties (set names, chain keys, rule contents); if
+    two are wrong, one round-trip surfaces both rather than
+    "fix, re-run, fix, re-run".
   */
   evaluateAssertions =
     name: checks:
-    lib.foldl' (
-      _: a:
-      let
-        desc = a.description or "(no description)";
-      in
-      if a.expr == a.expected then
-        null
-      else
-        throw (
-          "nftzones integration scenario '${name}': assertion '${desc}' failed\n"
-          + "  expected: ${lib.generators.toPretty { } a.expected}\n"
-          + "  actual:   ${lib.generators.toPretty { } a.expr}"
-        )
-    ) null checks;
+    let
+      failures = builtins.filter (a: a.expr != a.expected) checks;
+      formatFailure =
+        a:
+        let
+          desc = a.description or "(no description)";
+        in
+        "  - '${desc}'\n"
+        + "      expected: ${lib.generators.toPretty { } a.expected}\n"
+        + "      actual:   ${lib.generators.toPretty { } a.expr}";
+    in
+    if failures == [ ] then
+      null
+    else
+      throw (
+        "nftzones integration scenario '${name}': ${toString (builtins.length failures)} assertion(s) failed:\n"
+        + lib.concatMapStringsSep "\n" formatFailure failures
+      );
 
   /*
     Run `nft -j --check` on a rendered scenario, plus any
@@ -122,7 +142,18 @@ let
 
       compiled = compileScenario name body;
 
-      assertions = if isWrapper && scenario ? assertions then scenario.assertions compiled else [ ];
+      # Single-table convenience: expose the one table at
+      # `compiled.table` so assertions don't have to hardcode the
+      # scenario's filename. Multi-table (list-form) scenarios
+      # skip this — they have to pick a name explicitly.
+      compiledForAssertions =
+        compiled
+        // lib.optionalAttrs (!builtins.isList body) {
+          table = compiled.tables.${name};
+        };
+
+      assertions =
+        if isWrapper && scenario ? assertions then scenario.assertions compiledForAssertions else [ ];
 
       checked = evaluateAssertions name assertions;
 
