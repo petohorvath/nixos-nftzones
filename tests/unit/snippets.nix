@@ -191,6 +191,30 @@ in
     ];
   };
 
+  testUdpDropSinglePort = {
+    expr = snippets.drop.udp 53;
+    expected = [
+      (eq udp.dport 53)
+      drop
+    ];
+  };
+
+  testIcmpV4Drop = {
+    expr = snippets.drop.icmp.v4 8;
+    expected = [
+      (eq icmp.type 8)
+      drop
+    ];
+  };
+
+  testIcmpV6Drop = {
+    expr = snippets.drop.icmp.v6 128;
+    expected = [
+      (eq icmpv6.type 128)
+      drop
+    ];
+  };
+
   testTcpRejectUsesTcpReset = {
     expr = snippets.reject.tcp 22;
     expected = [
@@ -203,6 +227,23 @@ in
     expr = snippets.reject.udp 53;
     expected = [
       (eq udp.dport 53)
+      reject.plain
+    ];
+  };
+
+  # ICMP reject uses the plain variant (no TCP-RST analog).
+  testIcmpV4RejectUsesPlain = {
+    expr = snippets.reject.icmp.v4 8;
+    expected = [
+      (eq icmp.type 8)
+      reject.plain
+    ];
+  };
+
+  testIcmpV6RejectUsesPlain = {
+    expr = snippets.reject.icmp.v6 128;
+    expected = [
+      (eq icmpv6.type 128)
       reject.plain
     ];
   };
