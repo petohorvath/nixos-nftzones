@@ -146,6 +146,19 @@ in
 }
 ```
 
+If you're already inside a NixOS module that imports `nixosModules.default`, the module's `_module.args` injects `nftzones`, so you can reach the snippets without the `inputs.nftzones.lib.${pkgs.system}` path — just take `nftzones` as an arg:
+
+```nix
+{ nftzones, ... }:
+{
+  networking.nftzones.tables.fw.filters.allow-ssh = {
+    from = [ "all" ];
+    to = [ "local" ];
+    rule = nftzones.snippets.accept.tcp 22;
+  };
+}
+```
+
 Twelve leaf functions across `accept` / `drop` / `reject` × `tcp` / `udp` / `icmp.v4` / `icmp.v6`. Port arguments accept ints, decimal strings, range strings (`"8000-8100"` / `"8000:8100"`), `libnet.port` / `libnet.portRange` values, or lists thereof — validation routes through `libnet`. ICMP-type arguments accept ints (`0`..`255`) or symbolic strings (`"echo-request"`); mixed-form lists throw. See [`docs/plans/snippets.md`](docs/plans/snippets.md) for the full input / output contract.
 
 ### Hierarchical zones
