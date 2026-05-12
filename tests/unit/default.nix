@@ -1,39 +1,41 @@
 /*
-  Unit-test definitions. Each `testFoo` attr is `{ expr; expected; }` and
-  is consumed by `tests/runner.nix` via `lib.runTests`. Per-module test
-  files under subdirectories (mirroring `lib/`) are merged in here.
+  Unit-test definitions. Each test file's attrset
+  (`testFoo = { expr; expected; }`) is merged into one big
+  `runTests`-shaped value consumed by `tests/unit/runner.nix`.
+
+  Discovery is automatic: every `*.nix` file under this directory
+  (top-level + `internal/` + `types/`) is imported and merged,
+  except the runner-internal files (`default.nix`, `runner.nix`,
+  `helpers.nix`). Adding a new unit-test file means dropping
+  `tests/unit/<group>/<name>.nix` — no edit here required.
 */
 args@{
   pkgs,
   nftzones,
-  nftypes,
   ...
 }:
+let
+  inherit (pkgs) lib;
+
+  excluded = [
+    "default.nix"
+    "runner.nix"
+    "helpers.nix"
+  ];
+
+  listTestFiles =
+    dir:
+    lib.pipe (builtins.readDir dir) [
+      (lib.filterAttrs (n: t: t == "regular" && lib.hasSuffix ".nix" n && !(builtins.elem n excluded)))
+      builtins.attrNames
+    ];
+
+  importsFromDir = dir: map (n: import (dir + "/${n}") args) (listTestFiles dir);
+in
 {
   testVersion = {
     expr = nftzones.version;
     expected = "0.1.0";
   };
 }
-// import ./internal/zone.nix args
-// import ./internal/entry.nix args
-// import ./internal/priority.nix args
-// import ./internal/node.nix args
-// import ./internal/placement.nix args
-// import ./internal/normalize.nix args
-// import ./internal/refs.nix args
-// import ./internal/expand.nix args
-// import ./internal/dispatch.nix args
-// import ./internal/emit.nix args
-// import ./internal/compile.nix args
-// import ./types/zone.nix args
-// import ./types/node.nix args
-// import ./types/filter.nix args
-// import ./types/policy.nix args
-// import ./types/snat.nix args
-// import ./types/dnat.nix args
-// import ./types/sroute.nix args
-// import ./types/droute.nix args
-// import ./types/table.nix args
-// import ./module.nix args
-// import ./snippets.nix args
+// lib.mergeAttrsList (importsFromDir ./. ++ importsFromDir ./internal ++ importsFromDir ./types)

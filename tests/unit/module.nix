@@ -272,6 +272,12 @@ in
   # ===== module — collision with networking.nftables.tables.<n> trips assertion =====
 
   testModuleCollisionAssertion = {
+    # Pin the exact assertion message, not just an "infix" match —
+    # an `hasInfix "collides with"` test passes as long as the
+    # substring appears anywhere, so a rephrasing that dropped the
+    # specific `tables.fw` reference (or the "exactly one module"
+    # remediation hint) would silently regress the user-facing
+    # diagnostic.
     expr =
       let
         cfg = evalSystem {
@@ -287,8 +293,12 @@ in
             tables.fw = { };
           };
         };
+        expectedMessage = ''
+          networking.nftzones.tables.fw collides with networking.nftables.tables.fw.
+          Declare each table in exactly one module.
+        '';
       in
-      lib.any (a: lib.hasInfix "collides with" a.message) (failingAssertions cfg);
+      lib.any (a: a.message == expectedMessage) (failingAssertions cfg);
     expected = true;
   };
 
