@@ -11,11 +11,12 @@
   config,
   options,
   nftzones,
-  nftypes,
   ...
 }:
 let
   cfg = config.networking.nftzones;
+
+  inherit (nftzones) nftypes;
 
   renderTable = if cfg.pretty then nftypes.toTextBlockPretty else nftypes.toTextBlock;
 

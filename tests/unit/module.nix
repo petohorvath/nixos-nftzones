@@ -31,7 +31,10 @@ let
       device = "none";
       fsType = "tmpfs";
     };
-    system.stateVersion = "24.11";
+    # Derive from the pinned nixpkgs so the test doesn't need a
+    # manual bump every NixOS release. Always matches the version
+    # of NixOS we're evaluating against.
+    system.stateVersion = lib.trivial.release;
     networking.hostName = "test";
   };
 
