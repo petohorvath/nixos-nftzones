@@ -39,6 +39,7 @@ let
   inherit (nftypes.dsl)
     eq
     accept
+    log
     ;
   inherit (nftypes.dsl.fields) tcp udp;
 
@@ -205,6 +206,20 @@ pkgs.testers.nixosTest {
                 from = [ "wan" ];
                 to = [ "lan" ];
                 verdict = "drop";
+              };
+
+              # Logs lan-side ICMP destined for the router itself.
+              # The VM subtest pings the router and greps
+              # `journalctl -k` for this prefix to prove the log
+              # statement survives nftzones' emit pipeline and is
+              # actually wired into the kernel ruleset.
+              filters.local-icmp-logged = {
+                from = [ "lan" ];
+                to = [ "local" ];
+                rule = [
+                  (log { prefix = "nftzones-log-test: "; })
+                  accept
+                ];
               };
             };
           };
@@ -567,6 +582,29 @@ pkgs.testers.nixosTest {
         )
         assert "ESTABLISHED" not in ct, (
             f"firewall let wan → lan ssh reach ESTABLISHED on router:\n{ct}"
+        )
+
+    with diag_subtest("log statement: lan→local ICMP emits to journal"):
+        # Trigger the logged rule by pinging the router from
+        # the client. The `log { prefix = ... }` statement in
+        # `filters.local-icmp-logged` should append a line to
+        # the kernel ring buffer with that exact prefix; we
+        # grep for it in journalctl on the router.
+        #
+        # `--since "10s ago"` scopes the search to this subtest
+        # and avoids matching stale entries from prior runs of
+        # the same VM image.
+        client.succeed("ping -c 1 -W 2 ${routerLanIp}")
+        # Brief settle so the kernel has time to flush the log
+        # line to journald.
+        router.succeed("sleep 0.5")
+        journal = router.succeed(
+            "journalctl -k --since '10s ago' --no-pager | "
+            "grep -c 'nftzones-log-test:' || true"
+        ).strip()
+        assert int(journal) >= 1, (
+            f"expected at least one log line with prefix "
+            f"'nftzones-log-test:', got count: {journal!r}"
         )
 
     with diag_subtest("non-DNAT'd wan port is not forwarded"):
