@@ -528,16 +528,17 @@ pkgs.testers.nixosTest {
         "-o ConnectTimeout=5 -o ServerAliveInterval=3 -o ServerAliveCountMax=2"
     )
 
-    # tcpdump-based wire assertions. Four flags carry meaning:
-    #   -p   non-promiscuous; capture only what the host's NIC
-    #        actually accepts. Critical on shared VLANs (e.g. the
-    #        wan vlan with external+router+server): in promisc,
-    #        server's eth1 sees external↔router frames addressed
-    #        to *other* MACs and the wire assertions fire on
-    #        traffic that never entered the host.
+    # tcpdump-based wire assertions. Flags:
     #   -nn  no DNS / port-name resolution; keeps output stable.
     #   -l   line-buffered stdout so kill-time flush keeps the
     #        last few captured packets.
+    # Promiscuous mode stays *on* (the default): on QEMU virtio-
+    # net the kernel needs promisc set to deliver frames into
+    # pcap reliably; `-p` left the capture empty in CI even when
+    # the host's HTTP service received the request. Scope each
+    # call's BPF filter to a host IP (`... and host <ip>`) so
+    # shared-VLAN traffic addressed to other MACs is filtered
+    # out at the BPF stage instead.
     # `nohup` + redirected stdin/stdout/stderr keeps the bg
     # process off the test driver's shell-session pipe. The 0.3 s
     # start sleep lets the BPF filter attach before the trigger;
@@ -547,7 +548,7 @@ pkgs.testers.nixosTest {
     def start_pcap(machine, iface, expr):
         machine.succeed("rm -f /tmp/cap.out /tmp/cap.pid")
         machine.succeed(
-            f"nohup tcpdump -p -i {iface} -nn -l '{expr}' "
+            f"nohup tcpdump -i {iface} -nn -l '{expr}' "
             f"  > /tmp/cap.out 2>/dev/null </dev/null & "
             f"echo $! > /tmp/cap.pid; "
             f"sleep 0.3"
@@ -590,7 +591,9 @@ pkgs.testers.nixosTest {
         # source in the actual IP headers. Without the wire check,
         # a conntrack-cached path could let userspace report the
         # right address even if nftables stopped applying SNAT.
-        start_pcap(server, "eth1", "tcp port 9999")
+        # `host` scope keeps unrelated wan-vlan chatter out of the
+        # pcap (promisc capture sees all frames on the shared L2).
+        start_pcap(server, "eth1", "tcp port 9999 and host ${serverWanIp}")
         peer = client.succeed("nc -w 3 ${serverWanIp} 9999").strip()
         pcap = stop_pcap(server)
 
@@ -621,7 +624,9 @@ pkgs.testers.nixosTest {
         # wan-hairpin masquerade), never the raw 8080 nor the
         # external-VM IP. Catches regressions that move the DNAT
         # to the wrong stage or drop the hairpin SNAT.
-        start_pcap(server, "eth1", "tcp")
+        # `host` scope skips external↔router 8080 frames that are
+        # on the shared wan vlan but never addressed to server.
+        start_pcap(server, "eth1", "tcp and host ${serverWanIp}")
         out = external.succeed(
             "curl -s --max-time 5 http://${routerWanIp}:8080/index.html"
         )
@@ -688,8 +693,10 @@ pkgs.testers.nixosTest {
         #
         # Wire-level: server's eth1 sees zero TCP traffic on port
         # 8081 during the curl window. Proves the firewall — not
-        # routing or any other layer — is what stops it.
-        start_pcap(server, "eth1", "tcp port 8081")
+        # routing or any other layer — is what stops it. `host`
+        # scope filters out the external→router 8081 SYN that
+        # lives on the shared wan vlan but never reaches server.
+        start_pcap(server, "eth1", "tcp port 8081 and host ${serverWanIp}")
         result = external.execute(
             "curl -sS --max-time 3 -o /dev/null "
             "http://${routerWanIp}:8081/"
