@@ -241,10 +241,14 @@ pkgs.testers.nixosTest {
     with diag_subtest("rpfilter accepts legit src (203.0.113.99 → client)"):
         # Spoofer pings client using its real wan-range source.
         # rpfilter's FIB lookup for 203.0.113.99 points at eth2
-        # (the wan iface, where the packet arrived), so the
-        # check passes and the ping reaches client through the
-        # permissive forward filter. Conntrack on the router
-        # records the flow as ESTABLISHED + [ASSURED].
+        # (the wan iface where the packet arrived), so the check
+        # passes and the ping reaches client through the
+        # permissive forward filter. Evidence the reply came
+        # back: conntrack's entry for the flow loses the
+        # [UNREPLIED] flag (set when only the original direction
+        # has been seen). ICMP doesn't reach [ASSURED] after a
+        # single echo+reply on every kernel, so [UNREPLIED]
+        # absence is the portable indicator.
         router.succeed("conntrack -F")
         out = spoofer.succeed(
             "ping -I ${spooferWanIp} -c 1 -W 2 ${clientLanIp}"
@@ -254,8 +258,8 @@ pkgs.testers.nixosTest {
         assert "0% packet loss" in out, (
             f"expected legit src ping to succeed, got: {out!r}"
         )
-        assert "[ASSURED]" in ct, (
-            f"expected ASSURED conntrack entry for legit flow:\n{ct}"
+        assert "[UNREPLIED]" not in ct, (
+            f"expected reply observed (no [UNREPLIED]) for legit flow:\n{ct}"
         )
 
     with diag_subtest("rpfilter drops spoofed src (192.168.1.99 → client)"):
@@ -277,8 +281,13 @@ pkgs.testers.nixosTest {
             "expected spoofed src ping to be dropped by rpfilter, "
             f"but it succeeded: {result[1]!r}"
         )
-        assert ct.strip() == "" or "[ASSURED]" not in ct, (
-            f"rpfilter let spoofed src through; conntrack on router:\n{ct}"
+        # Filter already scoped to `-s spooferSpoofedIp`; if
+        # rpfilter dropped before conntrack, the table contains
+        # nothing matching this src. A non-empty result means
+        # conntrack saw the packet, which means rpfilter didn't
+        # fire.
+        assert ct.strip() == "", (
+            f"rpfilter let spoofed src create a conntrack entry:\n{ct}"
         )
   '';
 }
