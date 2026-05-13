@@ -26,7 +26,8 @@ let
   };
 
   tests = {
-    firewall = import ./firewall.nix testArgs;
+    forward = import ./forward.nix testArgs;
+    vlan = import ./vlan.nix testArgs;
   };
 in
 pkgs.linkFarm "nftzones-vm" (
