@@ -511,7 +511,16 @@ pkgs.testers.nixosTest {
     server.succeed(f"echo '{pubkey}' > /root/.ssh/authorized_keys")
     server.succeed("chmod 600 /root/.ssh/authorized_keys")
 
-    ssh_opts = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5"
+    # ServerAliveInterval/CountMax bound *post-handshake* stalls
+    # (ConnectTimeout only bounds the handshake): if the transport
+    # silently wedges, ssh dies in ~6s instead of waiting out the
+    # test's 60-min global timeout. Seen in CI when the driver's
+    # console-expect loop missed the exit-code marker after an
+    # otherwise-successful ssh.
+    ssh_opts = (
+        "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+        "-o ConnectTimeout=5 -o ServerAliveInterval=3 -o ServerAliveCountMax=2"
+    )
 
     with subtest("L3 forwarding: client can ping server through router"):
         client.succeed("ping -c1 -W2 ${serverWanIp}")
@@ -521,7 +530,12 @@ pkgs.testers.nixosTest {
         assert "0% packet loss" in out, f"expected no loss, got: {out!r}"
 
     with subtest("SSH allowed lan → wan"):
-        out = client.succeed(f"ssh {ssh_opts} root@${serverWanIp} 'echo hello-from-ssh'")
+        # `timeout 30` is the outermost wall-clock guard — if both
+        # ConnectTimeout and ServerAlive miss the stall, this still
+        # caps the command at 30s (exit 124) so the subtest fails
+        # fast instead of pinning the whole VM run on the global
+        # timeout.
+        out = client.succeed(f"timeout 30 ssh {ssh_opts} root@${serverWanIp} 'echo hello-from-ssh'")
         assert "hello-from-ssh" in out, f"unexpected ssh output: {out!r}"
 
     with subtest("SNAT masquerade: server sees router-wan-IP, not client-IP"):
