@@ -26,6 +26,7 @@ let
   };
 
   tests = {
+    bridge = import ./bridge.nix testArgs;
     droutes = import ./droutes.nix testArgs;
     dualstack = import ./dualstack.nix testArgs;
     forward = import ./forward.nix testArgs;
