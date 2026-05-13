@@ -90,6 +90,7 @@ pkgs.testers.nixosTest {
           curl
           dnsutils
           netcat-openbsd
+          hping # crafts out-of-state TCP for the INVALID-drop test
         ];
       };
 
@@ -452,6 +453,37 @@ pkgs.testers.nixosTest {
         # timeout.
         out = client.succeed(f"timeout 30 ssh {ssh_opts} root@${serverWanIp} 'echo hello-from-ssh'")
         assert "hello-from-ssh" in out, f"unexpected ssh output: {out!r}"
+
+    with diag_subtest("stateful prelude: ssh flow reaches [ASSURED] on router"):
+        # The SSH subtest above exchanged ≥3 packets in each
+        # direction (3WHS + auth + echo + teardown), enough for
+        # the router's stateful prelude to mark the conntrack
+        # entry [ASSURED] (bidirectional traffic seen). Without
+        # `settings.stateful = true` the prelude would be
+        # missing and the entry would either stay [UNREPLIED]
+        # (drop chain rejects return) or be absent entirely.
+        ct = conntrack("-p tcp -d ${serverWanIp} --dport 22")
+        assert "[ASSURED]" in ct, (
+            f"expected [ASSURED] on completed ssh flow:\n{ct}"
+        )
+
+    with diag_subtest("stateful prelude: drops out-of-state TCP (ACK without SYN)"):
+        # `hping3 --ack` emits a single bare ACK with no prior
+        # SYN — netfilter conntrack tags it INVALID and the
+        # stateful prelude's `ct state invalid drop` should fire.
+        # If the prelude were missing, the ACK would create a
+        # NEW conntrack entry and could later ESTABLISH.
+        router.succeed("conntrack -F")
+        # hping3 exits non-zero on no reply, which is the
+        # expected outcome here.
+        client.execute("hping3 --ack -p 22 -c 1 -w 2 ${serverWanIp}")
+        ct = conntrack("-p tcp -d ${serverWanIp} --dport 22")
+        assert "ESTABLISHED" not in ct, (
+            f"firewall let out-of-state TCP ACK reach ESTABLISHED:\n{ct}"
+        )
+        assert "[ASSURED]" not in ct, (
+            f"firewall let out-of-state TCP ACK reach [ASSURED]:\n{ct}"
+        )
 
     with diag_subtest("SNAT masquerade: server sees router-wan-IP, not client-IP"):
         # Userspace assertion (peer-echo's recv) plus a conntrack
