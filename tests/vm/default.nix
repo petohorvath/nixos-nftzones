@@ -26,6 +26,7 @@ let
   };
 
   tests = {
+    atomic-reload = import ./atomic-reload.nix testArgs;
     bridge = import ./bridge.nix testArgs;
     droutes = import ./droutes.nix testArgs;
     dualstack = import ./dualstack.nix testArgs;
