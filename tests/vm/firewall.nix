@@ -112,12 +112,11 @@ pkgs.testers.nixosTest {
           curl
           dnsutils
           netcat-openbsd
-          tcpdump
         ];
       };
 
     router =
-      { lib, ... }:
+      { lib, pkgs, ... }:
       {
         imports = [ nftzonesModule ];
 
@@ -322,6 +321,12 @@ pkgs.testers.nixosTest {
             address = [ "/test.example/198.51.100.99" ];
           };
         };
+
+        # `conntrack` lets the test query the router's connection-
+        # tracking table to verify NAT translation and that deny-
+        # path flows never reached ESTABLISHED. Single source of
+        # truth on the firewall itself, replaces wire-level pcaps.
+        environment.systemPackages = [ pkgs.conntrack-tools ];
       };
 
     server =
@@ -388,10 +393,7 @@ pkgs.testers.nixosTest {
           '';
         };
 
-        environment.systemPackages = with pkgs; [
-          netcat-openbsd
-          tcpdump
-        ];
+        environment.systemPackages = [ pkgs.netcat-openbsd ];
       };
 
     external =
@@ -454,7 +456,7 @@ pkgs.testers.nixosTest {
       };
 
     vlan-admin =
-      { lib, pkgs, ... }:
+      { lib, ... }:
       {
         virtualisation.vlans = [ 3 ];
 
@@ -479,8 +481,6 @@ pkgs.testers.nixosTest {
 
           defaultGateway = lib.mkForce routerAdminIp;
         };
-
-        environment.systemPackages = [ pkgs.tcpdump ];
       };
   };
 
@@ -528,46 +528,16 @@ pkgs.testers.nixosTest {
         "-o ConnectTimeout=5 -o ServerAliveInterval=3 -o ServerAliveCountMax=2"
     )
 
-    # tcpdump-based wire assertions. Flags:
-    #   -nn  no DNS / port-name resolution; keeps output stable.
-    #   -l   line-buffered stdout so kill-time flush keeps the
-    #        last few captured packets.
-    # Promiscuous mode stays *on* (the default): on QEMU virtio-
-    # net the kernel needs promisc set to deliver frames into
-    # pcap reliably; `-p` left the capture empty in CI even when
-    # the host's HTTP service received the request. Scope each
-    # call's BPF filter to a host IP (`... and host <ip>`) so
-    # shared-VLAN traffic addressed to other MACs is filtered
-    # out at the BPF stage instead.
-    # `nohup` + redirected stdin/stdout/stderr keeps the bg
-    # process off the test driver's shell-session pipe. The 0.3 s
-    # start sleep lets the BPF filter attach before the trigger;
-    # the 0.2 s stop sleep lets tcpdump flush after SIGTERM.
-    # Output lives at /tmp/cap.out — overwritten per call, so
-    # subtests must read it before starting a new capture.
-    def start_pcap(machine, iface, expr):
-        machine.succeed("rm -f /tmp/cap.out /tmp/cap.pid")
-        machine.succeed(
-            f"nohup tcpdump -i {iface} -nn -l '{expr}' "
-            f"  > /tmp/cap.out 2>/dev/null </dev/null & "
-            f"echo $! > /tmp/cap.pid; "
-            f"sleep 0.3"
-        )
-        # Confirm tcpdump survived its startup window — a typo'd
-        # BPF filter or a missing interface makes it exit within
-        # ms, which would otherwise silently pass any negative-
-        # path assertion that checks for an empty pcap.
-        machine.succeed("kill -0 $(cat /tmp/cap.pid)")
-
-    def stop_pcap(machine):
-        machine.execute(
-            "if [ -f /tmp/cap.pid ]; then "
-            "  kill $(cat /tmp/cap.pid) 2>/dev/null || true; "
-            "  rm -f /tmp/cap.pid; "
-            "  sleep 0.2; "
-            "fi"
-        )
-        return machine.succeed("cat /tmp/cap.out 2>/dev/null || true")
+    # Wire-level assertions go through the router's conntrack
+    # table, not packet captures on destinations. Conntrack
+    # records each connection's original tuple (pre-NAT, as
+    # seen at the firewall's input) and reply tuple (post-NAT,
+    # the form the firewall expects return traffic in). Reading
+    # both at the router gives a direct view of what NAT did
+    # without depending on libpcap/promisc/shared-L2 behaviour
+    # of the destination's NIC.
+    def conntrack(args):
+        return router.succeed(f"conntrack -L {args} 2>/dev/null")
 
     with subtest("L3 forwarding: client can ping server through router"):
         client.succeed("ping -c1 -W2 ${serverWanIp}")
@@ -586,30 +556,24 @@ pkgs.testers.nixosTest {
         assert "hello-from-ssh" in out, f"unexpected ssh output: {out!r}"
 
     with subtest("SNAT masquerade: server sees router-wan-IP, not client-IP"):
-        # Userspace assertion (peer-echo's recv) plus a wire-level
-        # check: capture on server's eth1, look for the post-SNAT
-        # source in the actual IP headers. Without the wire check,
-        # a conntrack-cached path could let userspace report the
-        # right address even if nftables stopped applying SNAT.
-        # `host` scope keeps unrelated wan-vlan chatter out of the
-        # pcap (promisc capture sees all frames on the shared L2).
-        start_pcap(server, "eth1", "tcp port 9999 and host ${serverWanIp}")
+        # Userspace assertion (peer-echo's recv) plus a conntrack
+        # check on the router. With SNAT applied, the entry's
+        # reply tuple has dst=routerWanIp (return traffic is
+        # routed back through the firewall for un-NAT). Without
+        # SNAT, reply.dst would be the raw clientLanIp.
         peer = client.succeed("nc -w 3 ${serverWanIp} 9999").strip()
-        pcap = stop_pcap(server)
+        ct = conntrack("-p tcp --dport 9999")
 
         assert peer == "${routerWanIp}", (
             "masquerade missing — server saw "
             + repr(peer)
             + ", expected '${routerWanIp}'"
         )
-        # Trailing dot anchors the IP to tcpdump's `<ip>.<port>`
-        # delimiter — without it `203.0.113.1` would substring-
-        # match inside `203.0.113.10` (the server IP).
-        assert "${routerWanIp}." in pcap, (
-            f"expected SNAT src '${routerWanIp}' in pcap, got:\n{pcap}"
+        assert "dst=${routerWanIp}" in ct, (
+            f"expected SNAT reply-tuple dst=${routerWanIp} on router:\n{ct}"
         )
-        assert "${clientLanIp}." not in pcap, (
-            f"un-SNAT'd client IP '${clientLanIp}' leaked onto wan:\n{pcap}"
+        assert "dst=${clientLanIp}" not in ct, (
+            f"un-SNAT'd reply-tuple dst=${clientLanIp} on router:\n{ct}"
         )
 
     with subtest("DNAT port forward: external 8080 lands on server:80"):
@@ -619,35 +583,25 @@ pkgs.testers.nixosTest {
         # via router (un-DNATs back) → external. testweb on server
         # answers with a known body.
         #
-        # Wire check pinned alongside the body check: server sees
-        # dst port 80 (post-DNAT) and src host = routerWanIp (post-
-        # wan-hairpin masquerade), never the raw 8080 nor the
-        # external-VM IP. Catches regressions that move the DNAT
-        # to the wrong stage or drop the hairpin SNAT.
-        # `host` scope skips external↔router 8080 frames that are
-        # on the shared wan vlan but never addressed to server.
-        start_pcap(server, "eth1", "tcp and host ${serverWanIp}")
+        # Conntrack check pinned alongside the body check: the
+        # router's entry has dport=8080 in the original tuple
+        # (the curl target) and sport=80 + src=serverWanIp in the
+        # reply tuple (DNAT applied). Catches regressions that
+        # leave 8080 raw or DNAT to the wrong destination.
         out = external.succeed(
             "curl -s --max-time 5 http://${routerWanIp}:8080/index.html"
         )
-        pcap = stop_pcap(server)
+        ct = conntrack("-p tcp --dport 8080")
 
         assert "hello-from-server" in out, f"unexpected dnat response: {out!r}"
-        # Port-80 match needs the trailing `:` (dst) or ` ` (src)
-        # to exclude the `.8080` substring. IP-match needs the
-        # trailing `.` to exclude longer IPs that share the prefix
-        # (203.0.113.1 vs 203.0.113.10/20).
-        assert ".80:" in pcap or ".80 " in pcap, (
-            f"expected DNAT'd dst port 80 in pcap, got:\n{pcap}"
+        assert "dport=8080" in ct, (
+            f"expected curl-target dport=8080 in router conntrack:\n{ct}"
         )
-        assert ".8080" not in pcap, (
-            f"un-DNAT'd port 8080 reached server:\n{pcap}"
+        assert "sport=80" in ct, (
+            f"expected DNAT'd reply-tuple sport=80 in router conntrack:\n{ct}"
         )
-        assert "${routerWanIp}." in pcap, (
-            f"expected hairpin-SNAT src '${routerWanIp}' in pcap:\n{pcap}"
-        )
-        assert "${externalWanIp}." not in pcap, (
-            f"un-SNAT'd external IP '${externalWanIp}' leaked to server:\n{pcap}"
+        assert "src=${serverWanIp}" in ct, (
+            f"expected DNAT'd reply-tuple src=${serverWanIp} in router conntrack:\n{ct}"
         )
 
     with subtest("DNS redirect: lan-side DNS query bends to router dnsmasq"):
@@ -664,23 +618,22 @@ pkgs.testers.nixosTest {
     with subtest("default policy drops uninitiated wan → lan"):
         # Add a route on server so it knows how to reach lan; the
         # policy must still drop the connection at the router.
-        # Without the wire check, this subtest passes if ssh fails
-        # for *any* reason (missing route, network unreachable, MTU
-        # quirks); capturing on the lan side proves the firewall
-        # is the one dropping it.
+        # Without a wire-level check, this subtest passes if ssh
+        # fails for *any* reason (missing route, MTU quirks, etc.);
+        # asking conntrack on the router whether the flow ever
+        # reached ESTABLISHED pins the firewall as the cause.
         server.succeed("ip route add ${lanNet}.0/24 via ${routerWanIp}")
-        start_pcap(client, "eth1", "tcp and src host ${serverWanIp}")
         result = server.execute(
             f"ssh {ssh_opts} -o BatchMode=yes root@${clientLanIp} 'true'"
         )
-        pcap = stop_pcap(client)
+        ct = conntrack("-p tcp -d ${clientLanIp} --dport 22")
 
         assert result[0] != 0, (
             "expected uninitiated wan → lan ssh to be dropped by policy, "
             f"but it succeeded: {result[1]!r}"
         )
-        assert pcap.strip() == "", (
-            f"firewall let wan → lan SYNs through to client:\n{pcap}"
+        assert "ESTABLISHED" not in ct, (
+            f"firewall let wan → lan ssh reach ESTABLISHED on router:\n{ct}"
         )
 
     with subtest("non-DNAT'd wan port is not forwarded"):
@@ -691,24 +644,22 @@ pkgs.testers.nixosTest {
         # regressions that widen `dnats.public-http.rule.match`,
         # widen `filters.dnat-http`, or open up wan→local.
         #
-        # Wire-level: server's eth1 sees zero TCP traffic on port
-        # 8081 during the curl window. Proves the firewall — not
-        # routing or any other layer — is what stops it. `host`
-        # scope filters out the external→router 8081 SYN that
-        # lives on the shared wan vlan but never reaches server.
-        start_pcap(server, "eth1", "tcp port 8081 and host ${serverWanIp}")
+        # Conntrack on the router: with the firewall dropping at
+        # FORWARD before any reply, the entry never transitions
+        # past SYN_SENT and never reaches ESTABLISHED. Anchors the
+        # drop at the firewall, not at routing.
         result = external.execute(
             "curl -sS --max-time 3 -o /dev/null "
             "http://${routerWanIp}:8081/"
         )
-        pcap = stop_pcap(server)
+        ct = conntrack("-p tcp --dport 8081")
 
         assert result[0] != 0, (
             "expected curl to fail on non-DNAT'd wan port 8081 — "
             f"firewall over-permits, got: {result[1]!r}"
         )
-        assert pcap.strip() == "", (
-            f"firewall let non-DNAT'd port 8081 through to server:\n{pcap}"
+        assert "ESTABLISHED" not in ct, (
+            f"firewall let non-DNAT'd 8081 reach ESTABLISHED on router:\n{ct}"
         )
 
     with subtest("inter-VLAN: admin-VLAN reaches iot-VLAN through router"):
@@ -740,21 +691,21 @@ pkgs.testers.nixosTest {
         # the previous test — proves the inter-VLAN allow is
         # one-directional (admin→iot only) and does not leak.
         #
-        # Wire-level: vlan-admin's tagged sub-interface sees zero
-        # ICMP echo-requests from the iot host during the ping.
-        # Pins the drop at the firewall rather than at routing,
+        # Conntrack on the router: a successful echo + reply
+        # transitions the ICMP entry to `[ASSURED]` (bidirectional
+        # traffic seen). If the firewall drops the echo-request,
+        # `[ASSURED]` never appears and `[UNREPLIED]` stays set.
+        # Anchors the drop at the firewall rather than routing,
         # VLAN demux, or any other layer.
-        start_pcap(vlan_admin, "eth1.${toString adminVlanId}",
-                   "icmp and src host ${vlanIotIp}")
         result = vlan_iot.execute("ping -c1 -W2 ${vlanAdminIp}")
-        pcap = stop_pcap(vlan_admin)
+        ct = conntrack("-p icmp -d ${vlanAdminIp}")
 
         assert result[0] != 0, (
             "expected iot → admin ping to be dropped by default "
             f"forward policy, but it succeeded: {result[1]!r}"
         )
-        assert pcap.strip() == "", (
-            f"firewall let iot → admin ICMP through to vlan-admin:\n{pcap}"
+        assert "[ASSURED]" not in ct, (
+            f"firewall let iot → admin ICMP complete a bidirectional flow:\n{ct}"
         )
   '';
 }
