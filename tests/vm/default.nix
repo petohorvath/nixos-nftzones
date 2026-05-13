@@ -27,6 +27,7 @@ let
 
   tests = {
     forward = import ./forward.nix testArgs;
+    rpfilter = import ./rpfilter.nix testArgs;
     vlan = import ./vlan.nix testArgs;
   };
 in
