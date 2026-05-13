@@ -92,24 +92,17 @@ pkgs.testers.nixosTest {
           useDHCP = false;
           firewall.enable = false;
           useNetworkd = true;
-          # `lib.mkForce` overrides the default per-vlan IP that
-          # `nixosTest`'s `virtualisation.vlans` machinery assigns;
-          # without it, the auto-IP and our explicit one both land
-          # on the interface and the test topology becomes
-          # ambiguous.
-          interfaces.eth1 = {
-            useDHCP = false;
-            ipv4.addresses = lib.mkForce [
-              {
-                address = clientLanIp;
-                prefixLength = 24;
-              }
-            ];
-          };
-          defaultGateway = lib.mkForce {
-            address = routerLanIp;
-            interface = "eth1";
-          };
+          # Nullify the per-vlan auto-IP `virtualisation.vlans`
+          # injects on eth1 (otherwise it would generate a
+          # `40-eth1.network` competing with the explicit unit
+          # below).
+          interfaces.eth1.ipv4.addresses = lib.mkForce [ ];
+        };
+
+        systemd.network.networks."10-eth1" = {
+          matchConfig.Name = "eth1";
+          address = [ "${clientLanIp}/24" ];
+          networkConfig.Gateway = routerLanIp;
         };
 
         environment.systemPackages = with pkgs; [
@@ -137,60 +130,14 @@ pkgs.testers.nixosTest {
           firewall.enable = false;
           useNetworkd = true;
 
-          # `lib.mkForce` overrides the per-vlan auto-IP that
-          # `virtualisation.vlans` injects (see client config for
-          # rationale).
-          interfaces.eth1 = {
-            useDHCP = false;
-            ipv4.addresses = lib.mkForce [
-              {
-                address = routerLanIp;
-                prefixLength = 24;
-              }
-            ];
-          };
-          interfaces.eth2 = {
-            useDHCP = false;
-            ipv4.addresses = lib.mkForce [
-              {
-                address = routerWanIp;
-                prefixLength = 24;
-              }
-            ];
-          };
-          # eth3 is the trunk port — no IP of its own. The
-          # auto-assigned per-vlan IP would land on the parent
-          # otherwise; force it empty so all addressing lives on
-          # the VLAN sub-interfaces below.
-          interfaces.eth3 = {
-            useDHCP = false;
-            ipv4.addresses = lib.mkForce [ ];
-          };
-
-          # 802.1Q sub-interfaces on the trunk. Each tag
-          # corresponds to one zone-as-VLAN.
-          vlans = {
-            "eth3.${toString iotVlanId}" = {
-              id = iotVlanId;
-              interface = "eth3";
-            };
-            "eth3.${toString adminVlanId}" = {
-              id = adminVlanId;
-              interface = "eth3";
-            };
-          };
-          interfaces."eth3.${toString iotVlanId}".ipv4.addresses = [
-            {
-              address = routerIotIp;
-              prefixLength = 24;
-            }
-          ];
-          interfaces."eth3.${toString adminVlanId}".ipv4.addresses = [
-            {
-              address = routerAdminIp;
-              prefixLength = 24;
-            }
-          ];
+          # Nullify per-vlan auto-IPs `virtualisation.vlans`
+          # injects on the parent ifaces — we own all addressing
+          # via the explicit `systemd.network` block below. eth3
+          # is the trunk and never carries an IP itself; all eth3
+          # addressing lives on the .10 / .20 sub-interfaces.
+          interfaces.eth1.ipv4.addresses = lib.mkForce [ ];
+          interfaces.eth2.ipv4.addresses = lib.mkForce [ ];
+          interfaces.eth3.ipv4.addresses = lib.mkForce [ ];
 
           nftables.enable = true;
 
@@ -310,6 +257,53 @@ pkgs.testers.nixosTest {
           };
         };
 
+        # Explicit `.netdev` + `.network` units for the router's
+        # five addressable interfaces. Two .netdev files declare
+        # the 802.1Q sub-interfaces on the trunk (eth3.10, eth3.20);
+        # the matching .network for eth3 attaches them via the
+        # `VLAN=` directive. The three IP-bearing units cover lan
+        # (eth1), wan (eth2), and the two VLAN-tagged sub-ifaces.
+        # No `Gateway=` anywhere — the router *is* the gateway.
+        systemd.network = {
+          netdevs."10-eth3.${toString iotVlanId}" = {
+            netdevConfig = {
+              Name = "eth3.${toString iotVlanId}";
+              Kind = "vlan";
+            };
+            vlanConfig.Id = iotVlanId;
+          };
+          netdevs."10-eth3.${toString adminVlanId}" = {
+            netdevConfig = {
+              Name = "eth3.${toString adminVlanId}";
+              Kind = "vlan";
+            };
+            vlanConfig.Id = adminVlanId;
+          };
+          networks."10-eth1" = {
+            matchConfig.Name = "eth1";
+            address = [ "${routerLanIp}/24" ];
+          };
+          networks."10-eth2" = {
+            matchConfig.Name = "eth2";
+            address = [ "${routerWanIp}/24" ];
+          };
+          networks."10-eth3" = {
+            matchConfig.Name = "eth3";
+            vlan = [
+              "eth3.${toString iotVlanId}"
+              "eth3.${toString adminVlanId}"
+            ];
+          };
+          networks."10-eth3.${toString iotVlanId}" = {
+            matchConfig.Name = "eth3.${toString iotVlanId}";
+            address = [ "${routerIotIp}/24" ];
+          };
+          networks."10-eth3.${toString adminVlanId}" = {
+            matchConfig.Name = "eth3.${toString adminVlanId}";
+            address = [ "${routerAdminIp}/24" ];
+          };
+        };
+
         # Local DNS resolver — answers `test.example.` with a fixed
         # address so the redirect test can verify it hit dnsmasq
         # rather than reaching upstream (which is unreachable in the
@@ -343,21 +337,14 @@ pkgs.testers.nixosTest {
           useDHCP = false;
           firewall.enable = false;
           useNetworkd = true;
-          # `lib.mkForce` overrides the per-vlan auto-IP (see
-          # client config for rationale).
-          interfaces.eth1 = {
-            useDHCP = false;
-            ipv4.addresses = lib.mkForce [
-              {
-                address = serverWanIp;
-                prefixLength = 24;
-              }
-            ];
-          };
-          defaultGateway = lib.mkForce {
-            address = routerWanIp;
-            interface = "eth1";
-          };
+          # See client for rationale on the mkForce nullification.
+          interfaces.eth1.ipv4.addresses = lib.mkForce [ ];
+        };
+
+        systemd.network.networks."10-eth1" = {
+          matchConfig.Name = "eth1";
+          address = [ "${serverWanIp}/24" ];
+          networkConfig.Gateway = routerWanIp;
         };
 
         services.openssh = {
@@ -414,19 +401,14 @@ pkgs.testers.nixosTest {
           useDHCP = false;
           firewall.enable = false;
           useNetworkd = true;
-          interfaces.eth1 = {
-            useDHCP = false;
-            ipv4.addresses = lib.mkForce [
-              {
-                address = externalWanIp;
-                prefixLength = 24;
-              }
-            ];
-          };
-          defaultGateway = lib.mkForce {
-            address = routerWanIp;
-            interface = "eth1";
-          };
+          # See client for rationale on the mkForce nullification.
+          interfaces.eth1.ipv4.addresses = lib.mkForce [ ];
+        };
+
+        systemd.network.networks."10-eth1" = {
+          matchConfig.Name = "eth1";
+          address = [ "${externalWanIp}/24" ];
+          networkConfig.Gateway = routerWanIp;
         };
 
         environment.systemPackages = [ pkgs.curl ];
@@ -446,28 +428,28 @@ pkgs.testers.nixosTest {
           useDHCP = false;
           firewall.enable = false;
           useNetworkd = true;
-          # Trunk parent — no IP of its own; tagged sub-interface
-          # below carries all traffic. Force-empty to override the
-          # per-vlan auto-IP virtualisation.vlans drops on eth1.
-          interfaces.eth1 = {
-            useDHCP = false;
-            ipv4.addresses = lib.mkForce [ ];
-          };
+          # Trunk parent — no IP of its own; the tagged sub-iface
+          # below carries all traffic. Nullify the per-vlan auto-
+          # IP `virtualisation.vlans` would otherwise drop on eth1.
+          interfaces.eth1.ipv4.addresses = lib.mkForce [ ];
+        };
 
-          vlans."eth1.${toString iotVlanId}" = {
-            id = iotVlanId;
-            interface = "eth1";
+        systemd.network = {
+          netdevs."10-eth1.${toString iotVlanId}" = {
+            netdevConfig = {
+              Name = "eth1.${toString iotVlanId}";
+              Kind = "vlan";
+            };
+            vlanConfig.Id = iotVlanId;
           };
-          interfaces."eth1.${toString iotVlanId}".ipv4.addresses = [
-            {
-              address = vlanIotIp;
-              prefixLength = 24;
-            }
-          ];
-
-          defaultGateway = lib.mkForce {
-            address = routerIotIp;
-            interface = "eth1.${toString iotVlanId}";
+          networks."10-eth1" = {
+            matchConfig.Name = "eth1";
+            vlan = [ "eth1.${toString iotVlanId}" ];
+          };
+          networks."10-eth1.${toString iotVlanId}" = {
+            matchConfig.Name = "eth1.${toString iotVlanId}";
+            address = [ "${vlanIotIp}/24" ];
+            networkConfig.Gateway = routerIotIp;
           };
         };
       };
@@ -481,25 +463,26 @@ pkgs.testers.nixosTest {
           useDHCP = false;
           firewall.enable = false;
           useNetworkd = true;
-          interfaces.eth1 = {
-            useDHCP = false;
-            ipv4.addresses = lib.mkForce [ ];
-          };
+          # See vlan-iot for rationale on the eth1 nullification.
+          interfaces.eth1.ipv4.addresses = lib.mkForce [ ];
+        };
 
-          vlans."eth1.${toString adminVlanId}" = {
-            id = adminVlanId;
-            interface = "eth1";
+        systemd.network = {
+          netdevs."10-eth1.${toString adminVlanId}" = {
+            netdevConfig = {
+              Name = "eth1.${toString adminVlanId}";
+              Kind = "vlan";
+            };
+            vlanConfig.Id = adminVlanId;
           };
-          interfaces."eth1.${toString adminVlanId}".ipv4.addresses = [
-            {
-              address = vlanAdminIp;
-              prefixLength = 24;
-            }
-          ];
-
-          defaultGateway = lib.mkForce {
-            address = routerAdminIp;
-            interface = "eth1.${toString adminVlanId}";
+          networks."10-eth1" = {
+            matchConfig.Name = "eth1";
+            vlan = [ "eth1.${toString adminVlanId}" ];
+          };
+          networks."10-eth1.${toString adminVlanId}" = {
+            matchConfig.Name = "eth1.${toString adminVlanId}";
+            address = [ "${vlanAdminIp}/24" ];
+            networkConfig.Gateway = routerAdminIp;
           };
         };
       };
