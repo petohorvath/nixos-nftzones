@@ -707,6 +707,16 @@ pkgs.testers.nixosTest {
         # zone membership keyed off VLAN sub-interface names
         # (eth3.10, eth3.20) drives correct dispatch on a single
         # physical trunk port.
+        #
+        # The first probe across this path traverses three ARP
+        # boundaries (admin → router admin sub-iface → router iot
+        # sub-iface → iot); a cold cache can lose the first packet
+        # within the 2 s budget. Warm with one tolerated probe
+        # before the asserting one — if the warm-up succeeds the
+        # asserting probe also succeeds, and if the warm-up loses
+        # to ARP the assert still has a populated cache to work
+        # with.
+        vlan_admin.execute("ping -c1 -W2 ${vlanIotIp}")
         out = vlan_admin.succeed("ping -c1 -W2 ${vlanIotIp}")
         assert "0% packet loss" in out, (
             f"expected admin → iot ping to succeed, got: {out!r}"
