@@ -5,12 +5,19 @@
   the systemd unit, the per-table deletion tracking, the atomic
   ruleset reload, and the build-time `nft --check` pipeline; this
   module is the typed translator.
+
+  Two-stage function: the outer takes the `nftzones` lib (applied
+  by `flake.nix` from the host system's `libBySystem`); the inner
+  is the standard NixOS module function. Keeping `nftzones` out of
+  `_module.args` means user-facing modules never see it as an
+  injected argument — the lib is reached via
+  `inputs.nftzones.lib.<system>` like any other flake input.
 */
+{ nftzones }:
 {
   lib,
   config,
   options,
-  nftzones,
   ...
 }:
 let

@@ -45,16 +45,20 @@
       # call `mkLib pkgs` ad-hoc in new code paths.
       libBySystem = forAllSystems mkLib;
 
+      # `./modules/nftzones.nix` is a function `{ nftzones }: { ... }
+      # NixOS module`. Partial-applying the lib here keeps `nftzones`
+      # a private compile-time dep of the module rather than something
+      # leaking onto `_module.args` and surfacing in every sibling
+      # module's argument list. User code reaches the lib via
+      # `inputs.nftzones.lib.<system>`, not via a module arg.
       nftzonesModule =
         { pkgs, ... }:
         {
-          imports = [ ./modules/nftzones.nix ];
-          # The module needs only `nftzones`; it pulls `nftypes`
-          # out of `nftzones.nftypes` rather than taking a second
-          # injection.
-          _module.args = {
-            nftzones = libBySystem.${pkgs.stdenv.hostPlatform.system};
-          };
+          imports = [
+            (import ./modules/nftzones.nix {
+              nftzones = libBySystem.${pkgs.stdenv.hostPlatform.system};
+            })
+          ];
         };
 
       mkChecks =

@@ -146,20 +146,7 @@ in
 }
 ```
 
-If you're already inside a NixOS module that imports `nixosModules.default`, the module's `_module.args` injects `nftzones`, so you can reach the snippets without the `inputs.nftzones.lib.${pkgs.system}` path — just take `nftzones` as an arg:
-
-```nix
-{ nftzones, ... }:
-{
-  networking.nftzones.tables.fw.filters.allow-ssh = {
-    from = [ "all" ];
-    to = [ "local" ];
-    rule = nftzones.snippets.accept.tcp 22;
-  };
-}
-```
-
-Twelve leaf functions across `accept` / `drop` / `reject` × `tcp` / `udp` / `icmp.v4` / `icmp.v6`. Port arguments accept ints, decimal strings, range strings (`"8000-8100"` / `"8000:8100"`), `libnet.port` / `libnet.portRange` values, or lists thereof — validation routes through `libnet`. ICMP-type arguments accept ints (`0`..`255`) or symbolic strings (`"echo-request"`); mixed-form lists throw. See [`docs/plans/snippets.md`](docs/plans/snippets.md) for the full input / output contract.
+Twelve leaf functions across `accept` / `drop` / `reject` × `tcp` / `udp` / `icmp.v4` / `icmp.v6`. Port arguments accept ints, decimal strings, range strings (`"8000-8100"` / `"8000:8100"`), `libnet.port` / `libnet.portRange` values, or lists thereof — validation routes through `libnet`. ICMP-type arguments accept ints (`0`..`255`) or symbolic strings (`"echo-request"`); mixed-form lists throw.
 
 ### Hierarchical zones
 
@@ -193,7 +180,7 @@ filters.web-server-http = {
 
 ## Known limitations
 
-- **Supported table families: `inet`, `ip`, `ip6`, `bridge`.** `arp` and `netdev` are rejected at the type level. `netdev` in particular needs a per-chain `device` binding that the chain submodule doesn't model today; `arp` is rare enough that we'd rather wait for a real use case before claiming coverage we don't test.
+- **Supported table families: `inet`, `ip`, `ip6`, `bridge`.** `arp` and `netdev` are rejected at the type level. `netdev` in particular needs a per-chain `device` binding that the chain submodule doesn't model today; `arp` is too rare to justify the testing investment without a concrete use case.
 - **Bridge family supports `filter` chains only.** `nat` (not supported by the bridge family) and `route` (no `mangle` priority on bridge) placements are rejected at compile time by `checkChainPlacement` so users get a clear error rather than a kernel-level rejection.
 - See `Pending follow-ups` in [`docs/compile-pipeline.md`](docs/compile-pipeline.md) for tracked design gaps.
 
@@ -203,7 +190,17 @@ Three tiers, each runnable via `nix flake check`:
 
 - **Unit** (`tests/unit/`): per-module tests of the compile pipeline's helpers and validators.
 - **Integration** (`tests/integration/`): structured assertions on the rendered nftables JSON for representative scenarios, plus negative tests that confirm Phase 1 validators reject known-bad inputs in the live `mkRuleset` pipeline.
-- **VM** (`tests/vm/`): real-kernel multi-VM scenarios using `pkgs.testers.nixosTest` — three NixOS machines (client, router, server) on two virtual LANs, with the router running `nftzones`-managed rules. Asserts traffic-level behaviour: L3 forwarding, ICMP, SSH, SNAT masquerade, DNAT port-forward, DNS redirect, default-deny enforcement. Requires `/dev/kvm` on the builder.
+- **VM** (`tests/vm/`): real-kernel multi-VM scenarios via `pkgs.testers.nixosTest`. One topology per feature, each requiring `/dev/kvm` on the builder. Verification is conntrack-on-router for NAT and deny-path tests, packet-content for everything else:
+
+  | File | VMs | Coverage |
+  |---|---|---|
+  | [`forward.nix`](tests/vm/forward.nix) | client + router + server + external | L3 forwarding, ICMP, SSH, SNAT masquerade, DNAT port-forward, DNS redirect, default-deny wan→lan, non-DNAT'd port, stateful prelude `[ASSURED]` + INVALID drop, `log` statement |
+  | [`vlan.nix`](tests/vm/vlan.nix) | router + vlan-iot + vlan-admin (single 802.1Q trunk) | inter-VLAN allow, inter-VLAN default-deny |
+  | [`rpfilter.nix`](tests/vm/rpfilter.nix) | client + router + spoofer (wan-side host with a lan-range /32 alias) | `settings.rpfilter = true` accepts legit src, drops spoofed |
+  | [`marks.nix`](tests/vm/marks.nix) | client + router + server (with `ip rule fwmark X table Y`) | `sroutes` mark steers traffic to an alternate routing table |
+  | [`dualstack.nix`](tests/vm/dualstack.nix) | client + router + server, IPv4 + IPv6 | dual-stack forwarding on an `inet` table, v6 conntrack tracking |
+
+CI runs the suite against three nixpkgs refs in parallel — `pinned` (this repo's `flake.lock`), `nixos-25.11`, and `nixos-unstable` — so upstream regressions surface alongside changes here.
 
 ## Contributing
 
