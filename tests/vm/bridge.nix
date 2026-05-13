@@ -126,7 +126,18 @@ pkgs.testers.nixosTest {
                 chainPolicy = "accept";
               };
 
-              zones.bridged.interfaces = [ "br0" ];
+              # Bridge ports (not the bridge name). For
+              # `family = "bridge"`, the iifname/oifname that
+              # nftzones generates match the *port* names —
+              # the bridge itself is matched by `meta ibrname`
+              # / `obrname`, which the zone-interface set
+              # path doesn't emit. Listing eth1 and eth2 here
+              # makes the iifname @bridged_iifs match fire on
+              # frames as they enter or leave the bridge.
+              zones.bridged.interfaces = [
+                "eth1"
+                "eth2"
+              ];
 
               # Counter+accept on every frame forwarded
               # within the bridged zone. The counter's
