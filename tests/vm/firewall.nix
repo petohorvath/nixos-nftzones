@@ -91,6 +91,7 @@ pkgs.testers.nixosTest {
         networking = {
           useDHCP = false;
           firewall.enable = false;
+          useNetworkd = true;
           # `lib.mkForce` overrides the default per-vlan IP that
           # `nixosTest`'s `virtualisation.vlans` machinery assigns;
           # without it, the auto-IP and our explicit one both land
@@ -105,7 +106,10 @@ pkgs.testers.nixosTest {
               }
             ];
           };
-          defaultGateway = lib.mkForce routerLanIp;
+          defaultGateway = lib.mkForce {
+            address = routerLanIp;
+            interface = "eth1";
+          };
         };
 
         environment.systemPackages = with pkgs; [
@@ -131,6 +135,7 @@ pkgs.testers.nixosTest {
         networking = {
           useDHCP = false;
           firewall.enable = false;
+          useNetworkd = true;
 
           # `lib.mkForce` overrides the per-vlan auto-IP that
           # `virtualisation.vlans` injects (see client config for
@@ -337,6 +342,7 @@ pkgs.testers.nixosTest {
         networking = {
           useDHCP = false;
           firewall.enable = false;
+          useNetworkd = true;
           # `lib.mkForce` overrides the per-vlan auto-IP (see
           # client config for rationale).
           interfaces.eth1 = {
@@ -348,7 +354,10 @@ pkgs.testers.nixosTest {
               }
             ];
           };
-          defaultGateway = lib.mkForce routerWanIp;
+          defaultGateway = lib.mkForce {
+            address = routerWanIp;
+            interface = "eth1";
+          };
         };
 
         services.openssh = {
@@ -404,6 +413,7 @@ pkgs.testers.nixosTest {
         networking = {
           useDHCP = false;
           firewall.enable = false;
+          useNetworkd = true;
           interfaces.eth1 = {
             useDHCP = false;
             ipv4.addresses = lib.mkForce [
@@ -413,7 +423,10 @@ pkgs.testers.nixosTest {
               }
             ];
           };
-          defaultGateway = lib.mkForce routerWanIp;
+          defaultGateway = lib.mkForce {
+            address = routerWanIp;
+            interface = "eth1";
+          };
         };
 
         environment.systemPackages = [ pkgs.curl ];
@@ -432,6 +445,7 @@ pkgs.testers.nixosTest {
         networking = {
           useDHCP = false;
           firewall.enable = false;
+          useNetworkd = true;
           # Trunk parent — no IP of its own; tagged sub-interface
           # below carries all traffic. Force-empty to override the
           # per-vlan auto-IP virtualisation.vlans drops on eth1.
@@ -451,7 +465,10 @@ pkgs.testers.nixosTest {
             }
           ];
 
-          defaultGateway = lib.mkForce routerIotIp;
+          defaultGateway = lib.mkForce {
+            address = routerIotIp;
+            interface = "eth1.${toString iotVlanId}";
+          };
         };
       };
 
@@ -463,6 +480,7 @@ pkgs.testers.nixosTest {
         networking = {
           useDHCP = false;
           firewall.enable = false;
+          useNetworkd = true;
           interfaces.eth1 = {
             useDHCP = false;
             ipv4.addresses = lib.mkForce [ ];
@@ -479,7 +497,10 @@ pkgs.testers.nixosTest {
             }
           ];
 
-          defaultGateway = lib.mkForce routerAdminIp;
+          defaultGateway = lib.mkForce {
+            address = routerAdminIp;
+            interface = "eth1.${toString adminVlanId}";
+          };
         };
       };
   };
@@ -487,17 +508,17 @@ pkgs.testers.nixosTest {
   testScript = ''
     start_all()
 
-    # `network-online.target` is only pulled in when systemd-networkd
-    # is active; the script-based networking nixosTest defaults to
-    # leaves it inactive. Wait for the broader `multi-user.target`
-    # instead — by then static-IP units have configured each
-    # interface (see network-addresses-eth*-start.service).
-    client.wait_for_unit("multi-user.target")
-    router.wait_for_unit("multi-user.target")
-    server.wait_for_unit("multi-user.target")
-    external.wait_for_unit("multi-user.target")
-    vlan_iot.wait_for_unit("multi-user.target")
-    vlan_admin.wait_for_unit("multi-user.target")
+    # With `networking.useNetworkd = true`, systemd-networkd-wait-
+    # online is pulled in and `network-online.target` becomes a
+    # precise signal: it fires once every configured interface has
+    # an address. Per-service readiness (sshd, peer-echo, testweb,
+    # dnsmasq) still has explicit waits below.
+    client.wait_for_unit("network-online.target")
+    router.wait_for_unit("network-online.target")
+    server.wait_for_unit("network-online.target")
+    external.wait_for_unit("network-online.target")
+    vlan_iot.wait_for_unit("network-online.target")
+    vlan_admin.wait_for_unit("network-online.target")
 
     server.wait_for_unit("sshd.service")
     server.wait_for_open_port(22)
