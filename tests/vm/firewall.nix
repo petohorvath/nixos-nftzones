@@ -99,6 +99,15 @@ pkgs.testers.nixosTest {
           interfaces.eth1.ipv4.addresses = lib.mkForce [ ];
         };
 
+        # Anchor `network-online.target` to `multi-user.target`.
+        # NixOS enables `systemd-networkd-wait-online.service`
+        # (wanted-by network-online), but nothing in the default
+        # stack pulls in network-online itself, so without this
+        # the target sits inactive and the test driver's
+        # `wait_for_unit("network-online.target")` finds it with
+        # no pending jobs.
+        systemd.targets.network-online.wantedBy = [ "multi-user.target" ];
+
         systemd.network.networks."10-eth1" = {
           matchConfig.Name = "eth1";
           address = [ "${clientLanIp}/24" ];
@@ -257,6 +266,10 @@ pkgs.testers.nixosTest {
           };
         };
 
+        # Anchor for `network-online.target` — see client config
+        # for rationale.
+        systemd.targets.network-online.wantedBy = [ "multi-user.target" ];
+
         # Explicit `.netdev` + `.network` units for the router's
         # five addressable interfaces. Two .netdev files declare
         # the 802.1Q sub-interfaces on the trunk (eth3.10, eth3.20);
@@ -341,6 +354,10 @@ pkgs.testers.nixosTest {
           interfaces.eth1.ipv4.addresses = lib.mkForce [ ];
         };
 
+        # Anchor for `network-online.target` — see client config
+        # for rationale.
+        systemd.targets.network-online.wantedBy = [ "multi-user.target" ];
+
         systemd.network.networks."10-eth1" = {
           matchConfig.Name = "eth1";
           address = [ "${serverWanIp}/24" ];
@@ -405,6 +422,10 @@ pkgs.testers.nixosTest {
           interfaces.eth1.ipv4.addresses = lib.mkForce [ ];
         };
 
+        # Anchor for `network-online.target` — see client config
+        # for rationale.
+        systemd.targets.network-online.wantedBy = [ "multi-user.target" ];
+
         systemd.network.networks."10-eth1" = {
           matchConfig.Name = "eth1";
           address = [ "${externalWanIp}/24" ];
@@ -433,6 +454,10 @@ pkgs.testers.nixosTest {
           # IP `virtualisation.vlans` would otherwise drop on eth1.
           interfaces.eth1.ipv4.addresses = lib.mkForce [ ];
         };
+
+        # Anchor for `network-online.target` — see client config
+        # for rationale.
+        systemd.targets.network-online.wantedBy = [ "multi-user.target" ];
 
         systemd.network = {
           netdevs."10-eth1.${toString iotVlanId}" = {
@@ -466,6 +491,10 @@ pkgs.testers.nixosTest {
           # See vlan-iot for rationale on the eth1 nullification.
           interfaces.eth1.ipv4.addresses = lib.mkForce [ ];
         };
+
+        # Anchor for `network-online.target` — see client config
+        # for rationale.
+        systemd.targets.network-online.wantedBy = [ "multi-user.target" ];
 
         systemd.network = {
           netdevs."10-eth1.${toString adminVlanId}" = {
