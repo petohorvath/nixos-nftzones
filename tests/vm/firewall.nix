@@ -580,14 +580,47 @@ pkgs.testers.nixosTest {
     def conntrack(args):
         return router.succeed(f"conntrack -L {args} 2>/dev/null")
 
-    with subtest("L3 forwarding: client can ping server through router"):
+    # `subtest` wrapper that dumps the router's nftables ruleset,
+    # conntrack table, and routing table to the test log when the
+    # body raises. Silent on the green path; on red it cuts
+    # diagnosis time by capturing the firewall's state *at the
+    # moment of failure* instead of leaving you to reconstruct it
+    # from kernel logs. A plain class avoids depending on
+    # contextlib being in the driver script's import set.
+    class diag_subtest:
+        def __init__(self, name):
+            self.name = name
+
+        def __enter__(self):
+            self._cm = subtest(self.name)
+            return self._cm.__enter__()
+
+        def __exit__(self, exc_type, exc, tb):
+            if exc_type is not None:
+                try:
+                    ruleset = router.succeed("nft list ruleset")
+                    ct = router.succeed("conntrack -L 2>/dev/null || true")
+                    routes = router.succeed("ip -4 route; echo ---; ip -6 route")
+                except Exception:
+                    ruleset = ct = routes = "(failed to capture)"
+                print(
+                    f"\n=== router state at failure of {self.name!r} ===\n"
+                    f"--- nft list ruleset ---\n{ruleset}\n"
+                    f"--- conntrack -L ---\n{ct}\n"
+                    f"--- ip route ---\n{routes}\n"
+                    f"=== end router state ===\n",
+                    flush=True,
+                )
+            return self._cm.__exit__(exc_type, exc, tb)
+
+    with diag_subtest("L3 forwarding: client can ping server through router"):
         client.succeed("ping -c1 -W2 ${serverWanIp}")
 
-    with subtest("ICMP forwarding lan → wan"):
+    with diag_subtest("ICMP forwarding lan → wan"):
         out = client.succeed("ping -c3 -W2 ${serverWanIp}")
         assert "0% packet loss" in out, f"expected no loss, got: {out!r}"
 
-    with subtest("SSH allowed lan → wan"):
+    with diag_subtest("SSH allowed lan → wan"):
         # `timeout 30` is the outermost wall-clock guard — if both
         # ConnectTimeout and ServerAlive miss the stall, this still
         # caps the command at 30s (exit 124) so the subtest fails
@@ -596,12 +629,13 @@ pkgs.testers.nixosTest {
         out = client.succeed(f"timeout 30 ssh {ssh_opts} root@${serverWanIp} 'echo hello-from-ssh'")
         assert "hello-from-ssh" in out, f"unexpected ssh output: {out!r}"
 
-    with subtest("SNAT masquerade: server sees router-wan-IP, not client-IP"):
+    with diag_subtest("SNAT masquerade: server sees router-wan-IP, not client-IP"):
         # Userspace assertion (peer-echo's recv) plus a conntrack
         # check on the router. With SNAT applied, the entry's
         # reply tuple has dst=routerWanIp (return traffic is
         # routed back through the firewall for un-NAT). Without
         # SNAT, reply.dst would be the raw clientLanIp.
+        router.succeed("conntrack -F")  # isolate from earlier subtests
         peer = client.succeed("nc -w 3 ${serverWanIp} 9999").strip()
         ct = conntrack("-p tcp --dport 9999")
 
@@ -617,7 +651,7 @@ pkgs.testers.nixosTest {
             f"un-SNAT'd reply-tuple dst=${clientLanIp} on router:\n{ct}"
         )
 
-    with subtest("DNAT port forward: external 8080 lands on server:80"):
+    with diag_subtest("DNAT port forward: external 8080 lands on server:80"):
         # The `external` VM is on the wan vlan but not the server
         # itself, so the connection isn't hairpin: external → router
         # (rewrites destination to serverWanIp:80) → server, reply
@@ -629,6 +663,7 @@ pkgs.testers.nixosTest {
         # (the curl target) and sport=80 + src=serverWanIp in the
         # reply tuple (DNAT applied). Catches regressions that
         # leave 8080 raw or DNAT to the wrong destination.
+        router.succeed("conntrack -F")  # isolate from earlier subtests
         out = external.succeed(
             "curl -s --max-time 5 http://${routerWanIp}:8080/index.html"
         )
@@ -645,7 +680,7 @@ pkgs.testers.nixosTest {
             f"expected DNAT'd reply-tuple src=${serverWanIp} in router conntrack:\n{ct}"
         )
 
-    with subtest("DNS redirect: lan-side DNS query bends to router dnsmasq"):
+    with diag_subtest("DNS redirect: lan-side DNS query bends to router dnsmasq"):
         # Client queries an unreachable resolver (8.8.8.8 isn't routable
         # in the sandbox); redirect forwards it to the router's local
         # dnsmasq which serves a fixed answer for test.example.
@@ -656,7 +691,7 @@ pkgs.testers.nixosTest {
             f"expected redirect to local resolver answering 198.51.100.99, got {out!r}"
         )
 
-    with subtest("default policy drops uninitiated wan → lan"):
+    with diag_subtest("default policy drops uninitiated wan → lan"):
         # Add a route on server so it knows how to reach lan; the
         # policy must still drop the connection at the router.
         # Without a wire-level check, this subtest passes if ssh
@@ -664,6 +699,7 @@ pkgs.testers.nixosTest {
         # asking conntrack on the router whether the flow ever
         # reached ESTABLISHED pins the firewall as the cause.
         server.succeed("ip route add ${lanNet}.0/24 via ${routerWanIp}")
+        router.succeed("conntrack -F")  # isolate from earlier subtests
         result = server.execute(
             f"ssh {ssh_opts} -o BatchMode=yes root@${clientLanIp} 'true'"
         )
@@ -677,7 +713,7 @@ pkgs.testers.nixosTest {
             f"firewall let wan → lan ssh reach ESTABLISHED on router:\n{ct}"
         )
 
-    with subtest("non-DNAT'd wan port is not forwarded"):
+    with diag_subtest("non-DNAT'd wan port is not forwarded"):
         # Only `tcp.dport 8080` has a DNAT match. A request to any
         # other wan port must not reach the router (no wan→local
         # filter; chain-policy drop) nor anything behind it (the
@@ -689,6 +725,7 @@ pkgs.testers.nixosTest {
         # FORWARD before any reply, the entry never transitions
         # past SYN_SENT and never reaches ESTABLISHED. Anchors the
         # drop at the firewall, not at routing.
+        router.succeed("conntrack -F")  # isolate from earlier subtests
         result = external.execute(
             "curl -sS --max-time 3 -o /dev/null "
             "http://${routerWanIp}:8081/"
@@ -703,7 +740,7 @@ pkgs.testers.nixosTest {
             f"firewall let non-DNAT'd 8081 reach ESTABLISHED on router:\n{ct}"
         )
 
-    with subtest("inter-VLAN: admin-VLAN reaches iot-VLAN through router"):
+    with diag_subtest("inter-VLAN: admin-VLAN reaches iot-VLAN through router"):
         # admin (vlan tag 20, 192.168.20.10) → router eth3.20
         # → forward chain matches admin-to-iot filter → router
         # eth3.10 → iot (vlan tag 10, 192.168.10.10). Stateful
@@ -726,7 +763,7 @@ pkgs.testers.nixosTest {
             f"expected admin → iot ping to succeed, got: {out!r}"
         )
 
-    with subtest("inter-VLAN: iot-VLAN cannot initiate to admin-VLAN"):
+    with diag_subtest("inter-VLAN: iot-VLAN cannot initiate to admin-VLAN"):
         # No iot-to-admin filter exists; the forward chain's
         # `policy drop` catches the unmatched flow. Reverse of
         # the previous test — proves the inter-VLAN allow is
@@ -738,6 +775,7 @@ pkgs.testers.nixosTest {
         # `[ASSURED]` never appears and `[UNREPLIED]` stays set.
         # Anchors the drop at the firewall rather than routing,
         # VLAN demux, or any other layer.
+        router.succeed("conntrack -F")  # isolate from earlier subtests
         result = vlan_iot.execute("ping -c1 -W2 ${vlanAdminIp}")
         ct = conntrack("-p icmp -d ${vlanAdminIp}")
 
