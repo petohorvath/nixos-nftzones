@@ -62,12 +62,6 @@ in
   # Library version. Bumped manually per release.
   version = "0.1.0";
 
-  # Re-export the upstream nftypes lib so consumers that have
-  # `nftzones` in scope (e.g. NixOS modules wiring through
-  # `_module.args`) can reach the rendering / DSL helpers without
-  # a separate `nftypes` injection of their own.
-  nftypes = inputs.nftypes;
-
   inherit
     internal
     types
