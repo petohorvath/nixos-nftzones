@@ -528,21 +528,26 @@ pkgs.testers.nixosTest {
         "-o ConnectTimeout=5 -o ServerAliveInterval=3 -o ServerAliveCountMax=2"
     )
 
-    # tcpdump-based wire assertions. Three layers of belt-and-
-    # suspenders matter here: `nohup` so the bg process survives
-    # the test driver's shell-session lifetime; redirect
-    # stdin/stdout/stderr off the framework's pipe so its expect
-    # loop isn't confused by tcpdump output; `-l` for line-
-    # buffered text so kill-time flush captures the last packet.
-    # The 0.3s start sleep gives the BPF filter time to attach
-    # before the trigger fires; the 0.2s stop sleep gives tcpdump
-    # time to flush after SIGTERM. Output lives at /tmp/cap.out
-    # — overwritten per call, so subtests must read it before
-    # starting a new capture.
+    # tcpdump-based wire assertions. Four flags carry meaning:
+    #   -p   non-promiscuous; capture only what the host's NIC
+    #        actually accepts. Critical on shared VLANs (e.g. the
+    #        wan vlan with external+router+server): in promisc,
+    #        server's eth1 sees external↔router frames addressed
+    #        to *other* MACs and the wire assertions fire on
+    #        traffic that never entered the host.
+    #   -nn  no DNS / port-name resolution; keeps output stable.
+    #   -l   line-buffered stdout so kill-time flush keeps the
+    #        last few captured packets.
+    # `nohup` + redirected stdin/stdout/stderr keeps the bg
+    # process off the test driver's shell-session pipe. The 0.3 s
+    # start sleep lets the BPF filter attach before the trigger;
+    # the 0.2 s stop sleep lets tcpdump flush after SIGTERM.
+    # Output lives at /tmp/cap.out — overwritten per call, so
+    # subtests must read it before starting a new capture.
     def start_pcap(machine, iface, expr):
         machine.succeed("rm -f /tmp/cap.out /tmp/cap.pid")
         machine.succeed(
-            f"nohup tcpdump -i {iface} -nn -l '{expr}' "
+            f"nohup tcpdump -p -i {iface} -nn -l '{expr}' "
             f"  > /tmp/cap.out 2>/dev/null </dev/null & "
             f"echo $! > /tmp/cap.pid; "
             f"sleep 0.3"
