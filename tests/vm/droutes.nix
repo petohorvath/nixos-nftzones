@@ -52,7 +52,7 @@
   ...
 }:
 let
-  inherit (nftypes.dsl) mangle;
+  inherit (nftypes.dsl) counter mangle;
   inherit (nftypes.dsl.fields) meta;
 
   wanNet = "203.0.113";
@@ -96,9 +96,18 @@ pkgs.testers.nixosTest {
               # the target zone. Lands in
               # `output-at-mangle__target` with `type route`
               # (output-hook routing-decision tap).
+              #
+              # The leading `counter {}` is for the test —
+              # gives an observable signal that the rule
+              # actually fired, distinct from the broader
+              # "ping failed" outcome (which could happen for
+              # many other reasons).
               droutes.target-via-unreachable = {
                 to = [ "target" ];
-                rule = [ (mangle meta.mark 200) ];
+                rule = [
+                  (counter { })
+                  (mangle meta.mark 200)
+                ];
               };
             };
           };
@@ -157,10 +166,20 @@ pkgs.testers.nixosTest {
   };
 
   testScript = ''
+    import re
+
     start_all()
 
     router.wait_for_unit("network-online.target")
     target.wait_for_unit("network-online.target")
+
+    def droute_counter():
+        """Return the droute rule's counter `packets` value."""
+        chain = router.succeed(
+            "nft list chain inet fw output-at-mangle__target"
+        )
+        m = re.search(r"counter packets (\d+)", chain)
+        return int(m.group(1)) if m else 0
 
     # See `forward.nix` for the rationale on this wrapper —
     # on failure dumps router state including `ip rule` and
@@ -198,34 +217,50 @@ pkgs.testers.nixosTest {
         # 127.0.0.1 doesn't match the `target` zone CIDR, so
         # the droute rule's `to = [ "target" ]` skips it. No
         # mark, main table, route via lo, reply via lo. Pins
-        # that the droute isn't blanketing all OUTPUT traffic
-        # by accident.
+        # two things: (a) basic OUTPUT path works under
+        # `chainPolicy = "accept"`, and (b) droute isn't
+        # blanketing all OUTPUT traffic by accident — its
+        # counter must stay at 0.
         out = router.succeed("ping -c 1 -W 2 127.0.0.1")
         assert "0% packet loss" in out, (
             f"expected loopback ping to succeed, got: {out!r}"
         )
+        assert droute_counter() == 0, (
+            "droute fired on a destination that shouldn't match "
+            "the `target` zone (counter > 0 after loopback ping)"
+        )
 
-    with diag_subtest("droute marks router→target, table 200 unreachable"):
+    with diag_subtest("droute marks router→target traffic"):
         # Same OUTPUT chain, different destination — this one
-        # matches `target` zone. droute fires (`meta mark set
-        # 200`), routing decision consults fwmark, table 200
-        # has only the unreachable default. Kernel emits ICMP
-        # destination-unreachable locally; ping reports it.
+        # matches `target` zone. droute fires (its counter
+        # ticks up), `meta mark set 200` runs, the routing
+        # decision then consults fwmark and lands on table
+        # 200's unreachable default.
+        #
+        # Two assertions in tandem:
+        #   - droute counter went up — proves the rule
+        #     actually matched the packet rather than the
+        #     packet bypassing OUTPUT@mangle entirely.
+        #   - ping exited non-zero with no replies — the
+        #     downstream routing-to-unreachable path took
+        #     effect, even though ping's per-version output
+        #     for the error is too variable to assert text on.
+        before = droute_counter()
         result = router.execute("ping -c 1 -W 2 ${targetIp}")
+        after = droute_counter()
+
+        assert after > before, (
+            "droute counter didn't increment — rule didn't fire. "
+            f"before={before}, after={after}"
+        )
         assert result[0] != 0, (
             "expected router ping to target to fail (droute marks "
             "→ table 200 unreachable), but it succeeded: "
             f"{result[1]!r}"
         )
-        # `unreachable` route surfaces as "Network is
-        # unreachable", "Destination Net Unreachable", or
-        # "Destination Host Unreachable" depending on the
-        # ping/iputils version. Accept any unreachable
-        # variant — `100% packet loss` alone would mean the
-        # packet got out but no reply came (droute didn't
-        # actually mark).
-        assert "nreachable" in result[1], (
-            f"expected ICMP unreachable in ping output, got: {result[1]!r}"
+        assert "100% packet loss" in result[1], (
+            "expected 100% loss after droute redirected to "
+            f"unreachable table, got: {result[1]!r}"
         )
   '';
 }
