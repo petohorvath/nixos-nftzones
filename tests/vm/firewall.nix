@@ -317,6 +317,14 @@ pkgs.testers.nixosTest {
           };
         };
 
+        # `systemd-resolved` is enabled by default alongside
+        # `useNetworkd` and binds port 53 on the loopback, which
+        # collides with the dnsmasq listen-address below. The
+        # router doesn't need a stub resolver — it serves DNS via
+        # dnsmasq for the DNS-redirect test — so disable resolved
+        # here to free the port.
+        services.resolved.enable = false;
+
         # Local DNS resolver — answers `test.example.` with a fixed
         # address so the redirect test can verify it hit dnsmasq
         # rather than reaching upstream (which is unreachable in the
