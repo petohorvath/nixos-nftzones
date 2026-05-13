@@ -26,6 +26,7 @@ let
   };
 
   tests = {
+    dualstack = import ./dualstack.nix testArgs;
     forward = import ./forward.nix testArgs;
     marks = import ./marks.nix testArgs;
     rpfilter = import ./rpfilter.nix testArgs;
