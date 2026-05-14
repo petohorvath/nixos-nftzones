@@ -40,6 +40,8 @@ let
     eq
     accept
     log
+    counter
+    reject
     ;
   inherit (nftypes.dsl.fields) tcp udp;
 
@@ -140,6 +142,29 @@ pkgs.testers.nixosTest {
                 from = [ "lan" ];
                 to = [ "wan" ];
                 rule = [ accept ];
+              };
+
+              # Reject lan→wan TCP/7777 with a TCP reset.
+              # `priority = "first"` sorts this ahead of the
+              # broad lan-out-allow accept (which has the
+              # default priority) so the reject actually gets
+              # to match — non-7777 traffic falls through to
+              # the accept. The `counter` is the test's
+              # proof-of-fire: it pins that the *router's*
+              # reject rule is what refused the connection,
+              # not the server (which has no listener on 7777
+              # anyway). Exercises the `reject` verdict, which
+              # `policies.*.verdict` can't express (chain-
+              # level policy is accept/drop only).
+              filters.lan-reject-probe = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+                priority = "first";
+                rule = [
+                  (eq tcp.dport 7777)
+                  (counter { })
+                  reject.tcpReset
+                ];
               };
 
               # Allow inbound traffic that has been DNAT'd to land
@@ -368,6 +393,8 @@ pkgs.testers.nixosTest {
   };
 
   testScript = ''
+    import re
+
     start_all()
 
     # With `networking.useNetworkd = true`, systemd-networkd-wait-
@@ -582,6 +609,44 @@ pkgs.testers.nixosTest {
         )
         assert "ESTABLISHED" not in ct, (
             f"firewall let wan → lan ssh reach ESTABLISHED on router:\n{ct}"
+        )
+
+    with diag_subtest("reject verdict: lan→wan TCP/7777 fails fast with RST"):
+        # `filters.lan-reject-probe` ends in `reject.tcpReset`.
+        # A reject-terminated rule is observably distinct from
+        # the drop verdict tested above: the client gets an
+        # immediate TCP RST → "Connection refused" instead of
+        # the silent black hole of a drop (which would make nc
+        # block out its full `-w` window).
+        #
+        # `nc -v -w 5` against a dropped port would sit ~5 s and
+        # then fail with a timeout-class message; against this
+        # reject it returns near-instantly with "refused". The
+        # assertion keys on the failure *mode* (refused) rather
+        # than timing — more portable across nc versions.
+        router.succeed("conntrack -F")
+        result = client.execute(
+            "nc -v -w 5 ${serverWanIp} 7777 </dev/null 2>&1"
+        )
+        assert result[0] != 0, (
+            f"expected nc to TCP/7777 to fail, got success: {result[1]!r}"
+        )
+        assert "refused" in result[1].lower(), (
+            "expected 'connection refused' (RST from reject), not a "
+            f"timeout (which would indicate drop, not reject): {result[1]!r}"
+        )
+        # Counter on the reject rule pins that the *router's*
+        # filter is what refused the connection — server has no
+        # listener on 7777, so a missing reject rule would also
+        # produce "refused" (from the server's own RST). The
+        # counter rules that out.
+        chain = router.succeed(
+            "nft list chain inet fw forward-at-filter__lan-to-wan"
+        )
+        m = re.search(r"counter packets (\d+)", chain)
+        assert m and int(m.group(1)) >= 1, (
+            f"reject rule's counter didn't increment — the router "
+            f"didn't reject the probe:\n{chain}"
         )
 
     with diag_subtest("log statement: lan→local ICMP emits to journal"):
