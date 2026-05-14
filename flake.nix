@@ -81,6 +81,7 @@
         {
           unit = runner.runTests unitTests;
           integration = import ./tests/integration/default.nix testArgs;
+          examples = import ./examples/default.nix testArgs;
         }
         // vmTestsLinux;
     in

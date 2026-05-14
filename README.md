@@ -166,6 +166,21 @@ filters.web-server-http = {
 };
 ```
 
+## Examples
+
+Complete, commented configurations under [`examples/`](examples/), each a
+`{ nftypes, nftzones, ... }: body` function ready to drop into
+`networking.nftzones.tables.<name>`:
+
+| File | Scenario |
+|---|---|
+| [`examples/home-router.nix`](examples/home-router.nix) | SOHO router — LAN/WAN, masquerade, a port-forward, default-deny inbound. |
+| [`examples/vlan-segmentation.nix`](examples/vlan-segmentation.nix) | Four VLAN security zones with a rule-by-rule reachability matrix. |
+| [`examples/dmz-hierarchy.nix`](examples/dmz-hierarchy.nix) | A DMZ whose hosts are `nodes` — per-host child zones under a shared parent. |
+
+Each is compiled by the `examples` check tier on every CI run, so they
+stay valid against the current type surface.
+
 ## Documentation
 
 | File | Audience |
@@ -186,21 +201,25 @@ filters.web-server-http = {
 
 ## Testing
 
-Three tiers, each runnable via `nix flake check`:
+Four tiers, each runnable via `nix flake check`:
 
 - **Unit** (`tests/unit/`): per-module tests of the compile pipeline's helpers and validators.
 - **Integration** (`tests/integration/`): structured assertions on the rendered nftables JSON for representative scenarios, plus negative tests that confirm Phase 1 validators reject known-bad inputs in the live `mkRuleset` pipeline.
+- **Examples** (`examples/`): compile-checks every `examples/*.nix` through `mkRuleset` so the shipped example configs can't drift out of sync with the type surface.
 - **VM** (`tests/vm/`): real-kernel multi-VM scenarios via `pkgs.testers.nixosTest`. One topology per feature, each requiring `/dev/kvm` on the builder. Verification is conntrack-on-router for NAT and deny-path tests, packet-content for everything else:
 
   | File | VMs | Coverage |
   |---|---|---|
-  | [`forward.nix`](tests/vm/forward.nix) | client + router + server + external | L3 forwarding, ICMP, SSH, SNAT masquerade, DNAT port-forward, DNS redirect, default-deny wan→lan, non-DNAT'd port, stateful prelude `[ASSURED]` + INVALID drop, `log` statement |
+  | [`forward.nix`](tests/vm/forward.nix) | client + router + server + external | L3 forwarding, ICMP, SSH, SNAT masquerade, DNAT port-forward, DNS redirect, default-deny wan→lan, non-DNAT'd port, stateful prelude `[ASSURED]` + INVALID drop, `reject` verdict, `log` statement |
   | [`vlan.nix`](tests/vm/vlan.nix) | router + vlan-iot + vlan-admin (single 802.1Q trunk) | inter-VLAN allow, inter-VLAN default-deny |
   | [`rpfilter.nix`](tests/vm/rpfilter.nix) | client + router + spoofer (wan-side host with a lan-range /32 alias) | `settings.rpfilter = true` accepts legit src, drops spoofed |
-  | [`marks.nix`](tests/vm/marks.nix) | client + router + server (with `ip rule fwmark X table Y`) | `sroutes` mark steers traffic to an alternate routing table |
+  | [`marks.nix`](tests/vm/marks.nix) | client + router + server (with `ip rule fwmark X table Y`) | `sroutes` mark steers forwarded traffic to an alternate routing table |
+  | [`droutes.nix`](tests/vm/droutes.nix) | router + target | `droutes` mark steers router-originated traffic (OUTPUT hook) |
   | [`dualstack.nix`](tests/vm/dualstack.nix) | client + router + server, IPv4 + IPv6 | dual-stack forwarding on an `inet` table, v6 conntrack tracking |
+  | [`bridge.nix`](tests/vm/bridge.nix) | vmA + bridge + vmB | `family = "bridge"` L2 filter across a Linux bridge |
+  | [`atomic-reload.nix`](tests/vm/atomic-reload.nix) | client + router + server | mid-flight `nft -f` ruleset swap preserves established connections |
 
-CI runs the suite against three nixpkgs refs in parallel — `pinned` (this repo's `flake.lock`), `nixos-25.11`, and `nixos-unstable` — so upstream regressions surface alongside changes here.
+CI runs the VM suite against three nixpkgs refs in parallel — `pinned` (this repo's `flake.lock`), `nixos-25.11`, and `nixos-unstable` — so upstream regressions surface alongside changes here.
 
 ## Contributing
 

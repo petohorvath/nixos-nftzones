@@ -110,6 +110,12 @@ jobs:
           purge-primary-key: never
       - name: Build integration checks
         run: nix build --print-build-logs .#checks.${{ matrix.system }}.integration
+      # `examples` is a lightweight compile-check tier — keeps
+      # `examples/*.nix` in sync with the type surface. Folded
+      # into the integration job rather than given its own
+      # since both are pure-eval and fast.
+      - name: Build examples checks
+        run: nix build --print-build-logs .#checks.${{ matrix.system }}.examples
 
   # VM tests run on x86_64-linux only. Nested KVM is reliably
   # available on free `ubuntu-latest` runners; the equivalent on
