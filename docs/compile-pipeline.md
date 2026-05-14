@@ -362,8 +362,11 @@ mkChildDispatchJumpRules = { hook, baseChainName, parent, children,
 ```
 lib/
   default.nix                — public surface: mkTable, mkRuleset,
-                               version + re-exports of `types` and
-                               `internal`.
+                               version, snippets + re-exports of
+                               `types` and `internal`.
+  snippets.nix               — nftzones.snippets.* rule-body
+                               shorthand (verdict × protocol grid);
+                               helpers under snippets/.
   internal/
     # Layer 0 — leaves (no inter-module deps)
     zone.nix                 — genSets (per-zone nftables sets,

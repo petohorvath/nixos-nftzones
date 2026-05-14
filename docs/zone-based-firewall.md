@@ -96,7 +96,7 @@ Rule order within a zone pair follows the same first-match semantics as nftables
 
 In the API, this construct is exposed as `filters.<name>` rather than `rules.<name>` — the word *filter* disambiguates the zone-pair-scoped exception (the concept this section describes) from an nftables `rule`, which is one statement-list line inside a chain. A single nftzones filter can compile to several nftables rules (one per cell in the cartesian `from × to` expansion).
 
-For the common "open / drop / reject these ports" patterns, `nftzones.snippets.*` returns a ready-made rule body so the user does not have to construct match + verdict by hand against the underlying DSL. See the README "Snippets" section for the surface and the plan document for the input contract.
+For the common "open / drop / reject these ports" patterns, `nftzones.snippets.*` returns a ready-made rule body so the user does not have to construct match + verdict by hand against the underlying DSL. See the README "Snippets" section for the full input/output contract.
 
 ## Intra-Zone Traffic
 
