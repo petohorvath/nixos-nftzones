@@ -6,3 +6,7 @@ result-*
 *~
 \#*\#
 .\#*
+
+# nix-direnv cache and per-user envrc overrides
+.direnv/
+.envrc.local
