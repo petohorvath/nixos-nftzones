@@ -272,7 +272,9 @@ pkgs.testers.nixosTest {
                     ruleset = router.succeed("nft list ruleset")
                     ct = router.succeed("conntrack -L 2>/dev/null || true")
                     master = client.execute(
-                        "ps -eo pid,stat,cmd | grep -E '[s]sh.*-fNM' || echo '(no master process)'"
+                        "systemctl status nft-ssh-master.service --no-pager 2>&1 || true; "
+                        "echo '---'; "
+                        "ps -eo pid,stat,cmd | grep -E '[s]sh.*-NM' || echo '(no master process)'"
                     )[1]
                 except Exception:
                     ruleset = ct = master = "(failed to capture)"
@@ -287,17 +289,19 @@ pkgs.testers.nixosTest {
             return self._cm.__exit__(exc_type, exc, tb)
 
     with diag_subtest("v1: persistent SSH works through the lan→wan allow"):
-        # Open the persistent connection (`-fNM` = background
-        # master, no command, master mode). `setsid` puts the
-        # master in its own session so it can't be SIGHUP'd by
-        # the driver shell exiting after `-f` backgrounding.
-        # Later ssh calls with the same ControlPath re-use it.
+        # Persistent master in a transient systemd unit. `ssh -f`
+        # alone is racy under the nixos test driver: the forked
+        # master inherits the per-command bash subshell's stdio
+        # pipes, and once that subshell exits its next write
+        # SIGPIPEs the master. Running under `systemd-run`
+        # detaches the master into its own cgroup with stdio
+        # routed to the journal, independent of any subshell.
         client.succeed(
-            f"setsid timeout 30 ssh {ssh_opts} {cm_opts} -fNM root@${serverWanIp}"
+            "systemd-run --quiet --collect --unit nft-ssh-master "
+            f"-- ssh {ssh_opts} {cm_opts} -NM root@${serverWanIp}"
         )
-        # `-fNM` returns when the master forks; the control
-        # socket may need a beat longer to start accepting mux
-        # requests. `ssh -O check` polls until it does.
+        # `systemd-run` returns when the unit starts; the control
+        # socket needs a beat longer to accept mux requests.
         client.wait_until_succeeds(
             f"ssh {cm_opts} -O check root@${serverWanIp}",
             timeout=15,
