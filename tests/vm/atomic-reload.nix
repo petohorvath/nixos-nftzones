@@ -248,10 +248,23 @@ pkgs.testers.nixosTest {
     server.succeed(f"echo '{pubkey}' > /root/.ssh/authorized_keys")
     server.succeed("chmod 600 /root/.ssh/authorized_keys")
 
-    ssh_opts = (
+    # Base options shared by every ssh in the test. No
+    # ServerAlive here — see master_opts below.
+    ssh_base_opts = (
         "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
-        "-o ConnectTimeout=5 -o ServerAliveInterval=3 -o ServerAliveCountMax=2"
+        "-o ConnectTimeout=5"
     )
+    # One-shot ssh calls (the v2 blocked-attempt subtest) want
+    # ssh to give up fast if the transport wedges, so they layer
+    # an aggressive ServerAlive on top.
+    ssh_opts = (
+        f"{ssh_base_opts} -o ServerAliveInterval=3 -o ServerAliveCountMax=2"
+    )
+    # The persistent master must outlive an `nft -f` reload
+    # mid-test. Aggressive ServerAlive would tear it down on
+    # the slightest packet hiccup during the reload window, so
+    # the master uses only ssh_base_opts.
+    master_opts = ssh_base_opts
     # ControlMaster keeps a persistent connection that
     # subsequent ssh calls latch onto via the unix socket.
     # Decouples "did the new SYN get through?" from "did the
@@ -298,7 +311,7 @@ pkgs.testers.nixosTest {
         # routed to the journal, independent of any subshell.
         client.succeed(
             "systemd-run --quiet --collect --unit nft-ssh-master "
-            f"-- ssh {ssh_opts} {cm_opts} -NM root@${serverWanIp}"
+            f"-- ssh {master_opts} {cm_opts} -NM root@${serverWanIp}"
         )
         # `systemd-run` returns when the unit starts; the control
         # socket needs a beat longer to accept mux requests.
