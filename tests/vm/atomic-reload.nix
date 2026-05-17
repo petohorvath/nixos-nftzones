@@ -271,23 +271,36 @@ pkgs.testers.nixosTest {
                 try:
                     ruleset = router.succeed("nft list ruleset")
                     ct = router.succeed("conntrack -L 2>/dev/null || true")
+                    master = client.execute(
+                        "ps -eo pid,stat,cmd | grep -E '[s]sh.*-fNM' || echo '(no master process)'"
+                    )[1]
                 except Exception:
-                    ruleset = ct = "(failed to capture)"
+                    ruleset = ct = master = "(failed to capture)"
                 print(
-                    f"\n=== router state at failure of {self.name!r} ===\n"
-                    f"--- nft list ruleset ---\n{ruleset}\n"
-                    f"--- conntrack -L ---\n{ct}\n"
-                    f"=== end router state ===\n",
+                    f"\n=== state at failure of {self.name!r} ===\n"
+                    f"--- nft list ruleset (router) ---\n{ruleset}\n"
+                    f"--- conntrack -L (router) ---\n{ct}\n"
+                    f"--- ssh master ps (client) ---\n{master}\n"
+                    f"=== end state ===\n",
                     flush=True,
                 )
             return self._cm.__exit__(exc_type, exc, tb)
 
     with diag_subtest("v1: persistent SSH works through the lan→wan allow"):
         # Open the persistent connection (`-fNM` = background
-        # master, no command, master mode). Later ssh calls
-        # with the same ControlPath re-use it.
+        # master, no command, master mode). `setsid` puts the
+        # master in its own session so it can't be SIGHUP'd by
+        # the driver shell exiting after `-f` backgrounding.
+        # Later ssh calls with the same ControlPath re-use it.
         client.succeed(
-            f"timeout 30 ssh {ssh_opts} {cm_opts} -fNM root@${serverWanIp}"
+            f"setsid timeout 30 ssh {ssh_opts} {cm_opts} -fNM root@${serverWanIp}"
+        )
+        # `-fNM` returns when the master forks; the control
+        # socket may need a beat longer to start accepting mux
+        # requests. `ssh -O check` polls until it does.
+        client.wait_until_succeeds(
+            f"ssh {cm_opts} -O check root@${serverWanIp}",
+            timeout=15,
         )
         out = client.succeed(
             f"timeout 10 ssh {cm_opts} root@${serverWanIp} 'echo hello-1'"
