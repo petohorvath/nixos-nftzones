@@ -73,7 +73,26 @@ in
 }
 ```
 
-The module compiles each table, renders to nftables block-form text via nftypes, and feeds the result into `networking.nftables.tables.<name>.content`. Build-time assertions catch missing `networking.nftables.enable` and table-name collisions.
+The module compiles each table, renders to nftables block-form text via nftypes, and feeds the result into `networking.nftables.tables.<name>.content`. Build-time assertions catch missing `networking.nftables.enable`, an enabled module with no tables declared (which would silently ship no firewall), and table-name collisions.
+
+#### Coexistence with `networking.firewall`
+
+`networking.firewall` (the stock NixOS firewall) installs its own `inet filter` table at hook `(input, filter)` — the same hook slot nftzones tables typically claim. When both are enabled, nftables runs both base chains at the same priority and the effective input policy is the **union** of their accepts: every port either module opens is open. That's almost never what users want.
+
+Set `networking.firewall.enable = false` whenever nftzones owns the input chain. The module emits a build-time warning when both are enabled to surface the conflict.
+
+```nix
+networking = {
+  firewall.enable = false;
+  nftables.enable = true;
+  nftzones = {
+    enable = true;
+    tables.fw = {
+      # ...
+    };
+  };
+};
+```
 
 #### Mixing with hand-written tables
 

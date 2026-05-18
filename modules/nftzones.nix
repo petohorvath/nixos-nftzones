@@ -99,7 +99,30 @@ in
           won't be activated.
         '';
       }
+      {
+        # An enabled nftzones with no tables compiles to no chains. Combined
+        # with the typical `networking.firewall.enable = false` that
+        # nftzones-managed hosts run with, this silently leaves the host
+        # with no firewall at all. Reject the empty-tables case so the
+        # user has to opt out explicitly (via `enable = false`) rather
+        # than by omission.
+        assertion = cfg.tables != { };
+        message = ''
+          networking.nftzones.enable is true but networking.nftzones.tables is empty.
+          This compiles to no nftables chains, which — combined with
+          networking.firewall.enable = false — leaves the host with no
+          firewall at all. Either declare at least one table under
+          networking.nftzones.tables, or set networking.nftzones.enable = false.
+        '';
+      }
     ]
+    # `networking.firewall` installs its own `inet filter` table
+    # hooked at `(input, filter)`; nftzones tables typically claim
+    # the same hook slot. nftables runs both base chains at the
+    # same priority and the effective policy is the union of
+    # accepts, which is rarely the user's intent. Warn (don't
+    # error) — there are edge cases where a user genuinely wants
+    # the stock firewall alongside zone-managed rules.
     ++ lib.mapAttrsToList (name: _: {
       # The nftzones module's own contribution (assigned a few
       # lines below) shows up in `options.networking.nftables.
@@ -120,5 +143,15 @@ in
     }) cfg.tables;
 
     networking.nftables.tables = compiledTables;
+
+    warnings = lib.optional config.networking.firewall.enable ''
+      Both networking.firewall.enable and networking.nftzones.enable are true.
+      networking.firewall installs its own `inet filter` table at hook
+      `(input, filter)`; nftzones tables typically claim the same hook slot.
+      Both base chains fire on every packet at the same priority and the
+      effective policy is the union of their accepts — opening more ports
+      than either source declared. Set networking.firewall.enable = false
+      when nftzones owns the input chain.
+    '';
   };
 }

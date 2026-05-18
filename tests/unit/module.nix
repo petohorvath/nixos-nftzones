@@ -91,15 +91,86 @@ in
     expected = false;
   };
 
-  # ===== module — enabled with empty tables adds no entries =====
+  # ===== module — enabled with empty tables fails the empty-tables assertion =====
 
-  testModuleEnabledEmptyTables = {
+  testModuleEnabledEmptyTablesAssertion = {
+    # `enable = true` + `tables = { }` previously compiled silently to
+    # an empty ruleset — combined with `networking.firewall.enable =
+    # false` (the typical nftzones-managed host setup), that's a
+    # firewall-less host. The assertion makes the misconfig loud.
     expr =
-      (evalSystem {
-        networking.nftables.enable = true;
-        networking.nftzones.enable = true;
-      }).networking.nftzones.tables == { };
-    expected = true;
+      let
+        failing = failingAssertions (evalSystem {
+          networking.nftables.enable = true;
+          networking.nftzones.enable = true;
+        });
+      in
+      {
+        count = lib.length failing;
+        mentionsEmpty = lib.any (a: lib.hasInfix "tables is empty" a.message) failing;
+      };
+    expected = {
+      count = 1;
+      mentionsEmpty = true;
+    };
+  };
+
+  # ===== module — disabled with empty tables passes (assertion is mkIf-gated) =====
+
+  testModuleDisabledEmptyTablesNoAssertion = {
+    expr = failingAssertions (evalSystem {
+      networking.nftables.enable = false;
+      networking.nftzones.enable = false;
+    });
+    expected = [ ];
+  };
+
+  # ===== module — warns when nftzones coexists with networking.firewall =====
+
+  testModuleWarnsOnFirewallCoexistence = {
+    # Both `networking.firewall.enable` and `networking.nftzones.enable`
+    # true causes two `inet filter` base chains to fire at the same
+    # priority — effective policy is union-of-accepts. Warning surfaces
+    # the conflict.
+    expr =
+      let
+        ws =
+          (evalSystem {
+            networking.nftables.enable = true;
+            networking.firewall.enable = true;
+            networking.nftzones = {
+              enable = true;
+              tables.fw.zones.lan.interfaces = [ "lan0" ];
+            };
+          }).warnings;
+      in
+      {
+        count = lib.length (lib.filter (w: lib.hasInfix "networking.nftzones" w) ws);
+        mentionsFirewall = lib.any (w: lib.hasInfix "networking.firewall.enable" w) ws;
+      };
+    expected = {
+      count = 1;
+      mentionsFirewall = true;
+    };
+  };
+
+  # ===== module — no firewall-coexistence warning when firewall disabled =====
+
+  testModuleNoFirewallCoexistenceWarn = {
+    # nixpkgs defaults `networking.firewall.enable` to true, so the
+    # test must explicitly disable it to verify the warning DOESN'T
+    # fire when firewall is off.
+    expr =
+      lib.filter (w: lib.hasInfix "networking.nftzones" w)
+        (evalSystem {
+          networking.nftables.enable = true;
+          networking.firewall.enable = false;
+          networking.nftzones = {
+            enable = true;
+            tables.fw.zones.lan.interfaces = [ "lan0" ];
+          };
+        }).warnings;
+    expected = [ ];
   };
 
   # ===== module — single table compiles to block-form content =====
