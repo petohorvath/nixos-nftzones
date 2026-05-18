@@ -40,6 +40,7 @@
         ↓ checkSetNameCollisions        ctx.errors   (appends)
         ↓ checkInterfaceOverlap         ctx.errors   (appends)
         ↓ checkCidrOverlap              ctx.errors   (appends)
+        ↓ checkMatchOverrideContent     ctx.errors   (appends)
         ↓ checkObjectRefs               ctx.errors   (appends)
       { table;
         ctx = {
@@ -405,6 +406,29 @@
   as a separate misconfiguration class.
 
   Each error is `lib.nameValuePair "cidrOverlap" <message>`.
+
+  ===== checkMatchOverrideContent =====
+
+  Reads:  ctx.mergedZones
+  Writes: ctx.errors (appends)
+
+  Rejects non-match statements in `matchOverride.<side>.<section>`
+  bodies. These sections are spliced as prefix-match clauses into
+  every dispatch rule for the zone; a verdict (`accept` / `drop` /
+  `jump` / `goto`) or side-effecting statement (`counter` / `log` /
+  `limit` / mark-set / NAT / mangle / …) there silently changes
+  the meaning of zone dispatch — verdicts terminate the rule
+  before the per-pair sub-chain jump fires, and side-effects run
+  on every packet matching the zone rather than just the packets
+  the user's filter rule targets.
+
+  Per-statement check: the only valid tag is `match` (the
+  `{ match = { left; op; right; }; }` shape produced by
+  `nftypes.dsl.{eq,inSet,within}`). Every other tagged-statement
+  kind is rejected with a path-aware error pointing at the exact
+  matchOverride slot (`zones.<zone>.matchOverride.<side>.<section>[<idx>]`).
+
+  Each error is `lib.nameValuePair "matchOverrideNonMatch" <message>`.
 
   ===== checkObjectRefs =====
 
@@ -1495,6 +1519,73 @@ let
       };
     };
 
+  checkMatchOverrideContent =
+    { table, ctx }:
+    let
+      inherit (ctx) mergedZones;
+
+      sections = [
+        "interfaces"
+        "ipv4"
+        "ipv6"
+        "extra"
+      ];
+
+      sides = [
+        "ingress"
+        "egress"
+      ];
+
+      # nftypes' `attrTag` enforces single-tag-key shape at the type
+      # layer; the head of `attrNames` is the statement's kind.
+      nonMatchKindOf =
+        stmt:
+        let
+          keys = builtins.attrNames stmt;
+        in
+        if keys != [ ] && builtins.head keys != "match" then builtins.head keys else null;
+
+      checkBody =
+        zoneName: side: section: body:
+        lib.concatLists (
+          lib.imap0 (
+            i: stmt:
+            let
+              kind = nonMatchKindOf stmt;
+            in
+            if kind == null then
+              [ ]
+            else
+              [
+                (lib.nameValuePair "matchOverrideNonMatch" (
+                  "zones.${zoneName}.matchOverride.${side}.${section}[${toString i}] is a `${kind}` statement; "
+                  + "matchOverride sections only accept match clauses (e.g. `eq meta.mark 0x100`). "
+                  + "Verdicts and side-effecting statements would silently change dispatch semantics."
+                ))
+              ]
+          ) body
+        );
+
+      checkSide =
+        zoneName: side:
+        let
+          active = getActiveMatchOverrides mergedZones.${zoneName} side;
+        in
+        lib.concatMap (
+          section: if active ? ${section} then checkBody zoneName side section active.${section} else [ ]
+        ) sections;
+
+      checkZone = zoneName: lib.concatMap (checkSide zoneName) sides;
+
+      newErrors = lib.concatMap checkZone (builtins.attrNames mergedZones);
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
   checkObjectRefs =
     { table, ctx }:
     let
@@ -1650,6 +1741,7 @@ let
         checkSetNameCollisions
         checkInterfaceOverlap
         checkCidrOverlap
+        checkMatchOverrideContent
         checkObjectRefs
       ];
 
@@ -1690,6 +1782,7 @@ in
     checkSetNameCollisions
     checkInterfaceOverlap
     checkCidrOverlap
+    checkMatchOverrideContent
     checkObjectRefs
     normalizeTable
     ;

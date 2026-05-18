@@ -21,9 +21,17 @@
                             `interfaces`, `ipv4`, `ipv6`, `extra`).
                             Each section is `nullOr primitives.rule`;
                             non-null replaces the corresponding
-                            auto-generated clause. Consumed by
-                            Phase 1's `checkZoneMatchable` and
-                            Phase 4's `mkDirectionVariants`.
+                            auto-generated clause. Sections only
+                            accept match-clause statements (the
+                            `eq` / `inSet` / `within` shape) —
+                            verdicts and side-effecting statements
+                            are rejected by Phase 1's
+                            `checkMatchOverrideContent` because
+                            they would silently change dispatch
+                            semantics. Consumed by Phase 1's
+                            `checkZoneMatchable` /
+                            `checkMatchOverrideContent` and Phase 4's
+                            `mkDirectionVariants`.
 
   Consumers wire the zone type as `lib.mkOption { type =
   lib.types.attrsOf nftzones.types.zone; }`.
@@ -92,6 +100,17 @@ let
 
     Empty list (`[ ]`) is treated as `null` everywhere — both mean
     "no constraint contributed by this section".
+
+    Content restriction: every section accepts only match-clause
+    statements (the `{ match = { left; op; right; }; }` shape
+    produced by `nftypes.dsl.{eq,inSet,within}`). Verdicts
+    (`accept`, `drop`, `jump`, `goto`) and side-effecting
+    statements (`counter`, `log`, `limit`, NAT, mangle, mark-set,
+    …) are rejected by Phase 1's `checkMatchOverrideContent` —
+    these sections are spliced as prefix-match clauses into every
+    dispatch rule for the zone, so a verdict would short-circuit
+    dispatch and a side-effect would fire on every zone-matching
+    packet rather than just the user's targeted ones.
   */
   zoneMatchOverrideSide = lib.types.submodule {
     options = {
