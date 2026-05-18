@@ -34,12 +34,14 @@
         ↓ checkChainOverridePlacement   ctx.errors   (appends)
         ↓ checkChainPlacement           ctx.errors   (appends)
         ↓ checkRpfilterOverride         ctx.warnings (appends)
+        ↓ checkChainOverrideSemantics   ctx.warnings (appends)
         ↓ checkNodeAddresses            ctx.errors   (appends)
         ↓ checkNatBodies                ctx.errors   (appends)
         ↓ checkPolicyUniqueness         ctx.errors   (appends)
         ↓ checkSetNameCollisions        ctx.errors   (appends)
         ↓ checkInterfaceOverlap         ctx.errors   (appends)
         ↓ checkCidrOverlap              ctx.errors   (appends)
+        ↓ checkCrossAxisOverlap         ctx.warnings (appends)
         ↓ checkObjectRefs               ctx.errors   (appends)
       { table;
         ctx = {
@@ -405,6 +407,47 @@
   as a separate misconfiguration class.
 
   Each error is `lib.nameValuePair "cidrOverlap" <message>`.
+
+  ===== checkCrossAxisOverlap =====
+
+  Reads:  ctx.mergedZones
+  Writes: ctx.warnings (appends)
+
+  Warns when two distinct zones may match the same packet across
+  *different* matching axes — one zone bound by interface, the
+  other by CIDR. `checkInterfaceOverlap` and `checkCidrOverlap`
+  only compare same-axis pairs (iface↔iface, cidr↔cidr); a packet
+  from `10.0.0.5` arriving on `eth0` matches both
+  `zone-iface = { interfaces = [ "eth0" ]; }` and
+  `zone-cidr = { cidrs = [ "10.0.0.0/24" ]; }`, but neither
+  same-axis validator flags it.
+
+  When both zones appear in dispatch rules in the same chain, the
+  jump rules fire in alphabetical sub-chain-key order (a
+  side-effect of `lib.mapAttrs` enumeration). The losing zone's
+  rules are silently shadowed. Renaming `zone-iface` to
+  `aaa-iface` flips the behavior. Verified PoC: an SSH-allow on
+  the iface-zone is shadowed by a drop on the cidr-zone because
+  the cidr-zone sorts first.
+
+  Pair-wise comparison. Flags any pair where one zone is
+  *strictly* interface-only (interfaces non-empty, cidrs empty)
+  and the other is *strictly* CIDR-only (vice versa), excluding
+  pairs in an ancestor/descendant relation (parent/child overlap
+  is intentional — the canonical case is a node lowered into its
+  parent zone). Multi-axis zones (a zone with both interfaces and
+  CIDRs) are not flagged: they're the typical real-world pattern
+  ("lan = eth1 plus 10.0.0.0/24") rather than the audit's
+  accidentally-split-zone failure mode.
+
+  matchOverride sections are not inspected — users who replace the
+  auto match path have opted out of the auto axis and are
+  responsible for their own overlap audit. The flag fires on the
+  bare `zone.interfaces` / `zone.cidrs` content only.
+
+  Each warning lists the two zone names, the axes involved, and
+  the recommended action (restructure into a single axis, or use
+  hierarchy if one zone is a refinement of the other).
 
   ===== checkObjectRefs =====
 
@@ -1022,6 +1065,113 @@ let
     };
 
   /*
+    Soft checks for kernel-valid chain overrides that are
+    semantically suspect. checkChainPlacement already rejects
+    placements the kernel refuses (e.g. nat at non-nat hooks);
+    this validator catches the layer above — placements the
+    kernel accepts but the user almost certainly didn't mean.
+
+    Three cases the audit flagged:
+
+      - filter at hook=postrouting: `iifname` reflects the *input*
+        device, which after routing may not match user intent
+        ("source zone"), especially for locally-originated
+        traffic where iifname is "lo" or empty.
+
+      - dnat at hook=output: from-side dispatches on saddr, which
+        for output is the local interface address. A from-zone
+        bound by a wide CIDR (0/0) would silently rewrite every
+        locally-originated packet.
+
+      - snat at priority != srcnat: stateful SNAT must run at
+        srcnat (100) so conntrack records the translation. At any
+        other priority the rewrite happens but conntrack misses
+        it — return traffic breaks.
+
+    All three are warnings (not errors) because each *can* be the
+    user's deliberate intent in edge cases.
+  */
+  checkChainOverrideSemantics =
+    { table, ctx }:
+    let
+      inherit (table) family;
+      inherit (nftypes) priorityNameOf;
+
+      entryHasChain = entry: (entry.chain or null) != null;
+
+      mkWarning =
+        kind: entryName: msg:
+        "${kind}.${entryName}.chain: ${msg}";
+
+      # Filter at postrouting — iifname semantics differ from
+      # pre-routing dispatch.
+      filterPostroutingWarnings = lib.concatLists (
+        lib.mapAttrsToList (
+          entryName: entry:
+          if entryHasChain entry && entry.chain.hook == "postrouting" then
+            [
+              (mkWarning "filters" entryName (
+                "hook=postrouting is kernel-valid but `iifname` here reflects the "
+                + "input device pre-routing, which may not match what `from` zones "
+                + "mean (especially for locally-originated traffic where iifname is "
+                + "'lo' or empty). Confirm this is intentional, or place the filter "
+                + "at the default `(forward|input|output, filter)` instead."
+              ))
+            ]
+          else
+            [ ]
+        ) (table.filters or { })
+      );
+
+      # Dnat at output — from-side at output is local, not external.
+      dnatOutputWarnings = lib.concatLists (
+        lib.mapAttrsToList (
+          entryName: entry:
+          if entryHasChain entry && entry.chain.hook == "output" then
+            [
+              (mkWarning "dnats" entryName (
+                "hook=output rewrites locally-originated traffic. The `from` side "
+                + "dispatches on saddr, which at output is the local interface "
+                + "address — a from-zone with a wide CIDR (e.g. 0.0.0.0/0) would "
+                + "silently rewrite every locally-originated packet. Confirm this "
+                + "is what you want, or keep the default `(prerouting, dstnat)` "
+                + "for external-traffic DNAT."
+              ))
+            ]
+          else
+            [ ]
+        ) (table.dnats or { })
+      );
+
+      # Snat at non-srcnat priority — breaks conntrack.
+      snatPriorityWarnings = lib.concatLists (
+        lib.mapAttrsToList (
+          entryName: entry:
+          if entryHasChain entry && priorityNameOf family entry.chain.priority != "srcnat" then
+            [
+              (mkWarning "snats" entryName (
+                "priority='${toString entry.chain.priority}' is not srcnat (100). "
+                + "Stateful SNAT must run at the srcnat priority so conntrack records "
+                + "the translation; at any other priority the rewrite happens but "
+                + "conntrack misses it and return traffic breaks. Either use "
+                + "priority='srcnat' (or 100), or accept that this NAT is one-way."
+              ))
+            ]
+          else
+            [ ]
+        ) (table.snats or { })
+      );
+
+      newWarnings = filterPostroutingWarnings ++ dnatOutputWarnings ++ snatPriorityWarnings;
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        warnings = ctx.warnings ++ newWarnings;
+      };
+    };
+
+  /*
     Reject `snats.<x>.rule.snat = { }` and
     `dnats.<x>.rule.action.dnat = { }` where `addr` is null. nftypes'
     `natBody` lets every field default to `null` (so the user-shape
@@ -1495,6 +1645,60 @@ let
       };
     };
 
+  checkCrossAxisOverlap =
+    { table, ctx }:
+    let
+      inherit (ctx) mergedZones;
+
+      zoneNames = builtins.attrNames mergedZones;
+      n = builtins.length zoneNames;
+
+      # Strict single-axis: zone matches by interfaces only or by
+      # cidrs only — never both. Multi-axis zones (iface + cidr
+      # together) are the typical pattern in real configs and are
+      # not the failure mode the audit's PoC exercised.
+      ifaceOnly = zone: zone.interfaces != [ ] && zone.cidrs == [ ];
+      cidrOnly = zone: zone.cidrs != [ ] && zone.interfaces == [ ];
+
+      # Pair-wise (i < j) walk. Flag the pair iff one zone is
+      # interface-only and the other is CIDR-only — i.e. the user
+      # split what looks like one logical zone across two
+      # declarations on different axes. `checkInterfaceOverlap` and
+      # `checkCidrOverlap` won't catch this by construction.
+      crossAxisPair = a: b: (ifaceOnly a && cidrOnly b) || (cidrOnly a && ifaceOnly b);
+
+      pairWarnings = lib.concatMap (
+        i:
+        lib.concatMap (
+          j:
+          let
+            aName = builtins.elemAt zoneNames i;
+            bName = builtins.elemAt zoneNames j;
+            a = mergedZones.${aName};
+            b = mergedZones.${bName};
+          in
+          if crossAxisPair a b && !(relatedByHierarchy mergedZones aName bName) then
+            [
+              (
+                "zones '${aName}' and '${bName}' may match the same packet across different axes "
+                + "(one is interface-bound, the other is CIDR-bound). If both appear in the same "
+                + "chain, dispatch order is alphabetical attribute-key order — the losing zone's "
+                + "rules are silently shadowed. Restructure both zones onto the same axis, or "
+                + "make one a child of the other if it's a refinement."
+              )
+            ]
+          else
+            [ ]
+        ) (lib.range (i + 1) (n - 1))
+      ) (lib.range 0 (n - 1));
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        warnings = ctx.warnings ++ pairWarnings;
+      };
+    };
+
   checkObjectRefs =
     { table, ctx }:
     let
@@ -1644,12 +1848,14 @@ let
         checkChainOverridePlacement
         checkChainPlacement
         checkRpfilterOverride
+        checkChainOverrideSemantics
         checkNodeAddresses
         checkNatBodies
         checkPolicyUniqueness
         checkSetNameCollisions
         checkInterfaceOverlap
         checkCidrOverlap
+        checkCrossAxisOverlap
         checkObjectRefs
       ];
 
@@ -1685,11 +1891,13 @@ in
     checkChainOverridePlacement
     checkChainPlacement
     checkRpfilterOverride
+    checkChainOverrideSemantics
     checkNodeAddresses
     checkNatBodies
     checkSetNameCollisions
     checkInterfaceOverlap
     checkCidrOverlap
+    checkCrossAxisOverlap
     checkObjectRefs
     normalizeTable
     ;

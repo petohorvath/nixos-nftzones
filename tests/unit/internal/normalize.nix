@@ -15,6 +15,7 @@ let
     computeZoneSets
     checkChainPlacement
     checkRpfilterOverride
+    checkChainOverrideSemantics
     checkNodeAddresses
     checkNatBodies
     checkParentRefs
@@ -34,9 +35,12 @@ let
     checkSetNameCollisions
     checkInterfaceOverlap
     checkCidrOverlap
+    checkCrossAxisOverlap
     checkObjectRefs
     normalizeTable
     ;
+
+  inherit (pkgs) lib;
 
   dsl = nftypes.dsl;
 
@@ -3915,6 +3919,367 @@ in
           };
         }
       ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkChainOverrideSemantics — no overrides, no warnings =====
+
+  testCheckChainOverrideSemanticsDefaults = {
+    expr =
+      (runPhase checkChainOverrideSemantics (
+        emptyTable
+        // {
+          family = "inet";
+          filters.allow-ssh = {
+            from = [ "wan" ];
+            to = [ "local" ];
+            rule = [ ];
+            chain = null;
+            priority = "default";
+          };
+          snats.masq = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule.masquerade = { };
+            chain = null;
+            priority = "default";
+          };
+          dnats.fwd = {
+            from = [ "wan" ];
+            rule = {
+              match = [ ];
+              action.dnat = {
+                addr = "10.0.0.5";
+                port = 443;
+              };
+            };
+            chain = null;
+            priority = "default";
+          };
+        }
+      )).warnings;
+    expected = [ ];
+  };
+
+  # ===== checkChainOverrideSemantics — filter at postrouting warns =====
+
+  testCheckChainOverrideSemanticsFilterPostrouting = {
+    expr =
+      let
+        ws =
+          (runPhase checkChainOverrideSemantics (
+            emptyTable
+            // {
+              family = "inet";
+              filters.late = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+                rule = [ ];
+                chain = {
+                  hook = "postrouting";
+                  priority = "srcnat";
+                };
+                priority = "default";
+              };
+            }
+          )).warnings;
+      in
+      {
+        count = lib.length ws;
+        mentionsHook = lib.any (w: lib.hasInfix "hook=postrouting" w) ws;
+        mentionsEntry = lib.any (w: lib.hasInfix "filters.late.chain" w) ws;
+      };
+    expected = {
+      count = 1;
+      mentionsHook = true;
+      mentionsEntry = true;
+    };
+  };
+
+  # ===== checkChainOverrideSemantics — dnat at output warns =====
+
+  testCheckChainOverrideSemanticsDnatOutput = {
+    expr =
+      let
+        ws =
+          (runPhase checkChainOverrideSemantics (
+            emptyTable
+            // {
+              family = "inet";
+              dnats.local-rewrite = {
+                from = [ "local" ];
+                rule = {
+                  match = [ ];
+                  action.dnat = {
+                    addr = "10.0.0.5";
+                    port = 443;
+                  };
+                };
+                chain = {
+                  hook = "output";
+                  priority = "dstnat";
+                };
+                priority = "default";
+              };
+            }
+          )).warnings;
+      in
+      {
+        count = lib.length ws;
+        mentionsHook = lib.any (w: lib.hasInfix "hook=output" w) ws;
+      };
+    expected = {
+      count = 1;
+      mentionsHook = true;
+    };
+  };
+
+  # ===== checkChainOverrideSemantics — snat at non-srcnat priority warns =====
+
+  testCheckChainOverrideSemanticsSnatNonSrcnat = {
+    expr =
+      let
+        ws =
+          (runPhase checkChainOverrideSemantics (
+            emptyTable
+            // {
+              family = "inet";
+              snats.early = {
+                from = [ "lan" ];
+                to = [ "wan" ];
+                rule.masquerade = { };
+                chain = {
+                  hook = "postrouting";
+                  priority = "mangle";
+                };
+                priority = "default";
+              };
+            }
+          )).warnings;
+      in
+      {
+        count = lib.length ws;
+        mentionsPriority = lib.any (w: lib.hasInfix "mangle" w && lib.hasInfix "srcnat" w) ws;
+      };
+    expected = {
+      count = 1;
+      mentionsPriority = true;
+    };
+  };
+
+  # ===== checkChainOverrideSemantics — snat at explicit srcnat passes =====
+
+  testCheckChainOverrideSemanticsSnatExplicitSrcnat = {
+    # Explicit override at the *correct* priority is fine. Same
+    # for the int form (100 = srcnat).
+    expr =
+      (runPhase checkChainOverrideSemantics (
+        emptyTable
+        // {
+          family = "inet";
+          snats.s1 = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule.masquerade = { };
+            chain = {
+              hook = "postrouting";
+              priority = "srcnat";
+            };
+            priority = "default";
+          };
+          snats.s2 = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule.masquerade = { };
+            chain = {
+              hook = "postrouting";
+              priority = 100;
+            };
+            priority = "default";
+          };
+        }
+      )).warnings;
+    expected = [ ];
+  };
+
+  # ===== checkChainOverrideSemantics — multiple sub-cases aggregate =====
+
+  testCheckChainOverrideSemanticsMultiple = {
+    expr =
+      lib.length
+        (runPhase checkChainOverrideSemantics (
+          emptyTable
+          // {
+            family = "inet";
+            filters.f = {
+              from = [ "lan" ];
+              to = [ "wan" ];
+              rule = [ ];
+              chain = {
+                hook = "postrouting";
+                priority = "srcnat";
+              };
+              priority = "default";
+            };
+            dnats.d = {
+              from = [ "local" ];
+              rule = {
+                match = [ ];
+                action.dnat = {
+                  addr = "10.0.0.5";
+                  port = 443;
+                };
+              };
+              chain = {
+                hook = "output";
+                priority = "dstnat";
+              };
+              priority = "default";
+            };
+            snats.s = {
+              from = [ "lan" ];
+              to = [ "wan" ];
+              rule.masquerade = { };
+              chain = {
+                hook = "postrouting";
+                priority = "filter";
+              };
+              priority = "default";
+            };
+          }
+        )).warnings;
+    expected = 3;
+  };
+
+  # ===== checkCrossAxisOverlap — all iface-only zones, no warnings =====
+
+  testCheckCrossAxisOverlapAllIfaces = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkCrossAxisOverlap
+        ]
+        {
+          zones = {
+            lan.interfaces = [ "lan0" ];
+            wan.interfaces = [ "wan0" ];
+            dmz.interfaces = [ "dmz0" ];
+          };
+        }
+      ).warnings;
+    expected = [ ];
+  };
+
+  # ===== checkCrossAxisOverlap — single iface×cidr pair flagged =====
+
+  testCheckCrossAxisOverlapPairFlagged = {
+    # `lan-iface` matches by iif `lan0`; `lan-cidr` matches by saddr
+    # 10.0.0.0/24. A packet from 10.0.0.5 on lan0 matches both,
+    # dispatch order is alphabetical — silent shadowing.
+    expr =
+      let
+        ws =
+          (runEvalPipeline
+            [
+              convertNodesToZones
+              checkCrossAxisOverlap
+            ]
+            {
+              zones = {
+                lan-iface.interfaces = [ "lan0" ];
+                lan-cidr.cidrs = [ "10.0.0.0/24" ];
+              };
+            }
+          ).warnings;
+      in
+      {
+        count = lib.length ws;
+        mentionsBothZones = lib.any (w: lib.hasInfix "lan-iface" w && lib.hasInfix "lan-cidr" w) ws;
+      };
+    expected = {
+      count = 1;
+      mentionsBothZones = true;
+    };
+  };
+
+  # ===== checkCrossAxisOverlap — ancestor/descendant pair skipped =====
+
+  testCheckCrossAxisOverlapHierarchySkipped = {
+    # Parent iface-zone + child cidr-zone is the canonical refinement
+    # case (node lowered into its parent zone). Overlap is intentional
+    # — child traffic dispatches through parent's chain first.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkCrossAxisOverlap
+        ]
+        {
+          zones = {
+            lan.interfaces = [ "lan0" ];
+            web = {
+              parent = "lan";
+              cidrs = [ "10.0.0.5/32" ];
+            };
+          };
+        }
+      ).warnings;
+    expected = [ ];
+  };
+
+  # ===== checkCrossAxisOverlap — multiple distinct pairs each flagged =====
+
+  testCheckCrossAxisOverlapMultiplePairs = {
+    expr =
+      let
+        ws =
+          (runEvalPipeline
+            [
+              convertNodesToZones
+              checkCrossAxisOverlap
+            ]
+            {
+              zones = {
+                a-iface.interfaces = [ "a0" ];
+                b-iface.interfaces = [ "b0" ];
+                c-cidr.cidrs = [ "10.0.0.0/24" ];
+                d-cidr.cidrs = [ "10.1.0.0/24" ];
+              };
+            }
+          ).warnings;
+      in
+      lib.length ws;
+    # a-iface × {c-cidr, d-cidr} = 2; b-iface × {c-cidr, d-cidr} = 2.
+    # iface↔iface (a×b) handled by checkInterfaceOverlap; cidr↔cidr
+    # (c×d) handled by checkCidrOverlap. Total cross-axis: 4.
+    expected = 4;
+  };
+
+  # ===== checkCrossAxisOverlap — multi-axis zone is NOT flagged =====
+
+  testCheckCrossAxisOverlapMultiAxisZoneSkipped = {
+    # `multi` has BOTH interfaces and cidrs — the typical real-world
+    # "this zone is eth0 plus 10.0.0.0/24" pattern, not the audit's
+    # accidentally-split-zone case. `iface-only` has only interfaces.
+    # The check intentionally skips multi-axis zones to keep the
+    # false-positive rate manageable.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkCrossAxisOverlap
+        ]
+        {
+          zones = {
+            multi = {
+              interfaces = [ "multi0" ];
+              cidrs = [ "10.0.0.0/24" ];
+            };
+            iface-only.interfaces = [ "iface0" ];
+          };
+        }
+      ).warnings;
     expected = [ ];
   };
 
