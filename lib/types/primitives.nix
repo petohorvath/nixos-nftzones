@@ -18,6 +18,13 @@
     - `rule`          — list of nftypes statements forming one rule
                         body. Shared shape for `filterRule` and the
                         inner list of `zoneMatchVariants`.
+    - `matchRule`     — list restricted to match-clause statements
+                        only (`{ match = ...; }`). Shape for
+                        `zoneMatchOverrideSide`'s section types,
+                        which get spliced as prefix-match clauses
+                        into dispatch rules — verdicts and side-
+                        effects there would short-circuit dispatch
+                        or fire on every zone packet.
     - `entryPriority` — symbol-or-int sort key for ordering an
                         entry's emitted rules within its chain
                         (nftzones-internal; not the nftables chain
@@ -66,6 +73,23 @@ let
     libnftables-json shapes.
   */
   rule = lib.types.listOf nftypes.types.statement;
+
+  /*
+    Match-only counterpart to `rule`. Each leaf must be a
+    `{ match = ...; }` statement (the `eq` / `inSet` / `within`
+    shape from `nftypes.dsl`); verdicts (accept/drop/jump/goto)
+    and side-effecting statements (counter/log/limit/mark-set/
+    NAT/mangle) are rejected at evalModules time by
+    `nftypes.types.matchStatement`.
+
+    Used by `zoneMatchOverrideSide` — those sections are spliced
+    as prefix-match clauses into every dispatch rule for the
+    zone, so a verdict would short-circuit dispatch before the
+    per-pair sub-chain jump fires (security audit C2, verified
+    PoC) and a side-effect would fire on every zone-matching
+    packet rather than just the user's targeted ones.
+  */
+  matchRule = lib.types.listOf nftypes.types.matchStatement;
 
   /*
     Entry priority — nftzones-internal sort key for ordering an
@@ -157,6 +181,7 @@ in
     identifier
     comment
     rule
+    matchRule
     entryPriority
     chainPriority
     chainOverride
