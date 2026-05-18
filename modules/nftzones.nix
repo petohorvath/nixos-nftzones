@@ -34,16 +34,16 @@ let
   # command is where `flags` and `comment` live, so the block
   # renderer silently strips them. nftables block syntax permits
   # both inside the braces, so we prepend them ourselves.
-  escapeComment =
-    builtins.replaceStrings
-      [ "\\" "\"" "\n" "\r" "\t" ]
-      [ "\\\\" "\\\"" "\\n" "\\r" "\\t" ];
-
+  #
+  # No escaping needed for the comment: `nftzones.types.comment`
+  # restricts the input to nft-safe characters (no `"`, no `\`, no
+  # control chars, ≤128 bytes) at eval time. nft has no escape
+  # grammar so render-escaping isn't an option anyway.
   renderTableMetadata =
     table:
     let
       flagsLine = lib.optional (table.flags != [ ]) "flags ${lib.concatStringsSep ", " table.flags};";
-      commentLine = lib.optional (table.comment != null) ''comment "${escapeComment table.comment}";'';
+      commentLine = lib.optional (table.comment != null) ''comment "${table.comment}";'';
       lines = flagsLine ++ commentLine;
     in
     lib.optionalString (lines != [ ]) (lib.concatStringsSep "\n" lines + "\n");

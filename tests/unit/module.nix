@@ -386,27 +386,6 @@ in
     expected = true;
   };
 
-  # Quotes / backslashes in the comment must be escaped per
-  # nftables string syntax, not passed through raw (which would
-  # close the string and create a parse error at activation).
-  testModuleEscapesCommentSpecials = {
-    expr =
-      let
-        cfg = evalSystem {
-          networking.nftables.enable = true;
-          networking.nftzones = {
-            enable = true;
-            tables.fw = {
-              comment = ''with "quote" and \slash'';
-              zones.lan.interfaces = [ "lan0" ];
-            };
-          };
-        };
-      in
-      lib.hasInfix ''comment "with \"quote\" and \\slash";'' cfg.networking.nftables.tables.fw.content;
-    expected = true;
-  };
-
   # Default values must not leak into the content — verifies the
   # prefix is empty when neither field is set.
   testModuleNoMetadataPrefixByDefault = {

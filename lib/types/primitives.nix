@@ -11,9 +11,10 @@
   Exported types:
     - `identifier`    — `[a-z][a-z0-9_-]*` string. Shared shape for
                         zone names and filter names.
-    - `comment`       — optional free-form string (`null` means no
-                        comment). Shared shape for object-level
-                        comments.
+    - `comment`       — optional nft-safe quoted string (`null` means
+                        no comment). Shared shape for object-level
+                        comments. Restricted character set + length
+                        cap because nft has no string-escape grammar.
     - `rule`          — list of nftypes statements forming one rule
                         body. Shared shape for `filterRule` and the
                         inner list of `zoneMatchVariants`.
@@ -36,7 +37,27 @@ let
 
   identifier = lib.types.strMatching "[a-z][a-z0-9_-]*";
 
-  comment = lib.types.nullOr lib.types.str;
+  /*
+    nft's lexer has no string-escape grammar: `\` is a literal byte
+    inside quoted strings, and the next bare `"` ends the token.
+    A comment containing `"` would terminate early and trailing
+    content would parse as further nft constructs — at table scope
+    that includes nested `chain` blocks, which is a real firewall
+    bypass (verified PoC: `comment "X"; chain bypass { ... }"`
+    injects a chain with `policy accept` ahead of the user's
+    chain).
+
+    We can't render-escape our way out (no escape syntax to render
+    into), so the type rejects `"`, `\`, and control chars at
+    eval time, plus the kernel's NFTNL_UDATA_COMMENT_MAXLEN cap
+    (128 bytes). Upstream `nftypes` enforces the same restriction
+    at its schema + renderer layers; this local copy is defense-
+    in-depth and surfaces the rejection earlier (at user input
+    parse time, not render time) for a clearer error.
+  */
+  comment = lib.types.nullOr (
+    lib.types.addCheck (lib.types.strMatching ''[^"\\[:cntrl:]]*'') (s: builtins.stringLength s <= 128)
+  );
 
   /*
     A list of nftypes statements spliced conjunctively into a
