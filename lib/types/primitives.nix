@@ -4,17 +4,17 @@
 
   Internal to `lib/types/`: this module is not merged into the public
   `nftzones.types` namespace. Consumers should reach for the named
-  types (`zoneName`, `filterName`, `zoneComment`, `filterComment`,
-  `filterRule`, `filterPriority`, …) that build on these primitives,
-  not for the bare names below.
+  types (`zoneName`, `filterName`, `filterComment`, `filterRule`,
+  `filterPriority`, …) that build on these primitives, not for the
+  bare names below.
 
   Exported types:
     - `identifier`    — `[a-z][a-z0-9_-]*` string. Shared shape for
                         zone names and filter names.
     - `comment`       — optional nft-safe quoted string (`null` means
                         no comment). Shared shape for object-level
-                        comments. Restricted character set + length
-                        cap because nft has no string-escape grammar.
+                        comments. Aliases `nftypes.types.nftQuotedString`
+                        (rejects `"`, `\`, control chars; ≤128 bytes).
     - `rule`          — list of nftypes statements forming one rule
                         body. Shared shape for `filterRule` and the
                         inner list of `zoneMatchVariants`.
@@ -54,17 +54,15 @@ let
     injects a chain with `policy accept` ahead of the user's
     chain).
 
-    We can't render-escape our way out (no escape syntax to render
-    into), so the type rejects `"`, `\`, and control chars at
-    eval time, plus the kernel's NFTNL_UDATA_COMMENT_MAXLEN cap
-    (128 bytes). Upstream `nftypes` enforces the same restriction
-    at its schema + renderer layers; this local copy is defense-
-    in-depth and surfaces the rejection earlier (at user input
-    parse time, not render time) for a clearer error.
+    Upstream `nftypes.types.nftQuotedString` already enforces the
+    safe-byte set (`[^"\\[:cntrl:]]*`) plus the kernel's
+    NFTNL_UDATA_COMMENT_MAXLEN cap (128 bytes) at evalModules time,
+    with the text renderer asserting the same predicate as defense-
+    in-depth. Alias it here so the nftzones surface tracks any
+    future upstream tightening (e.g. added parser-meta bytes)
+    without manual sync.
   */
-  comment = lib.types.nullOr (
-    lib.types.addCheck (lib.types.strMatching ''[^"\\[:cntrl:]]*'') (s: builtins.stringLength s <= 128)
-  );
+  comment = lib.types.nullOr nftypes.types.nftQuotedString;
 
   /*
     A list of nftypes statements spliced conjunctively into a
