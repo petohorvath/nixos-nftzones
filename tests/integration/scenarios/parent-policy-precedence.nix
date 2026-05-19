@@ -53,27 +53,49 @@
     };
   };
 
-  assertions = compiled: [
-    {
-      description = "parent's sub-chain carries its own policy verdict as the tail rule";
-      expr = compiled.table.chains."forward-at-filter__lan-to-wan".rules;
-      expected = [ [ { accept = null; } ] ];
-    }
-    {
-      description = "child's sub-chain carries its own (terminal, non-cascading) policy verdict";
-      expr = compiled.table.chains."forward-at-filter__lan-guest-to-wan".rules;
-      expected = [ [ { drop = null; } ] ];
-    }
-    {
-      description = "both sub-chains exist (regression guard: missing one would mean dispatch can't reach the verdict)";
-      expr = {
-        parent = compiled.table.chains ? "forward-at-filter__lan-to-wan";
-        child = compiled.table.chains ? "forward-at-filter__lan-guest-to-wan";
-      };
-      expected = {
-        parent = true;
-        child = true;
-      };
-    }
-  ];
+  assertions =
+    compiled:
+    let
+      parentRules = compiled.table.chains."forward-at-filter__lan-to-wan".rules;
+      childRules = compiled.table.chains."forward-at-filter__lan-guest-to-wan".rules;
+      lastOf = xs: builtins.elemAt xs (builtins.length xs - 1);
+    in
+    [
+      {
+        description = "parent's sub-chain has its policy verdict as the *tail* rule (after child-dispatch jumps)";
+        expr = lastOf parentRules;
+        expected = [ { accept = null; } ];
+      }
+      {
+        description = "child's sub-chain has its own (terminal, non-cascading) policy verdict as a tail rule";
+        expr = lastOf childRules;
+        expected = [ { drop = null; } ];
+      }
+      {
+        description = "parent's sub-chain emits the child-dispatch jump ahead of its tail policy (cascade ordering)";
+        expr =
+          let
+            r = builtins.elemAt parentRules 0;
+          in
+          {
+            childMatch = (builtins.elemAt r 0).match.left.meta.key or null;
+            jumpTarget = (builtins.elemAt r 1).jump.target or null;
+          };
+        expected = {
+          childMatch = "iifname";
+          jumpTarget = "forward-at-filter__lan-guest-to-wan";
+        };
+      }
+      {
+        description = "both sub-chains exist (regression guard: missing one would mean dispatch can't reach the verdict)";
+        expr = {
+          parent = compiled.table.chains ? "forward-at-filter__lan-to-wan";
+          child = compiled.table.chains ? "forward-at-filter__lan-guest-to-wan";
+        };
+        expected = {
+          parent = true;
+          child = true;
+        };
+      }
+    ];
 }
