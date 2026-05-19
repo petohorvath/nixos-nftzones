@@ -18,8 +18,8 @@
 
       { table; ctx = { errors = [ ]; warnings = [ ]; }; }
         ↓ convertNodesToZones           ctx.mergedZones
-        ↓ computeZoneSets               ctx.zoneSets
         ↓ computeChildrenOf             ctx.childrenOf
+        ↓ computeZoneSets               ctx.zoneSets
         ↓ computeRootZoneNames          ctx.rootZoneNames
         ↓ collectAllZoneNames           ctx.allZoneNames
         ↓ expandWildcardZones           ctx.expandedGroups
@@ -85,12 +85,18 @@
 
   ===== computeZoneSets =====
 
-  Reads:  ctx.mergedZones
+  Reads:  ctx.mergedZones, ctx.childrenOf
   Writes: ctx.zoneSets
 
-  Folds `internal.zone.genSets` over every merged zone. The
-  resulting attrset is the single source of truth for zone-derived
-  set names and bodies, consumed by:
+  Folds `internal.zone.genSets` over every merged zone. Each
+  zone's emitted sets contain the union of its own
+  interfaces/CIDRs plus every descendant's (transitive); see
+  `internal.zone.genSets` for the rationale. Depends on
+  `ctx.childrenOf` so it runs after `computeChildrenOf` in the
+  pipeline.
+
+  The resulting attrset is the single source of truth for
+  zone-derived set names and bodies, consumed by:
     - `checkSetNameCollisions` (just keys)
     - `checkObjectRefs` (just keys, for the resolution union)
     - Phase 4 emit (full bodies, for `assembleOutput`)
@@ -602,8 +608,8 @@ let
       inherit table;
       ctx = ctx // {
         zoneSets = lib.foldlAttrs (
-          acc: name: zone:
-          acc // genSets name zone
+          acc: name: _zone:
+          acc // genSets ctx.mergedZones ctx.childrenOf name
         ) { } ctx.mergedZones;
       };
     };
@@ -1507,8 +1513,8 @@ let
       # name the responsible zone. Lazy: never forced when
       # `collisions` is empty (the happy path).
       zoneSetSource = lib.foldlAttrs (
-        acc: zoneName: zone:
-        acc // lib.mapAttrs (_: _: zoneName) (genSets zoneName zone)
+        acc: zoneName: _zone:
+        acc // lib.mapAttrs (_: _: zoneName) (genSets ctx.mergedZones ctx.childrenOf zoneName)
       ) { } ctx.mergedZones;
 
       newErrors = map (
@@ -1829,8 +1835,8 @@ let
       final = lib.pipe (mkInitialState table) [
         # Compute phases — populate ctx with derived state.
         convertNodesToZones
-        computeZoneSets
         computeChildrenOf
+        computeZoneSets
         computeRootZoneNames
         collectAllZoneNames
         expandWildcardZones

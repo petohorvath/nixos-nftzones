@@ -40,24 +40,19 @@ asymmetric.
 
 ### Dispatch model
 
+A child zone is a **refinement** of its parent: anything that matches the child also matches the parent. This is implemented by making each zone's auto-generated `_iifs` / `_v4` / `_v6` sets transitively include every descendant's interfaces / CIDRs, not just the zone's own. The parent's base-chain dispatch jump therefore catches descendant traffic too, and the child-dispatch jump inside the parent's sub-chain routes the packet into the more specific child sub-chain.
+
 For each base chain (`<hook>-at-<priority>`):
 
-1. The base chain emits boilerplate (stateful, loopback, rpfilter)
-   plus jumps to root from-zones whose subtree contains content
-   for the relevant to-zone.
+1. The base chain emits boilerplate (stateful, loopback, rpfilter) plus jumps to root from-zones. Each root's match set (`@<root>_iifs` / `@<root>_v4` / `@<root>_v6`) is the transitive union of the root's subtree.
 2. Each parent sub-chain `__<parent>-to-<to>` contains:
-   1. Pre-child cells (priority < 100), sorted by
-      `(priority asc, name asc)`.
-   2. Child-dispatch jumps to `__<child>-to-<to>` for each child
-      whose subtree has content (one jump per from-side variant of
-      the child's match).
-   3. Post-child cells (priority >= 100, plus policies as tail
-      rules), sorted by `(priority asc, name asc)` then policies
-      by name.
-3. Leaf sub-chains (zones with no children) carry just
-   `preChildCells ++ postChildCells`.
-4. Intermediate parents with no own cells but with content-bearing
-   descendants emit as transparent dispatchers — just child-jumps.
+   1. Pre-child cells (priority < 100), sorted by `(priority asc, name asc)`.
+   2. Child-dispatch jumps to `__<child>-to-<to>` for each direct child whose subtree has content. The match clause re-uses the child's auto-generated `_iifs` / `_v4` / `_v6` (same set refs as everywhere else; sets are transitive). The narrowing is "anywhere in the parent's subtree → anywhere in this specific child's subtree" — both transitive, with the child's being a subset. The child's sub-chain then runs its own child-dispatch to narrow further into grandchildren.
+   3. Post-child cells (priority >= 100, plus policies as tail rules), sorted by `(priority asc, name asc)` then policies by name.
+3. Leaf sub-chains (zones with no children) carry just `preChildCells ++ postChildCells`.
+4. Intermediate parents with no own cells but with content-bearing descendants emit as transparent dispatchers — just child-jumps.
+
+Per-family CIDR sets are coalesced at compile time via `libnet.cidr.summarize`: exact duplicates collapse, descendant CIDRs contained in an ancestor's drop out (parent `10.0.0.0/24` plus lowered-node `web-server` at `10.0.0.5/32` → just `10.0.0.0/24`), and sibling CIDRs that fuse into a supernet are merged (`10.0.0.0/24` + `10.0.1.0/24` → `10.0.0.0/23`). The rendered set therefore equals the live kernel state with no reliance on the kernel-side `auto-merge` flag for cleanup.
 
 ### Priority cutoff
 
@@ -70,14 +65,13 @@ descendant traffic, which matches the user mental model of
 
 ### Wildcard expansion
 
-`from = [ "all" ]` expands to root zones (zones with
-`parent == null`) plus the `localZone` sentinel. Descendants
-receive traffic via parent dispatch — they don't need a separate
-cell. This is a behavioural change from a flat-dispatch model
-where `all` expanded to every zone.
+`from = [ "all" ]` expands to root zones (zones with `parent == null`) plus the `localZone` sentinel. Descendant traffic still reaches the wildcard-expanded cells because the root's transitive match set covers it (see Dispatch model above). Expanding to every zone would emit redundant cells in every descendant sub-chain.
 
-`to = [ "all" ]` keeps expanding to every zone (declared zones +
-localZone), since to-side hierarchy is not modelled.
+`to = [ "all" ]` keeps expanding to every zone (declared zones + localZone), since to-side hierarchy is not modelled.
+
+#### Implications for `settings.chainPolicy`
+
+Before transitive sets, a wildcard `from = [ "all" ]` policy combined with `chainPolicy = "accept"` was a silent fail-open: descendants got no base-chain dispatch jump (their interfaces weren't in any root's set), so they bypassed the wildcard deny entirely and fell through to the chain policy. Transitive sets close that gap — the root's match catches every descendant, so the wildcard policy applies uniformly regardless of `chainPolicy`.
 
 ### Validation
 

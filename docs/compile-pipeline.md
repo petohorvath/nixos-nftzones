@@ -189,11 +189,11 @@ Composes the chain buckets and the rest of the table state into one `nftypes.dsl
 
 For each zone, generate up to three sets:
 
-- `<name>_iifs` — `type ifname` set of interface names.
-- `<name>_v4` — `type ipv4_addr; flags interval` of v4 CIDRs.
-- `<name>_v6` — `type ipv6_addr; flags interval` of v6 CIDRs.
+- `<name>_iifs` — `type ifname` set of interface names (deduped by `lib.unique`).
+- `<name>_v4` — `type ipv4_addr; flags interval` of v4 CIDRs (coalesced by `libnet.cidr.summarize`).
+- `<name>_v6` — `type ipv6_addr; flags interval` of v6 CIDRs (coalesced by `libnet.cidr.summarize`).
 
-Empty sets are skipped. Per-direction match expressions used by jumps are constructed by `internal.emit.mkDirectionVariants` from these set names.
+Each set carries the union of the zone's own interfaces/CIDRs **plus every descendant's, transitively**. A child zone is a refinement of its parent, so anything that matches the child must also match the parent's base-chain dispatch jump (the child is reached from there via the parent's child-dispatch sub-rule). CIDR sets are coalesced at compile time: exact duplicates collapse, subset overlaps drop (descendant `10.0.0.5/32` inside parent `10.0.0.0/24` → just `10.0.0.0/24`), and adjacent sibling prefixes fuse (`10.0.0.0/24` + `10.0.1.0/24` → `10.0.0.0/23`). The rendered set matches the live kernel state without relying on the kernel-side `auto-merge` flag. Empty sets are skipped. Per-direction match expressions used by jumps are constructed by `internal.emit.mkDirectionVariants` from these set names.
 
 ### 4.2 Base chains
 

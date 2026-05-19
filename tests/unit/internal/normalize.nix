@@ -2561,6 +2561,7 @@ in
     expr =
       (runEvalPipeline [
         convertNodesToZones
+        computeChildrenOf
         computeZoneSets
       ] { name = "fw"; }).zoneSets;
     expected = { };
@@ -2577,6 +2578,7 @@ in
         (runEvalPipeline
           [
             convertNodesToZones
+            computeChildrenOf
             computeZoneSets
           ]
           {
@@ -2612,6 +2614,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeChildrenOf
           computeZoneSets
           checkSetNameCollisions
         ]
@@ -2640,6 +2643,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeChildrenOf
               computeZoneSets
               checkSetNameCollisions
             ]
@@ -2683,6 +2687,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeChildrenOf
               computeZoneSets
               checkSetNameCollisions
             ]
@@ -2717,6 +2722,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeChildrenOf
           computeZoneSets
           checkSetNameCollisions
         ]
@@ -2741,6 +2747,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeChildrenOf
           computeZoneSets
           checkObjectRefs
         ]
@@ -2766,6 +2773,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeChildrenOf
           computeZoneSets
           checkObjectRefs
         ]
@@ -2797,6 +2805,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeChildrenOf
               computeZoneSets
               checkObjectRefs
             ]
@@ -2838,6 +2847,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeChildrenOf
               computeZoneSets
               checkObjectRefs
             ]
@@ -2897,6 +2907,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeChildrenOf
           computeZoneSets
           checkObjectRefs
         ]
@@ -2930,6 +2941,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeChildrenOf
               computeZoneSets
               checkObjectRefs
             ]
@@ -2965,6 +2977,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeChildrenOf
               computeZoneSets
               checkObjectRefs
             ]
@@ -3000,6 +3013,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeChildrenOf
           computeZoneSets
           checkObjectRefs
         ]
@@ -3039,6 +3053,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeChildrenOf
               computeZoneSets
               checkObjectRefs
             ]
@@ -3080,6 +3095,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeChildrenOf
           computeZoneSets
           checkObjectRefs
         ]
@@ -3112,6 +3128,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeChildrenOf
           computeZoneSets
           checkObjectRefs
         ]
