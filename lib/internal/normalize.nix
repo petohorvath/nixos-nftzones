@@ -1964,6 +1964,16 @@ let
 
       refsFromObjects = lib.concatLists (lib.mapAttrsToList refsFromObjectKind table.objects);
 
+      /*
+        Rule-bearing groups are listed explicitly rather than
+        derived from a shared group-name list. `policies` is
+        intentionally absent — the type has only a `verdict`
+        field and no rule body, so it carries no named refs. If a
+        future group gains a rule body, add it here too; silent
+        omission would mean refs inside it never get resolved
+        against `table.objects.<kind>` and would surface only at
+        `nft load` time instead of compile time.
+      */
       allRefs = lib.concatLists [
         (refsFromGroup "filters" table.filters)
         (refsFromGroup "snats" table.snats)
