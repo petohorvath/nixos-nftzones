@@ -35,6 +35,7 @@
         ↓ checkChainPlacement           ctx.errors   (appends)
         ↓ checkRpfilterOverride         ctx.warnings (appends)
         ↓ checkChainOverrideSemantics   ctx.warnings (appends)
+        ↓ checkExtraSectionFields       ctx.warnings (appends)
         ↓ checkNodeAddresses            ctx.errors   (appends)
         ↓ checkNatBodies                ctx.errors   (appends)
         ↓ checkPolicyUniqueness         ctx.errors   (appends)
@@ -1187,6 +1188,100 @@ let
     pointing to `masquerade` / `redirect` as the no-target alternative.
   */
   /*
+    Warn when a `matchOverride.<side>.extra` section references
+    an interface-typed `meta` field (`iif`, `iifname`, `iifgroup`,
+    `iiftype` and the `oif*` counterparts). These belong in the
+    `matchOverride.<side>.interfaces` section instead: that
+    section is hook-gated correctly by
+    `checkChainOverridePlacement` and `mkDirectionVariants` (the
+    iif/oif clause is dropped at hooks where the field is
+    unavailable). The `extra` section is hook-agnostic by design
+    — it's inlined into every variant of every direction the
+    zone appears in, regardless of hook. An iif clause in extra
+    landing at the `output` hook silently becomes a no-op
+    (`iifname` is unavailable there), turning a chain the user
+    expected to be restrictive into a permissive one.
+
+    Per-statement check: extract `stmt.match.left.meta.key` (the
+    field name) and flag if it's an iif/oif variant. Walks
+    only the `extra` section; the `interfaces` / `ipv4` / `ipv6`
+    sections are hook-gated already.
+
+    Warning-level (not error) — a user with a config that only
+    ever uses the zone at hooks where the field IS valid would
+    see a false positive. The warning text names the slot and
+    the recommended fix (move to `matchOverride.<side>.interfaces`).
+  */
+  checkExtraSectionFields =
+    { table, ctx }:
+    let
+      inherit (ctx) mergedZones;
+
+      interfaceMetaKeys = [
+        "iif"
+        "iifname"
+        "iifgroup"
+        "iiftype"
+        "oif"
+        "oifname"
+        "oifgroup"
+        "oiftype"
+      ];
+
+      sides = [
+        "ingress"
+        "egress"
+      ];
+
+      # nftypes match shape: `{ match = { left = { meta = {
+      # key = "iif"; }; }; op; right; }; }`. Returns the meta
+      # key if the statement's left side is a `meta` field;
+      # null otherwise (payload matches, non-match statements,
+      # etc.).
+      metaKeyOf = stmt: stmt.match.left.meta.key or null;
+
+      checkBody =
+        zoneName: side: body:
+        lib.concatLists (
+          lib.imap0 (
+            i: stmt:
+            let
+              key = metaKeyOf stmt;
+            in
+            if key != null && builtins.elem key interfaceMetaKeys then
+              [
+                (
+                  "zones.${zoneName}.matchOverride.${side}.extra[${toString i}] matches on `meta.${key}` — "
+                  + "interface fields belong in `matchOverride.${side}.interfaces` instead. The `extra` "
+                  + "section is inlined hook-agnostically and would silently become a no-op at hooks "
+                  + "where ${key} is unavailable (e.g. iif* at output). The `interfaces` section is "
+                  + "hook-gated correctly by `checkChainOverridePlacement` and `mkDirectionVariants`."
+                )
+              ]
+            else
+              [ ]
+          ) body
+        );
+
+      checkSide =
+        zoneName: side:
+        let
+          active = getActiveMatchOverrides mergedZones.${zoneName} side;
+        in
+        if active ? extra then checkBody zoneName side active.extra else [ ];
+
+      checkZone = zoneName: lib.concatMap (checkSide zoneName) sides;
+
+      newWarnings = lib.concatMap checkZone (builtins.attrNames mergedZones);
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        warnings = ctx.warnings ++ newWarnings;
+      };
+    };
+
+  /*
     Reject `nodes.<name>.address` shapes with both `ipv4` and
     `ipv6` set to `null`. The type accepts the all-null shape
     (both fields are `nullOr str` defaulting to `null`), but a
@@ -1855,6 +1950,7 @@ let
         checkChainPlacement
         checkRpfilterOverride
         checkChainOverrideSemantics
+        checkExtraSectionFields
         checkNodeAddresses
         checkNatBodies
         checkPolicyUniqueness
@@ -1898,6 +1994,7 @@ in
     checkChainPlacement
     checkRpfilterOverride
     checkChainOverrideSemantics
+    checkExtraSectionFields
     checkNodeAddresses
     checkNatBodies
     checkSetNameCollisions

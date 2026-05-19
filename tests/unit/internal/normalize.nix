@@ -16,6 +16,7 @@ let
     checkChainPlacement
     checkRpfilterOverride
     checkChainOverrideSemantics
+    checkExtraSectionFields
     checkNodeAddresses
     checkNatBodies
     checkParentRefs
@@ -4166,6 +4167,161 @@ in
           }
         )).warnings;
     expected = 3;
+  };
+
+  # ===== checkExtraSectionFields — extra without iif/oif produces no warnings =====
+
+  testCheckExtraSectionFieldsClean = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkExtraSectionFields
+        ]
+        {
+          zones.lan = {
+            interfaces = [ "lan0" ];
+            matchOverride.ingress.extra = [
+              (dsl.eq dsl.fields.meta.mark 256)
+              (dsl.eq dsl.fields.meta.cgroup 100)
+            ];
+          };
+        }
+      ).warnings;
+    expected = [ ];
+  };
+
+  # ===== checkExtraSectionFields — iif in extra fires =====
+
+  testCheckExtraSectionFieldsIifWarns = {
+    expr =
+      let
+        ws =
+          (runEvalPipeline
+            [
+              convertNodesToZones
+              checkExtraSectionFields
+            ]
+            {
+              zones.lan.matchOverride.ingress.extra = [ (dsl.eq dsl.fields.meta.iif "lo") ];
+            }
+          ).warnings;
+      in
+      {
+        count = lib.length ws;
+        path = lib.any (w: lib.hasInfix "zones.lan.matchOverride.ingress.extra[0]" w) ws;
+        field = lib.any (w: lib.hasInfix "meta.iif" w) ws;
+        recommendsInterfaces = lib.any (w: lib.hasInfix "matchOverride.ingress.interfaces" w) ws;
+      };
+    expected = {
+      count = 1;
+      path = true;
+      field = true;
+      recommendsInterfaces = true;
+    };
+  };
+
+  # ===== checkExtraSectionFields — oifname in extra fires =====
+
+  testCheckExtraSectionFieldsOifWarns = {
+    expr =
+      let
+        ws =
+          (runEvalPipeline
+            [
+              convertNodesToZones
+              checkExtraSectionFields
+            ]
+            {
+              zones.wan.matchOverride.egress.extra = [ (dsl.eq dsl.fields.meta.oifname "wan0") ];
+            }
+          ).warnings;
+      in
+      {
+        count = lib.length ws;
+        field = lib.any (w: lib.hasInfix "meta.oifname" w) ws;
+      };
+    expected = {
+      count = 1;
+      field = true;
+    };
+  };
+
+  # ===== checkExtraSectionFields — both sides aggregate =====
+
+  testCheckExtraSectionFieldsBothSidesAggregate = {
+    expr =
+      lib.length
+        (runEvalPipeline
+          [
+            convertNodesToZones
+            checkExtraSectionFields
+          ]
+          {
+            zones.lan = {
+              matchOverride.ingress.extra = [ (dsl.eq dsl.fields.meta.iif "lan0") ];
+              matchOverride.egress.extra = [ (dsl.eq dsl.fields.meta.oif "lan0") ];
+            };
+          }
+        ).warnings;
+    expected = 2;
+  };
+
+  # ===== checkExtraSectionFields — warnings aggregate across zones =====
+
+  testCheckExtraSectionFieldsMultipleZones = {
+    expr =
+      let
+        ws =
+          (runEvalPipeline
+            [
+              convertNodesToZones
+              checkExtraSectionFields
+            ]
+            {
+              zones = {
+                lan.matchOverride.ingress.extra = [
+                  (dsl.eq dsl.fields.meta.iifname "lan0")
+                ];
+                wan.matchOverride.egress.extra = [
+                  (dsl.eq dsl.fields.meta.oifname "wan0")
+                ];
+              };
+            }
+          ).warnings;
+        paths = ws;
+      in
+      {
+        count = lib.length ws;
+        lan = lib.any (lib.hasInfix "zones.lan.matchOverride.ingress.extra") paths;
+        wan = lib.any (lib.hasInfix "zones.wan.matchOverride.egress.extra") paths;
+      };
+    expected = {
+      count = 2;
+      lan = true;
+      wan = true;
+    };
+  };
+
+  # ===== checkExtraSectionFields — iif in INTERFACES section is not flagged =====
+
+  testCheckExtraSectionFieldsInterfacesSectionNotFlagged = {
+    # The whole point: the `interfaces` section is the *right*
+    # place for iif/oif clauses. Hook-gating happens there, so
+    # this validator should ignore them.
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          checkExtraSectionFields
+        ]
+        {
+          zones.lan.matchOverride.ingress.interfaces = [
+            (dsl.eq dsl.fields.meta.iifname "lan0")
+          ];
+        }
+      ).warnings;
+    expected = [ ];
   };
 
   # ===== checkCrossAxisOverlap — all iface-only zones, no warnings =====
