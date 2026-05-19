@@ -116,23 +116,6 @@ in
         '';
       }
     ]
-    # Detect duplicate nftzones-internal declarations of the same
-    # table key — two different modules both writing
-    # `networking.nftzones.tables.fw = {...}`. The submodule merge
-    # would silently pick one body and the user wouldn't know
-    # which. Same shape as the cross-module assertion below, just
-    # against nftzones's own pre-merge definitions list.
-    ++ lib.mapAttrsToList (name: _: {
-      assertion =
-        (builtins.length (
-          builtins.filter (def: def ? ${name}) options.networking.nftzones.tables.definitions
-        )) <= 1;
-      message = ''
-        networking.nftzones.tables.${name} is declared in more than one module.
-        The submodule merge silently picks one body, so the resulting table is
-        not deterministic. Consolidate the table's body to a single declaration.
-      '';
-    }) cfg.tables
     # `networking.firewall` installs its own `inet filter` table
     # hooked at `(input, filter)`; nftzones tables typically claim
     # the same hook slot. nftables runs both base chains at the
