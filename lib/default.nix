@@ -10,6 +10,13 @@ let
     `nftzones.internal.<module>.<fn>` (e.g.
     `nftzones.internal.zone.genSets`,
     `nftzones.internal.compile.mkTable`).
+
+    Stability: `nftzones.internal.*` carries no semver guarantee.
+    Names, signatures, and the per-module split can change in
+    any release — the namespace is exposed for our own unit
+    tests and for advanced users who explicitly opt in. Public
+    consumers should reach for `mkTable` / `mkRuleset` / the
+    NixOS module, or for `types` / `snippets`.
   */
   internal = import ./internal { inherit inputs; };
 

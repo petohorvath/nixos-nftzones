@@ -30,17 +30,22 @@
 
   At the type layer:
     - `zone` (parent reference) is required.
-    - `address` requires at least one of `ipv4` / `ipv6` to be
-      set. Enforced via the option's `apply` function (fires at
-      access time with a descriptive error). `addCheck` doesn't
-      work here because it operates on the user's raw input,
-      not the merged-with-defaults value; the empty-defaults
-      case slips through.
+    - `address` is a submodule with two nullable fields. The
+      "at least one of `ipv4` / `ipv6` must be set" constraint
+      is NOT enforced at the type layer — `addCheck` operates
+      on raw user input (not the merged-with-defaults value),
+      so the empty-defaults case slips through. Phase 1's
+      `checkNodeAddresses` validator catches it instead, which
+      also lets the error aggregate with other Phase 1 errors
+      under one message.
 
-  Cross-cutting concerns (module-level assertions, deferred):
+  Cross-cutting concerns (Phase 1 validators):
     - Node names must not collide with zone names (shared
-      namespace at compile time).
-    - `node.zone` must reference an existing zone.
+      namespace at compile time) — `checkNameCollisions`.
+    - `node.zone` must reference an existing zone — handled by
+      `convertNodesToZones` / `checkZoneRefs`.
+    - At least one of `address.ipv4` / `address.ipv6` is set —
+      `checkNodeAddresses`.
 
   Example:
     options.nodes = lib.mkOption {
@@ -82,12 +87,14 @@ let
   nodeName = primitives.identifier;
 
   /*
-    Submodule with optional `ipv4` / `ipv6` fields. The constraint
-    "at least one must be set" is enforced via the `address`
-    option's `apply` function (see below) — `addCheck` doesn't
-    receive the merged-with-defaults value for submodule types,
-    so it can't see the post-merge `{ ipv4 = null; ipv6 = null; }`
-    case.
+    Submodule with optional `ipv4` / `ipv6` fields. The
+    constraint "at least one must be set" is enforced by Phase
+    1's `checkNodeAddresses` validator, NOT at the type layer.
+    `addCheck` would not work here: it operates on raw user
+    input (not the merged-with-defaults value), so the empty-
+    defaults case `{ ipv4 = null; ipv6 = null; }` slips through.
+    Deferring to Phase 1 also lets the error aggregate with
+    other validation errors under one message.
   */
   nodeAddress = lib.types.submodule {
     options = {

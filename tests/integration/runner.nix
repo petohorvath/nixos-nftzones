@@ -192,6 +192,17 @@ let
     remain the source of truth for *which* validator fired and
     *what* it said. The rejection check just pins that something
     in the pipeline rejected the input.
+
+    Scope: only validators that *throw* (i.e. push to
+    `ctx.errors`) are covered here. Warning-level validators —
+    `checkRpfilterOverride`, `checkChainOverrideSemantics`,
+    `checkExtraSectionFields`, `checkWildcardZoneMix`,
+    `checkCrossAxisOverlap` — push to `ctx.warnings`, do not
+    abort the compile, and so don't fit this build-failure
+    polarity. Their pipeline wiring is verified by the unit
+    tests in `tests/unit/internal/normalize.nix`, which call
+    each validator directly and inspect the resulting
+    `ctx.warnings`.
   */
   mkRejectionCheck =
     name: rejection:

@@ -457,6 +457,36 @@ in
     expected = true;
   };
 
+  # ===== module — Phase 1 validator throws surface at module eval =====
+  # Pins that the module path doesn't swallow Phase 1 throws.
+  # Integration rejections prove `mkRuleset` itself throws on
+  # bad bodies; this proves the throw still bubbles out when
+  # the body is reached via the NixOS option machinery (the
+  # module routes through `internal.compile.mkTable` directly,
+  # bypassing the public `mkTable` wrapper — see
+  # `lib/default.nix` and `modules/nftzones.nix`).
+  #
+  # Trigger: two zones declaring overlapping interfaces, which
+  # `checkInterfaceOverlap` rejects.
+  testModulePhase1ValidatorPropagates = {
+    expr =
+      let
+        cfg = evalSystem {
+          networking.nftables.enable = true;
+          networking.nftzones = {
+            enable = true;
+            tables.fw = {
+              zones.lan-a.interfaces = [ "lan0" ];
+              zones.lan-b.interfaces = [ "lan0" ];
+            };
+          };
+        };
+        attempt = builtins.tryEval (builtins.deepSeq cfg.networking.nftables.tables.fw.content null);
+      in
+      attempt.success;
+    expected = false;
+  };
+
   # Default values must not leak into the content — verifies the
   # prefix is empty when neither field is set.
   testModuleNoMetadataPrefixByDefault = {

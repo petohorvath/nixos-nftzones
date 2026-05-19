@@ -24,10 +24,11 @@
 
   `primitives` itself is NOT exposed via `nftzones.types` —
   consumers should reach for the named types built on top of it
-  (`zoneName`, `filterName`, …). The merge in `lib/default.nix`
-  flattens the per-module exports into one `nftzones.types`
-  namespace; the per-module submodule keys here are just for
-  internal wiring.
+  (`zoneName`, `filterName`, …). This is enforced structurally
+  by omitting `primitives` from the `inherit` at the bottom of
+  this file; the merge in `lib/default.nix` flattens the
+  per-module exports into one `nftzones.types` namespace, and
+  per-module submodule keys here are just for internal wiring.
 */
 { inputs }:
 let

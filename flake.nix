@@ -2,6 +2,15 @@
   description = "nix-nftzones — library for zone-based nftables firewall configuration";
 
   inputs = {
+    # Tracking `nixos-unstable` rather than a release branch
+    # is deliberate: this library only depends on `nixpkgs.lib`
+    # plus `pkgs.testers.nixosTest` / `pkgs.nftables` /
+    # `lklWithFirewall` for the test tiers, none of which break
+    # API on minor bumps. CI matrices the VM suite across
+    # `pinned`, `nixos-25.11`, and `nixos-unstable` so a
+    # consumer pinning to a release channel still gets a
+    # green build. Pin to a stable branch (or a specific rev)
+    # downstream if you want a slower-moving floor.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     libnet.url = "github:petohorvath/nix-libnet";
