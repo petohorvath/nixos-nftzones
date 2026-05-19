@@ -58,6 +58,28 @@ let
     `"echo-request"` refer to the same ICMP type but we'd need a
     symbol table to know that, and maintaining one would couple
     nftzones to the nftables symbol set).
+
+    NOTE: string-form ICMP types are passed through unvalidated.
+    Neither libnet nor nftypes maintains a closed enum of nft's
+    symbolic constants (`echo-request`, `destination-unreachable`,
+    `packet-too-big`, …); nft itself rejects unknown symbols at
+    parse / `nft -j --check` time with "Could not parse symbolic
+    constant", so a typo surfaces at activation / integration
+    rather than at eval. We deliberately don't add a regex /
+    character-class check here because the value is delivered to
+    the renderer as a single JSON-encoded atom (`{"set":[...]}`
+    or scalar RHS), so the only way a non-symbol string could
+    "smuggle" anything is via the text-mode renderer that emits
+    expression strings bare — and that renderer already fails on
+    any string the nft parser can't recognise.
+
+    Prefer integer constants where you can: `libnet.registry.
+    icmpTypes.ipv4.echoRequest == 8` /
+    `icmpTypes.ipv6.packetTooBig == 2` give you the numeric
+    type code with a typed Nix attribute name, which is both
+    enum-validated (typo → eval error) and protocol-version-
+    correct. The string form is supported for users who prefer
+    the symbolic-constant style nft itself emits.
   */
   normalizeIcmpTypes =
     types:

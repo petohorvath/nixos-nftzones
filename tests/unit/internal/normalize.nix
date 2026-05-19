@@ -17,6 +17,7 @@ let
     checkRpfilterOverride
     checkChainOverrideSemantics
     checkExtraSectionFields
+    checkWildcardZoneMix
     checkNodeAddresses
     checkNatBodies
     checkParentRefs
@@ -4321,6 +4322,111 @@ in
           ];
         }
       ).warnings;
+    expected = [ ];
+  };
+
+  # ===== checkWildcardZoneMix — wildcard-only direction is fine =====
+
+  testCheckWildcardZoneMixCleanWildcard = {
+    expr =
+      (runEvalPipeline [ checkWildcardZoneMix ] {
+        zones.lan.interfaces = [ "lan0" ];
+        zones.wan.interfaces = [ "wan0" ];
+        policies.deny-all = {
+          from = [ "all" ];
+          to = [ "wan" ];
+          verdict = "drop";
+        };
+      }).warnings;
+    expected = [ ];
+  };
+
+  # ===== checkWildcardZoneMix — wildcard + explicit zone fires =====
+
+  testCheckWildcardZoneMixFires = {
+    expr =
+      let
+        ws =
+          (runEvalPipeline [ checkWildcardZoneMix ] {
+            zones.lan.interfaces = [ "lan0" ];
+            zones.wan.interfaces = [ "wan0" ];
+            policies.confused = {
+              from = [
+                "all"
+                "wan"
+              ];
+              to = [ "lan" ];
+              verdict = "drop";
+            };
+          }).warnings;
+      in
+      {
+        count = lib.length ws;
+        mentionsPath = lib.any (w: lib.hasInfix "policies.confused.from" w) ws;
+        mentionsWildcard = lib.any (w: lib.hasInfix "'all'" w) ws;
+        mentionsExplicit = lib.any (w: lib.hasInfix "'wan'" w) ws;
+      };
+    expected = {
+      count = 1;
+      mentionsPath = true;
+      mentionsWildcard = true;
+      mentionsExplicit = true;
+    };
+  };
+
+  # ===== checkWildcardZoneMix — fires across multiple groups + directions =====
+
+  testCheckWildcardZoneMixMultiple = {
+    expr =
+      lib.length
+        (runEvalPipeline [ checkWildcardZoneMix ] {
+          zones.lan.interfaces = [ "lan0" ];
+          zones.wan.interfaces = [ "wan0" ];
+          filters.f = {
+            from = [
+              "all"
+              "lan"
+            ];
+            to = [
+              "all"
+              "wan"
+            ];
+            rule = [ ];
+          };
+          dnats.d = {
+            from = [
+              "all"
+              "wan"
+            ];
+            rule = {
+              match = [ ];
+              action.dnat = {
+                addr = "10.0.0.5";
+                port = 443;
+              };
+            };
+          };
+        }).warnings;
+    # filters.f.from + filters.f.to + dnats.d.from = 3 warnings.
+    expected = 3;
+  };
+
+  # ===== checkWildcardZoneMix — pure explicit list (no wildcard) is fine =====
+
+  testCheckWildcardZoneMixExplicitOnly = {
+    expr =
+      (runEvalPipeline [ checkWildcardZoneMix ] {
+        zones.lan.interfaces = [ "lan0" ];
+        zones.wan.interfaces = [ "wan0" ];
+        policies.allow = {
+          from = [
+            "lan"
+            "wan"
+          ];
+          to = [ "wan" ];
+          verdict = "accept";
+        };
+      }).warnings;
     expected = [ ];
   };
 

@@ -212,6 +212,12 @@ stay valid against the current type surface.
 
 **Requires** Nix 2.17+ with flakes, and (for the NixOS module path) NixOS 24.11+.
 
+## Supply chain
+
+`nftzones` depends on two sibling flakes — [`nftypes`](https://github.com/petohorvath/nix-nftypes) (the libnftables-JSON schema + DSL) and [`libnet`](https://github.com/petohorvath/nix-libnet) (CIDR / port / interface-name primitives). All three are single-maintainer GitHub repos (`petohorvath`). Commits and release tags are **not** GPG-signed.
+
+Trust model: pin by `rev` + `narHash` via `flake.lock` (the lock file `nftzones` ships does this) so a fetch only succeeds if the content matches the recorded hash. Bumps are explicit (`nix flake update nftypes`) and surface in the lockfile diff for review. Users who require third-party auditability should pin their own fork.
+
 ## Known limitations
 
 - **Supported table families: `inet`, `ip`, `ip6`, `bridge`.** `arp` and `netdev` are rejected at the type level. `netdev` in particular needs a per-chain `device` binding that the chain submodule doesn't model today; `arp` is too rare to justify the testing investment without a concrete use case.

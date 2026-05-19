@@ -36,6 +36,7 @@
         ↓ checkRpfilterOverride         ctx.warnings (appends)
         ↓ checkChainOverrideSemantics   ctx.warnings (appends)
         ↓ checkExtraSectionFields       ctx.warnings (appends)
+        ↓ checkWildcardZoneMix          ctx.warnings (appends)
         ↓ checkNodeAddresses            ctx.errors   (appends)
         ↓ checkNatBodies                ctx.errors   (appends)
         ↓ checkPolicyUniqueness         ctx.errors   (appends)
@@ -1282,6 +1283,68 @@ let
     };
 
   /*
+    Warn when an entry's `from` or `to` list mixes the wildcard
+    zone with explicit zone names — e.g. `from = [ "all" "wan" ]`.
+    The wildcard alone already expands to every in-scope zone
+    (`expandFrom` / `expandTo` substitute the wildcard sentinel),
+    so explicit zones appearing alongside it are either already
+    covered (no-op) or, more likely, a typo / leftover from an
+    earlier config shape. The user almost certainly meant `[
+    "all" ]` alone or `[ "wan" ]` alone, not both.
+
+    Walks the raw `from` / `to` lists before wildcard expansion —
+    by the time `expandWildcardZones` runs, the wildcard sentinel
+    is gone. Iterates over `groupDirections` for the per-group
+    direction set (filters/policies have both, dnats has `from`
+    only, droutes has `to` only).
+
+    Warning-level: the behaviour isn't wrong (expansion produces
+    the right zone set either way), it's just a misleading config
+    shape that suggests user confusion.
+  */
+  checkWildcardZoneMix =
+    { table, ctx }:
+    let
+      inherit (table.settings) wildcardZone;
+
+      checkEntryDir =
+        groupName: entryName: dir: zones:
+        if builtins.elem wildcardZone zones && builtins.length zones > 1 then
+          let
+            others = builtins.filter (z: z != wildcardZone) zones;
+          in
+          [
+            (
+              "${groupName}.${entryName}.${dir}: list contains the wildcard zone "
+              + "'${wildcardZone}' alongside explicit zone(s) ${
+                lib.concatStringsSep ", " (map (z: "'${z}'") others)
+              }. "
+              + "The wildcard alone already expands to every in-scope zone — the explicit "
+              + "names are either redundant or a leftover. Use `[ \"${wildcardZone}\" ]` "
+              + "or list the explicit zones without the wildcard."
+            )
+          ]
+        else
+          [ ];
+
+      checkEntry =
+        groupName: dirs: entryName: entry:
+        lib.concatMap (dir: checkEntryDir groupName entryName dir (entry.${dir} or [ ])) dirs;
+
+      checkGroup =
+        groupName: dirs:
+        lib.concatLists (lib.mapAttrsToList (checkEntry groupName dirs) (table.${groupName} or { }));
+
+      newWarnings = lib.concatLists (lib.mapAttrsToList checkGroup groupDirections);
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        warnings = ctx.warnings ++ newWarnings;
+      };
+    };
+
+  /*
     Reject `nodes.<name>.address` shapes with both `ipv4` and
     `ipv6` set to `null`. The type accepts the all-null shape
     (both fields are `nullOr str` defaulting to `null`), but a
@@ -1951,6 +2014,7 @@ let
         checkRpfilterOverride
         checkChainOverrideSemantics
         checkExtraSectionFields
+        checkWildcardZoneMix
         checkNodeAddresses
         checkNatBodies
         checkPolicyUniqueness
@@ -1995,6 +2059,7 @@ in
     checkRpfilterOverride
     checkChainOverrideSemantics
     checkExtraSectionFields
+    checkWildcardZoneMix
     checkNodeAddresses
     checkNatBodies
     checkSetNameCollisions
