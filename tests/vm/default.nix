@@ -26,6 +26,7 @@ let
   };
 
   tests = {
+    activation = import ./activation.nix testArgs;
     atomic-reload = import ./atomic-reload.nix testArgs;
     bridge = import ./bridge.nix testArgs;
     droutes = import ./droutes.nix testArgs;
