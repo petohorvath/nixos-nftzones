@@ -86,11 +86,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1779128996,
-        "narHash": "sha256-riOC+eTXqHxtmUiXiOn/2NYWWmzQK5EFLPiP1ei51Sc=",
+        "lastModified": 1779179062,
+        "narHash": "sha256-lBaSMg7eiF1trCLxiPme85x/1L2ZVXjb9Aw5iLkeQbA=",
         "owner": "petohorvath",
         "repo": "nix-nftypes",
-        "rev": "4a38b2c4703b0b9eb0b718b2b7bd3e11855a4455",
+        "rev": "4f87e2400386c59663551d017cb4e91331e847f9",
         "type": "github"
       },
       "original": {
