@@ -14,3 +14,7 @@ result-*
 # git-hooks.nix writes this on `nix develop` / direnv reload;
 # it's a build artifact, not source.
 .pre-commit-config.yaml
+
+# Claude Code writes a scheduled-task lock here; runtime state,
+# not source.
+.claude/
