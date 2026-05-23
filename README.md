@@ -1,4 +1,4 @@
-# nix-nftzones
+# nixos-nftzones
 
 Compile zone-based firewall configurations into nftables rulesets, in Nix.
 
@@ -17,7 +17,7 @@ Both nftzones and nftypes are typically declared as inputs — nftzones provides
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    nftzones.url = "github:petohorvath/nix-nftzones";
+    nftzones.url = "github:petohorvath/nixos-nftzones";
     nftzones.inputs.nixpkgs.follows = "nixpkgs";
 
     nftypes.url = "github:petohorvath/nix-nftypes";
@@ -248,4 +248,4 @@ CI runs the VM suite against three nixpkgs refs in parallel — `pinned` (this r
 
 ## Contributing
 
-Issues and PRs welcome on [github.com/petohorvath/nix-nftzones](https://github.com/petohorvath/nix-nftzones). Run tests with `nix flake check`.
+Issues and PRs welcome on [github.com/petohorvath/nixos-nftzones](https://github.com/petohorvath/nixos-nftzones). Run tests with `nix flake check`.

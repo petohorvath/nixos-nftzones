@@ -1,5 +1,5 @@
 {
-  description = "nix-nftzones — library for zone-based nftables firewall configuration";
+  description = "nixos-nftzones — library for zone-based nftables firewall configuration";
 
   inputs = {
     # Tracking `nixos-unstable` rather than a release branch
