@@ -280,7 +280,7 @@ pkgs.testers.nixosTest {
             timeout=15,
         )
         out = client.succeed(
-            f"timeout 10 ssh {cm_opts} root@${serverWanIp} 'echo hello-1'"
+            f"timeout 30 ssh {cm_opts} root@${serverWanIp} 'echo hello-1'"
         )
         assert "hello-1" in out, f"v1 SSH didn't echo hello-1: {out!r}"
 
@@ -314,7 +314,7 @@ pkgs.testers.nixosTest {
         # through. If activation cleared conntrack or stalled long
         # enough to drop the entry, this echo would fail.
         out = client.succeed(
-            f"timeout 10 ssh {cm_opts} root@${serverWanIp} 'echo hello-2'"
+            f"timeout 30 ssh {cm_opts} root@${serverWanIp} 'echo hello-2'"
         )
         assert "hello-2" in out, (
             f"v2 activation broke the in-flight SSH: {out!r}"

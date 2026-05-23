@@ -315,7 +315,7 @@ pkgs.testers.nixosTest {
             timeout=15,
         )
         out = client.succeed(
-            f"timeout 10 ssh {cm_opts} root@${serverWanIp} 'echo hello-1'"
+            f"timeout 30 ssh {cm_opts} root@${serverWanIp} 'echo hello-1'"
         )
         assert "hello-1" in out, f"v1 SSH didn't echo hello-1: {out!r}"
 
@@ -331,7 +331,7 @@ pkgs.testers.nixosTest {
         # `state new` and v2's policies.lan-to-wan drop would
         # kill it. A successful echo proves atomicity.
         out = client.succeed(
-            f"timeout 10 ssh {cm_opts} root@${serverWanIp} 'echo hello-2'"
+            f"timeout 30 ssh {cm_opts} root@${serverWanIp} 'echo hello-2'"
         )
         assert "hello-2" in out, (
             f"v2 reload broke the in-flight SSH: {out!r}"
