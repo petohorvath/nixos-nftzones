@@ -420,27 +420,27 @@ in
   # checking against this list.
 
   testCollectAllZoneNamesShape = {
-    expr = pkgs.lib.sort (a: b: a < b) (
-      (runPipeline
-        [
-          convertNodesToZones
-          collectAllZoneNames
-        ]
-        (
-          emptyTable
-          // {
-            zones = {
-              lan = { };
-              wan = { };
-            };
-            nodes.web = {
-              zone = "lan";
-              address.ipv4 = "10.0.0.5";
-            };
-          }
-        )
-      ).allZoneNames
-    );
+    expr =
+      pkgs.lib.sort (a: b: a < b)
+        (runPipeline
+          [
+            convertNodesToZones
+            collectAllZoneNames
+          ]
+          (
+            emptyTable
+            // {
+              zones = {
+                lan = { };
+                wan = { };
+              };
+              nodes.web = {
+                zone = "lan";
+                address.ipv4 = "10.0.0.5";
+              };
+            }
+          )
+        ).allZoneNames;
     expected = [
       "lan"
       "local"
@@ -2576,7 +2576,7 @@ in
     # all three suffixes; the fold merges per-zone genSets
     # outputs into one flat attrset.
     expr = pkgs.lib.sort (a: b: a < b) (
-      builtins.attrNames (
+      builtins.attrNames
         (runEvalPipeline
           [
             convertNodesToZones
@@ -2599,7 +2599,6 @@ in
             };
           }
         ).zoneSets
-      )
     );
     expected = [
       "lan_iifs"

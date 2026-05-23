@@ -122,8 +122,7 @@
 */
 { inputs, internal }:
 let
-  inherit (inputs) lib nftypes;
-  inherit (nftypes) priorityNameOf;
+  inherit (inputs) lib;
   inherit (internal.priority) entryPriorities;
   inherit (internal.placement)
     defaultGroupChainAttrs

@@ -33,7 +33,6 @@ let
 
   # Helpers for inspecting the new sub-chain shape.
   cellNames = cells: map (c: c.name) cells;
-  allCellNames = sub: cellNames sub.preChildCells ++ cellNames sub.postChildCells;
 in
 {
   # ===== dispatchAndSort — empty cells =====
@@ -438,41 +437,41 @@ in
   # ===== dispatchAndSort — sort by (priority, name) within postChildCells =====
 
   testDispatchSortOrder = {
-    expr = cellNames (
-      (runDispatch {
-        name = "fw";
-        zones = {
-          lan = {
-            interfaces = [ "lan0" ];
+    expr =
+      cellNames
+        (runDispatch {
+          name = "fw";
+          zones = {
+            lan = {
+              interfaces = [ "lan0" ];
+            };
+            wan = {
+              interfaces = [ "wan0" ];
+            };
           };
-          wan = {
-            interfaces = [ "wan0" ];
+          filters = {
+            # All same (from, to) → same sub-chain. Different
+            # priorities and names test the sort order.
+            zebra = {
+              from = [ "lan" ];
+              to = [ "wan" ];
+              rule = [ ];
+              priority = 500;
+            };
+            alpha = {
+              from = [ "lan" ];
+              to = [ "wan" ];
+              rule = [ ];
+              priority = 500;
+            };
+            high = {
+              from = [ "lan" ];
+              to = [ "wan" ];
+              rule = [ ];
+              priority = 200;
+            };
           };
-        };
-        filters = {
-          # All same (from, to) → same sub-chain. Different
-          # priorities and names test the sort order.
-          zebra = {
-            from = [ "lan" ];
-            to = [ "wan" ];
-            rule = [ ];
-            priority = 500;
-          };
-          alpha = {
-            from = [ "lan" ];
-            to = [ "wan" ];
-            rule = [ ];
-            priority = 500;
-          };
-          high = {
-            from = [ "lan" ];
-            to = [ "wan" ];
-            rule = [ ];
-            priority = 200;
-          };
-        };
-      }).chainBuckets."forward-at-filter".subChains."lan-to-wan".postChildCells
-    );
+        }).chainBuckets."forward-at-filter".subChains."lan-to-wan".postChildCells;
     # Sorted by priority asc, name asc within priority.
     expected = [
       "high"
@@ -484,29 +483,29 @@ in
   # ===== dispatchAndSort — filter + policy: policies sort to end of postChildCells =====
 
   testDispatchPolicyAtEnd = {
-    expr = cellNames (
-      (runDispatch {
-        name = "fw";
-        zones = {
-          lan = {
-            interfaces = [ "lan0" ];
+    expr =
+      cellNames
+        (runDispatch {
+          name = "fw";
+          zones = {
+            lan = {
+              interfaces = [ "lan0" ];
+            };
+            wan = {
+              interfaces = [ "wan0" ];
+            };
           };
-          wan = {
-            interfaces = [ "wan0" ];
+          filters.allow-https = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule = [ ];
           };
-        };
-        filters.allow-https = {
-          from = [ "lan" ];
-          to = [ "wan" ];
-          rule = [ ];
-        };
-        policies.lan-to-wan = {
-          from = [ "lan" ];
-          to = [ "wan" ];
-          verdict = "drop";
-        };
-      }).chainBuckets."forward-at-filter".subChains."lan-to-wan".postChildCells
-    );
+          policies.lan-to-wan = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            verdict = "drop";
+          };
+        }).chainBuckets."forward-at-filter".subChains."lan-to-wan".postChildCells;
     # Filter first (has priority); policy last (tail rule).
     expected = [
       "allow-https"

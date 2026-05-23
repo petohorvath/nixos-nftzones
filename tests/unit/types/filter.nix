@@ -12,7 +12,7 @@
   ...
 }:
 let
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable evalType evalFails;
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable evalFails;
 
   inherit (nftypes.dsl) eq accept;
   inherit (nftypes.dsl.fields) tcp;

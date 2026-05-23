@@ -36,36 +36,36 @@ in
 
   testExpandBidirectional = {
     # `from = [ "lan" "guest" ]` × `to = [ "wan" "vpn" ]` → 4 cells.
-    expr = map (c: { inherit (c) from to name; }) (
-      (runExpand {
-        name = "fw";
-        zones = {
-          lan = {
-            interfaces = [ "lan0" ];
+    expr =
+      map (c: { inherit (c) from to name; })
+        (runExpand {
+          name = "fw";
+          zones = {
+            lan = {
+              interfaces = [ "lan0" ];
+            };
+            guest = {
+              interfaces = [ "guest0" ];
+            };
+            wan = {
+              interfaces = [ "wan0" ];
+            };
+            vpn = {
+              interfaces = [ "vpn0" ];
+            };
           };
-          guest = {
-            interfaces = [ "guest0" ];
+          filters.web-out = {
+            from = [
+              "lan"
+              "guest"
+            ];
+            to = [
+              "wan"
+              "vpn"
+            ];
+            rule = [ ];
           };
-          wan = {
-            interfaces = [ "wan0" ];
-          };
-          vpn = {
-            interfaces = [ "vpn0" ];
-          };
-        };
-        filters.web-out = {
-          from = [
-            "lan"
-            "guest"
-          ];
-          to = [
-            "wan"
-            "vpn"
-          ];
-          rule = [ ];
-        };
-      }).cells.filters
-    );
+        }).cells.filters;
     expected = [
       {
         from = "lan";
@@ -96,7 +96,7 @@ in
     # `from = [ "all" ]` resolves to declared zones + localZone, so
     # 3 from-values × 1 to-value = 3 cells.
     expr = pkgs.lib.sort (a: b: a < b) (
-      map (c: c.from) (
+      map (c: c.from)
         (runExpand {
           name = "fw";
           zones = {
@@ -113,7 +113,6 @@ in
             rule = [ ];
           };
         }).cells.filters
-      )
     );
     expected = [
       "lan"
@@ -259,7 +258,7 @@ in
 
   testExpandWildcardDeduplication = {
     expr = pkgs.lib.sort (a: b: a < b) (
-      map (c: c.from) (
+      map (c: c.from)
         (runExpand {
           name = "fw";
           zones = {
@@ -275,7 +274,6 @@ in
             rule = [ ];
           };
         }).cells.filters
-      )
     );
     expected = [
       "lan"

@@ -16,9 +16,6 @@
   entirely and fell through to `policy accept`.
 */
 { nftypes, ... }:
-let
-  inherit (nftypes.dsl.fields) ip;
-in
 {
   body = {
     settings.chainPolicy = "accept";
@@ -48,7 +45,7 @@ in
   assertions = compiled: [
     {
       description = "parent's _iifs transitively includes child's interfaces";
-      expr = (compiled.table.sets.lan_iifs.elements);
+      expr = compiled.table.sets.lan_iifs.elements;
       expected = [
         "lan0"
         "guest0"

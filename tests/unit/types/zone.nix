@@ -60,11 +60,11 @@ in
   };
 
   testZoneNameReadOnlyRejectsOverride = {
-    expr = evalFails (
-      (evalTable {
-        zones.lan.name = "other";
-      }).zones.lan.name
-    );
+    expr =
+      evalFails
+        (evalTable {
+          zones.lan.name = "other";
+        }).zones.lan.name;
     expected = true;
   };
 

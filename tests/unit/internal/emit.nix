@@ -212,10 +212,9 @@ in
 
   testEmitTableFamilyPropagates = {
     expr =
-      ((runEmit {
+      (runEmit {
         family = "ip";
-      }).output
-      ).family;
+      }).output.family;
     expected = "ip";
   };
 
@@ -725,23 +724,23 @@ in
   # ===== emitTable — base chain + per-pair sub-chain land in output.chains =====
 
   testEmitTableHasChains = {
-    expr = builtins.attrNames (
-      (runEmit {
-        zones = {
-          lan = {
-            interfaces = [ "lan0" ];
+    expr =
+      builtins.attrNames
+        (runEmit {
+          zones = {
+            lan = {
+              interfaces = [ "lan0" ];
+            };
+            wan = {
+              interfaces = [ "wan0" ];
+            };
           };
-          wan = {
-            interfaces = [ "wan0" ];
+          filters.f = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            rule = [ ];
           };
-        };
-        filters.f = {
-          from = [ "lan" ];
-          to = [ "wan" ];
-          rule = [ ];
-        };
-      }).output.chains
-    );
+        }).output.chains;
     expected = [
       "forward-at-filter"
       "forward-at-filter__lan-to-wan"
