@@ -172,11 +172,15 @@
         {
           default = pkgs.mkShellNoCC {
             # Tools a contributor reaches for when working on
-            # this repo: nixfmt-tree for formatting (matches
-            # `nix fmt`), nftables for hand-running `nft --check`
-            # against rendered scenarios, and nix-output-monitor
-            # for the `nix build` UX.
+            # this repo: nix to pin the flake CLI itself (so
+            # `nix flake check` / `nix build` run a known version
+            # rather than the ambient system one), nixfmt-tree for
+            # formatting (matches `nix fmt`), nftables for
+            # hand-running `nft --check` against rendered
+            # scenarios, and nix-output-monitor for the `nix build`
+            # UX.
             packages = [
+              pkgs.nix
               pkgs.nixfmt-tree
               pkgs.nftables
               pkgs.nix-output-monitor
