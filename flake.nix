@@ -17,6 +17,7 @@
 
     libnet.url = "github:petohorvath/nix-libnet";
     libnet.inputs.nixpkgs.follows = "nixpkgs";
+    libnet.inputs.git-hooks.follows = "git-hooks";
 
     nftypes.url = "github:petohorvath/nix-nftypes";
     nftypes.inputs.nixpkgs.follows = "nixpkgs";

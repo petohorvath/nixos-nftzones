@@ -24,8 +24,9 @@
       - { range = [lo hi]; }  (a port range, lo < hi)
 
   Singleton ranges (where libnet's `portRange.parse "22"` produces
-  `{ from = 22; to = 22; }`) collapse to bare ints. This keeps the
-  emitted nftables text minimal — never `tcp dport 22-22`.
+  a range whose `from` and `to` are the same `libnet.port` value)
+  collapse to bare ints. This keeps the emitted nftables text
+  minimal — never `tcp dport 22-22`.
 
   Sort is by lower-bound (ints by value; ranges by `from`); dedupe
   is by exact equality. Overlapping non-identical ranges are
@@ -43,20 +44,26 @@ let
 
     Collapse a `libnet.portRange` value to either a bare int (when
     `from == to`) or the `{ range = [lo hi]; }` shape that
-    `nftypes.dsl.expr.range` produces. Both forms are valid set /
-    match operands; the bare-int form is preferred for singletons
-    so emitted text reads as `tcp dport 22` rather than
-    `tcp dport 22-22`.
+    `nftypes.dsl.expr.range` produces. `pr.from` / `pr.to` are
+    tagged `libnet.port` values, so unwrap them through `port.toInt`
+    before comparing / emitting. Both forms are valid set / match
+    operands; the bare-int form is preferred for singletons so
+    emitted text reads as `tcp dport 22` rather than `tcp dport
+    22-22`.
   */
   portRangeToCanonical =
     pr:
-    if pr.from == pr.to then
-      pr.from
+    let
+      from = port.toInt pr.from;
+      to = port.toInt pr.to;
+    in
+    if from == to then
+      from
     else
       {
         range = [
-          pr.from
-          pr.to
+          from
+          to
         ];
       };
 

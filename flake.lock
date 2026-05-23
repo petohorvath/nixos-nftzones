@@ -61,16 +61,19 @@
     },
     "libnet": {
       "inputs": {
+        "git-hooks": [
+          "git-hooks"
+        ],
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1777185794,
-        "narHash": "sha256-DUBTzspP83civeOVWuVvS9E+DfyM/QFeDsuOCISNVbs=",
+        "lastModified": 1779528829,
+        "narHash": "sha256-+W2GAagh6kk37IRyMDcmE1L+RN//cty8Yl/TPvQYk4A=",
         "owner": "petohorvath",
         "repo": "nix-libnet",
-        "rev": "ade900e152c6edd5d96bc976ed474dbfd4b604d6",
+        "rev": "2e544133d906e7c631d08ce1b57770edca8e3349",
         "type": "github"
       },
       "original": {
