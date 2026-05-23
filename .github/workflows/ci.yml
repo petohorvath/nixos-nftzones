@@ -53,8 +53,8 @@ jobs:
         run: git diff --exit-code
 
   # Unit and integration jobs run across both Linux systems the
-  # flake exposes, and against both nixpkgs channels: `stable`
-  # (the pinned nixos-25.11 `nixpkgs` input) and `unstable` (the
+  # flake exposes, and against both nixpkgs channels: `nixos-25.11`
+  # (the pinned stable `nixpkgs` input) and `nixos-unstable` (the
   # `nixpkgs-unstable` input, via the `*-unstable` check tiers).
   # Nix can't cross-build between architectures without a remote
   # builder, so each `system` runs on a matching GitHub-hosted
@@ -62,22 +62,22 @@ jobs:
   # `ubuntu-24.04-arm` (free for public repos). Darwin is not
   # built — the integration scenarios depend on `lklWithFirewall`,
   # which is Linux-only. The cache key includes the channel so the
-  # stable / unstable stores don't collide.
+  # two channels' stores don't collide.
   unit:
     name: unit tests (${{ matrix.system }}, ${{ matrix.channel }})
     strategy:
       fail-fast: false
       matrix:
         system: [x86_64-linux, aarch64-linux]
-        channel: [stable, unstable]
+        channel: [nixos-25.11, nixos-unstable]
         include:
           - system: x86_64-linux
             runner: ubuntu-latest
           - system: aarch64-linux
             runner: ubuntu-24.04-arm
-          - channel: stable
+          - channel: nixos-25.11
             suffix: ""
-          - channel: unstable
+          - channel: nixos-unstable
             suffix: "-unstable"
     runs-on: ${{ matrix.runner }}
     steps:
@@ -101,15 +101,15 @@ jobs:
       fail-fast: false
       matrix:
         system: [x86_64-linux, aarch64-linux]
-        channel: [stable, unstable]
+        channel: [nixos-25.11, nixos-unstable]
         include:
           - system: x86_64-linux
             runner: ubuntu-latest
           - system: aarch64-linux
             runner: ubuntu-24.04-arm
-          - channel: stable
+          - channel: nixos-25.11
             suffix: ""
-          - channel: unstable
+          - channel: nixos-unstable
             suffix: "-unstable"
     runs-on: ${{ matrix.runner }}
     steps:
@@ -152,9 +152,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - channel: stable
+          - channel: nixos-25.11
             suffix: ""
-          - channel: unstable
+          - channel: nixos-unstable
             suffix: "-unstable"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
