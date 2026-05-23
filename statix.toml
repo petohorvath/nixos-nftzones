@@ -1,0 +1,17 @@
+# statix configuration — see `statix check` / `nix run nixpkgs#statix`.
+#
+# Two lints are disabled because they fight this codebase's deliberate
+# style rather than improve it:
+#
+# - repeated_keys: the test and VM configs use the attr-path style
+#   (`filters.lan-out = …;`, `networks."10-eth1" = …;`) that nftzones
+#   and NixOS configs read most naturally; merging those into a single
+#   attrset would hurt readability rather than help it.
+# - manual_inherit_from: most hits are `(builtins.head xs).field` /
+#   `(runEvalPipeline …).field` in test expectations, where
+#   `inherit (builtins.head xs) field` is no clearer — and the autofix
+#   even leaves redundant double parens behind.
+disabled = ["repeated_keys", "manual_inherit_from"]
+
+# Build artifacts and the nix-direnv cache are not source.
+ignore = [".direnv", "result", "result-*"]

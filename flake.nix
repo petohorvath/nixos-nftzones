@@ -177,12 +177,16 @@
             # rather than the ambient system one), nixfmt-tree for
             # formatting (matches `nix fmt`), nftables for
             # hand-running `nft --check` against rendered
-            # scenarios, and nix-output-monitor for the `nix build`
-            # UX.
+            # scenarios, statix + deadnix for on-demand Nix linting
+            # and dead-code detection (run by hand; not wired into
+            # the pre-commit hooks), and nix-output-monitor for the
+            # `nix build` UX.
             packages = [
               pkgs.nix
               pkgs.nixfmt-tree
               pkgs.nftables
+              pkgs.statix
+              pkgs.deadnix
               pkgs.nix-output-monitor
             ];
 
