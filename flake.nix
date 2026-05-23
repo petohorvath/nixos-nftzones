@@ -2,16 +2,18 @@
   description = "nixos-nftzones — library for zone-based nftables firewall configuration";
 
   inputs = {
-    # Tracking `nixos-unstable` rather than a release branch
-    # is deliberate: this library only depends on `nixpkgs.lib`
-    # plus `pkgs.testers.nixosTest` / `pkgs.nftables` /
-    # `lklWithFirewall` for the test tiers, none of which break
-    # API on minor bumps. CI matrices the VM suite across
-    # `pinned`, `nixos-25.11`, and `nixos-unstable` so a
-    # consumer pinning to a release channel still gets a
-    # green build. Pin to a stable branch (or a specific rev)
-    # downstream if you want a slower-moving floor.
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # `nixpkgs` is the default channel for everything this flake
+    # exposes to consumers — `lib`, the NixOS module, the
+    # devShell, the formatter — pinned to the current stable
+    # release. libnet / nftypes / git-hooks all follow it.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+
+    # `nixpkgs-unstable` is consumed *only* by the `*-unstable`
+    # check tiers (see `checks` below): the unit / integration /
+    # examples / vm suites run a second time against it so
+    # upstream breakage surfaces in this repo's CI rather than
+    # downstream. Nothing user-facing depends on it.
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     libnet.url = "github:petohorvath/nix-libnet";
     libnet.inputs.nixpkgs.follows = "nixpkgs";
@@ -30,6 +32,7 @@
     {
       self,
       nixpkgs,
+      nixpkgs-unstable,
       libnet,
       nftypes,
       git-hooks,
@@ -61,6 +64,14 @@
       # call `mkLib pkgs` ad-hoc in new code paths.
       libBySystem = forAllSystems mkLib;
 
+      # The same library built against `nixpkgs-unstable`, used
+      # only by the `*-unstable` check tiers. Kept parallel to
+      # `libBySystem` rather than computed ad-hoc, for the same
+      # reason.
+      libBySystemUnstable = nixpkgs.lib.genAttrs systems (
+        system: mkLib nixpkgs-unstable.legacyPackages.${system}
+      );
+
       # `./modules/nftzones.nix` is a function `{ nftzones, nftypes
       # }: { ... } NixOS module`. Partial-applying both libs here
       # keeps them private compile-time deps of the module rather
@@ -68,21 +79,37 @@
       # every sibling module's argument list. User code reaches
       # nftzones / nftypes via their own flake inputs, not via
       # module args.
-      nftzonesModule =
+      #
+      # Parameterized over the per-system library set so the
+      # `*-unstable` VM tier can compile with the unstable build;
+      # `nixosModules.default` and every other consumer use the
+      # stable `nftzonesModule`.
+      mkNftzonesModule =
+        libSet:
         { pkgs, ... }:
         {
           imports = [
             (import ./modules/nftzones.nix {
-              nftzones = libBySystem.${pkgs.stdenv.hostPlatform.system};
+              nftzones = libSet.${pkgs.stdenv.hostPlatform.system};
               nftypes = nftypes.lib;
             })
           ];
         };
+      nftzonesModule = mkNftzonesModule libBySystem;
+      nftzonesModuleUnstable = mkNftzonesModule libBySystemUnstable;
 
-      mkChecks =
-        pkgs:
+      # The unit / integration / examples / vm tiers, parameterized
+      # over a pkgs set and its matching `nftzones` lib + module so
+      # the same suite can run against either nixpkgs channel. The
+      # `pre-commit` check is added once, channel-independent, in
+      # `checks` below.
+      mkTestTiers =
+        {
+          pkgs,
+          nftzones,
+          nftzonesModule,
+        }:
         let
-          nftzones = libBySystem.${pkgs.stdenv.hostPlatform.system};
           testArgs = {
             inherit pkgs nftzonesModule nftzones;
             nftypes = nftypes.lib;
@@ -98,7 +125,6 @@
           unit = runner.runTests unitTests;
           integration = import ./tests/integration/default.nix testArgs;
           examples = import ./examples/default.nix testArgs;
-          pre-commit = gitHooksBySystem.${pkgs.stdenv.hostPlatform.system};
         }
         // vmTestsLinux;
 
@@ -161,7 +187,26 @@
     {
       lib = libBySystem;
       formatter = forAllSystems (pkgs: pkgs.nixfmt-tree);
-      checks = forAllSystems mkChecks;
+      checks = forAllSystems (
+        pkgs:
+        let
+          system = pkgs.stdenv.hostPlatform.system;
+          stable = mkTestTiers {
+            inherit pkgs nftzonesModule;
+            nftzones = libBySystem.${system};
+          };
+          unstable = mkTestTiers {
+            pkgs = nixpkgs-unstable.legacyPackages.${system};
+            nftzones = libBySystemUnstable.${system};
+            nftzonesModule = nftzonesModuleUnstable;
+          };
+        in
+        stable
+        // nixpkgs.lib.mapAttrs' (name: value: nixpkgs.lib.nameValuePair "${name}-unstable" value) unstable
+        // {
+          pre-commit = gitHooksBySystem.${system};
+        }
+      );
       nixosModules.default = nftzonesModule;
 
       devShells = forAllSystems (
