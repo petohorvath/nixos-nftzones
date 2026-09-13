@@ -957,9 +957,9 @@ let
       - `route` chain at non-`output` hooks (kernel restriction
         encoded in `hooksByChainType.route = [ "output" ]`).
 
-    Default placements are sourced from `internal.placement`,
-    the same module Phase 3 dispatch reads — single source of
-    truth for the per-group `(hook, priority)` constants.
+    `internal.placement` owns entry-level placement analysis and
+    Phase 3's cell placement. This validator classifies its
+    results and attaches entry names to the aggregated errors.
   */
   checkChainPlacement =
     { table, ctx }:
@@ -967,49 +967,13 @@ let
       inherit (table) family;
       inherit (table.settings) localZone;
       inherit (nftypes) chainTypeFor validChainPlacement;
-      inherit (internal.placement) defaultGroupChainAttrs filterChainPriority;
-
-      /*
-        For a filter/policy entry, derive every hook the dispatch
-        could land on. Hook depends solely on whether `localZone`
-        appears on the from / to side, so a membership check beats
-        materializing the full cartesian.
-      */
-      filterHooks =
-        dirs:
-        let
-          fromHasLocal = builtins.elem localZone dirs.from;
-          toHasLocal = builtins.elem localZone dirs.to;
-          nonLocalFrom = builtins.length dirs.from > (if fromHasLocal then 1 else 0);
-          nonLocalTo = builtins.length dirs.to > (if toHasLocal then 1 else 0);
-        in
-        lib.optional toHasLocal "input"
-        ++ lib.optional fromHasLocal "output"
-        ++ lib.optional (nonLocalFrom && nonLocalTo) "forward";
+      inherit (internal.placement) chainAttrsForEntry;
 
       placementsForEntry =
         group: entryName: entry:
-        if (entry.chain or null) != null then
-          [
-            {
-              inherit entryName;
-              inherit (entry.chain) hook priority;
-            }
-          ]
-        else if group == "filters" || group == "policies" then
-          map (hook: {
-            inherit entryName hook;
-            priority = filterChainPriority;
-          }) (filterHooks ctx.expandedGroups.${group}.${entryName})
-        else
-          [
-            (
-              defaultGroupChainAttrs.${group}
-              // {
-                inherit entryName;
-              }
-            )
-          ];
+        map (attrs: attrs // { inherit entryName; }) (
+          chainAttrsForEntry group localZone (entry // ctx.expandedGroups.${group}.${entryName})
+        );
 
       placementsForGroup =
         group: lib.concatLists (lib.mapAttrsToList (placementsForEntry group) (table.${group} or { }));

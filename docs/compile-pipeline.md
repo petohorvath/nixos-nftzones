@@ -37,8 +37,8 @@ These are nftables's own concepts; nftzones adopts the same terms verbatim:
 
 The same string travels from Phase 3 (as an attrset key) through to Phase 4 (as the actual nftables chain name):
 
-- **`baseChainName`** = `"<hook>-at-<priority>"` (e.g. `"forward-at-filter"`). Computed internally by `internal.dispatch`. Used as the bucket key in `chainBuckets` *and* as the base chain's name in the emitted nftables output.
-- **`subChainKey`** — local key within `bucket.subChains` (e.g. `"lan-to-wan"` / `"wan"` / `"lan"`). Computed internally by `internal.dispatch` from a cell's `from` / `to`.
+- **`baseChainName`** = `"<hook>-at-<priority>"` (e.g. `"forward-at-filter"`). Computed by `internal.placement.baseChainNameOf`, with family-aware canonicalization of integer and symbol priorities. Used as the bucket key in `chainBuckets` *and* as the base chain's name in the emitted nftables output.
+- **`subChainKey`** — local key within `bucket.subChains` (e.g. `"lan-to-wan"` / `"wan"` / `"lan"`). Computed by `internal.placement.subChainKeyOf` from a cell's `from` / `to`.
 - **`subChainName`** — full sub-chain name in the nftables output, `"<baseChainName>__<subChainKey>"` (e.g. `"forward-at-filter__lan-to-wan"`). Computed by `internal.emit.subChainNameOf`.
 
 ### Two framings of `(hook, priority)`
@@ -49,6 +49,13 @@ The pair shows up under two names depending on context:
 - **Chain attrs** — implementation term, used in `internal.dispatch` / `internal.emit`. Describes the attrset shape `{ hook; priority; }` carried alongside cells.
 
 Same concept, different framings.
+
+`internal.placement` owns override precedence, local-zone hook selection, group defaults, and canonical chain names. Its two selection functions share that precedence:
+
+- `chainAttrsForEntry group localZone entry` returns validation candidates as a list of chain attrs. The entry's directions must already be wildcard-expanded and deduplicated. It inspects the direction lists without materializing their Cartesian product.
+- `chainAttrsForCell group localZone cell` returns one concrete cell's chain attrs, with scalar directions. An override wins; otherwise filters and policies prefer input when `to == localZone`, then output when `from == localZone`, then forward. Other groups use their defaults.
+
+Entry analysis preserves conservative validation: fixed group placements and overrides are checked even for empty direction lists, and a local-zone reference contributes its hook independently of the opposite direction. A local-to-local entry therefore checks both input and output, while its cell dispatches to input. `normalize.checkChainPlacement` adds entry names and aggregates compatibility errors; `dispatch` buckets cells using their selected attrs. Priority values keep their original integer or symbol form until `baseChainNameOf` canonicalizes the name.
 
 The Group / Entry / Direction trio shows up directly in `internal/normalize.nix`'s helpers:
 
@@ -185,7 +192,7 @@ Each cell goes to a chain based on its group:
 
 | Group | Chain dispatch |
 |---|---|
-| `filters` | Computed internally by `internal.dispatch` — input / forward / output based on whether `from` / `to` reference `settings.localZone`. |
+| `filters` | Selected by `internal.placement.chainAttrsForCell` — input / forward / output based on whether `from` / `to` reference `settings.localZone`. |
 | `policies` | Same as `filters` — policies become tail rules in the same per-pair sub-chains. |
 | `snats` | Always postrouting (`type nat hook postrouting priority srcnat`). |
 | `dnats` | Always prerouting (`type nat hook prerouting priority dstnat`). |
@@ -408,13 +415,12 @@ lib/
                                extracts named-object refs from any
                                rule body or expression; consumed by
                                Phase 1's checkObjectRefs).
-    placement.nix            — defaultGroupChainAttrs +
-                               filterChainHook + filterChainPriority
-                               (per-group `(hook, priority)` constants
-                               and the localZone-driven host-position
-                               hook; shared by Phase 1's
-                               checkChainPlacement and Phase 3's
-                               chainAttrsOf).
+    placement.nix            — chainAttrsForEntry + chainAttrsForCell
+                               (override / local-zone / default
+                               selection for Phase 1 validation and
+                               Phase 3 dispatch); baseChainNameOf +
+                               subChainKeyOf (shared chain naming);
+                               walkParents + hooksWithIifname.
 
     # Layer 1 — phase orchestrators (consume the leaves above)
     normalize.nix            — Phase 1 orchestrator: pipes compute

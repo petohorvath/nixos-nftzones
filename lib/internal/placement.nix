@@ -2,31 +2,22 @@
   internal/placement — exposes chain-placement helpers under
   `nftzones.internal.placement`.
 
-  Single source of truth for the per-group default chain attrs
-  and the local-zone-driven filter/policy hook. Phase 1's
-  `internal.normalize.checkChainPlacement` and Phase 3's
-  `internal.dispatch.chainAttrsOf` both consume these — keeping
-  them here prevents the two from drifting apart as new groups
-  or hooks land.
+  Owns override precedence, per-group defaults, local-zone hook
+  selection, and canonical chain naming. Phase 1 validates entry
+  placements here; Phase 3 places each expanded cell here.
 
   Exported:
-    - `defaultGroupChainAttrs`  — `{ <group> = { hook; priority; }; … }`
-                                  for non-filter groups (snats /
-                                  dnats / sroutes / droutes).
-                                  Filters and policies dispatch
-                                  by host position via
-                                  `filterChainHook`, so they have
-                                  no entry here.
-    - `filterChainHook`         — given a `localZone` and a
-                                  cell-shaped attrset (with
-                                  `from?` / `to?` fields), returns
-                                  the hook the cell's filter or
-                                  policy rule dispatches to:
-                                    `to == localZone`   → `input`
-                                    `from == localZone` → `output`
-                                    else                → `forward`
-    - `filterChainPriority`     — canonical symbol (`"filter"`)
-                                  used for filter/policy chains.
+    - `chainAttrsForEntry`      — `group → localZone → entry →
+                                  [{ hook; priority; }]`. Validation
+                                  candidates from wildcard-expanded,
+                                  deduplicated direction lists;
+                                  never builds the cell cartesian.
+    - `chainAttrsForCell`       — `group → localZone → cell →
+                                  { hook; priority; }`. One concrete
+                                  cell's placement. Both functions
+                                  prefer `chain` overrides, then
+                                  local-zone hooks for filters /
+                                  policies, then group defaults.
     - `baseChainNameOf`         — `family → { hook; priority; } →
                                   "<hook>-at-<priority>"`. The
                                   bucket-key / base-chain-name
@@ -83,6 +74,49 @@ let
     else
       hookNames.forward;
 
+  # Both entry analysis and cell dispatch use this precedence.
+  # Keep filter hooks lazy: overrides and fixed group defaults
+  # do not need to inspect the entry's directions.
+  selectChainAttrs =
+    group: entry: filterHooks:
+    if (entry.chain or null) != null then
+      [ { inherit (entry.chain) hook priority; } ]
+    else if group == "filters" || group == "policies" then
+      map (hook: {
+        inherit hook;
+        priority = filterChainPriority;
+      }) filterHooks
+    else
+      [ defaultGroupChainAttrs.${group} ];
+
+  chainAttrsForCell =
+    group: localZone: cell:
+    builtins.head (selectChainAttrs group cell [ (filterChainHook localZone cell) ]);
+
+  /*
+    Entry-level validation candidates, without building cells.
+    Directions must already be wildcard-expanded and deduplicated.
+    Preserve the conservative validation contract: a local-zone
+    reference contributes its hook even when the opposite list
+    is empty; overrides and fixed defaults are always checked.
+    A local-to-local entry therefore checks input and output,
+    while its concrete cell dispatches to input.
+  */
+  chainAttrsForEntry =
+    group: localZone: entry:
+    let
+      fromHasLocal = builtins.elem localZone entry.from;
+      toHasLocal = builtins.elem localZone entry.to;
+      nonLocalFrom = builtins.length entry.from > (if fromHasLocal then 1 else 0);
+      nonLocalTo = builtins.length entry.to > (if toHasLocal then 1 else 0);
+
+      filterHooks =
+        lib.optional toHasLocal hookNames.input
+        ++ lib.optional fromHasLocal hookNames.output
+        ++ lib.optional (nonLocalFrom && nonLocalTo) hookNames.forward;
+    in
+    selectChainAttrs group entry filterHooks;
+
   # Base chain name — `"<hook>-at-<priority>"` (e.g.
   # `"input-at-filter"`). Used as the bucket key in
   # `dispatch.chainBuckets` and as the chain name Phase 4 emits in
@@ -132,9 +166,8 @@ let
 in
 {
   inherit
-    defaultGroupChainAttrs
-    filterChainHook
-    filterChainPriority
+    chainAttrsForCell
+    chainAttrsForEntry
     baseChainNameOf
     subChainKeyOf
     ;
