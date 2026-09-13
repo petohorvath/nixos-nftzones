@@ -15,12 +15,12 @@ The pipeline (and the surrounding code) names the data-model levels consistently
 - **Group** — one of the rule-bearing collections on a table: `filters`, `policies`, `snats`, `dnats`, `sroutes`, `droutes`. Each group is `attrsOf <kind-submodule>`. *Not* used for `zones` and `nodes` — those are zone-level declarations and have their own terminology ("zone declaration", "node declaration").
 - **Entry** — one item inside a group, keyed by name. `table.filters.allow-ssh` is an entry; the body field on it (`entry.rule`, the list of nftypes statements) is unambiguous because the wrapper is an *entry*, not a *rule*.
 - **Direction** — `from` or `to`, the zone-name fields on an entry. Some groups are bidirectional (filters, policies, snats — both `from` and `to`); others are single-direction (`dnats`, `sroutes` have only `from`; `droutes` only `to`). Direction is the *entry's* perspective on the source/destination axis.
-- **Side** — `ingress` or `egress`, the per-axis match fields on a zone (`zone.matchOverride.<side>`). Side is the *zone's* perspective on the same axis: a packet entering the firewall matches a zone's `ingress` side; a packet leaving matches its `egress` side. Mapped from direction via `internal.normalize.directionToSide`: `from → ingress`, `to → egress`. Two terms exist because each reads naturally only in its native frame ("entry's from-direction" / "zone's ingress side"); collapsing produces awkward constructs like "the to side" or "the egress direction".
+- **Side** — `ingress` or `egress`, the per-axis match fields on a zone (`zone.matchOverride.<side>`). Side is the *zone's* perspective on the same axis: a packet entering the firewall matches a zone's `ingress` side; a packet leaving matches its `egress` side. Mapped from direction via `internal.zone.directionToSide`: `from → ingress`, `to → egress`. Two terms exist because each reads naturally only in its native frame ("entry's from-direction" / "zone's ingress side"); collapsing produces awkward constructs like "the to side" or "the egress direction".
 - **Cell** — a concrete `(from, to)` instance of an entry produced by Phase 2's cartesian product. Same shape as the entry but with the listed directions as scalars instead of lists. An entry with `from = [ "lan" "guest" ]; to = [ "wan" "vpn" ]` produces four cells. For single-direction groups, a cell has only the relevant scalar (e.g., a `dnat` cell has `from = "wan"` and no `to`).
 - **Slot** — one of two positions a cell occupies *within its sub-chain*, decided by the cell's resolved priority: `preChildCells` (emit *before* the child-dispatch jumps in that sub-chain) or `postChildCells` (emit *after*). The cutoff is at resolved priority `100` (`preDispatch` = 50 → preChildCells; default = 500 → postChildCells). Phase 3 buckets cells by `(chain, sub-chain, slot)`; Phase 4 emits each slot in order.
 - **Bucket** — Phase 3 container holding all cells destined for one `(hook, priority)` placement, organized by sub-chain. `ctx.chainBuckets.<baseChainName> = { hook; priority; subChains; }`. Each sub-chain inside carries its own `preChildCells` / `postChildCells` slots. Phase 4 emits one base chain per bucket; the base chain itself holds only the dispatch jumps.
-- **Section** — one of the four sub-keys of `zone.matchOverride.<side>`: `interfaces` / `ipv4` / `ipv6` / `extra`. A section either contributes a clause to a direction's match (when non-null and non-empty) or is inert. `internal.zone.getActiveMatchOverrides` filters out null / empty sections; `internal.emit.mkDirectionVariants` reads the remaining "active" sections to build the variant cartesian.
-- **Variant** — one match-clause list within a `matchOverride.<side>` (or in a Phase 4 jump rule). Multiple variants → multiple emitted rules. `internal.emit.mkDirectionVariants` documents the section-presence cartesian for jump-match construction.
+- **Section** — one of the four sub-keys of `zone.matchOverride.<side>`: `interfaces` / `ipv4` / `ipv6` / `extra`. A section either contributes a clause to a direction's match (when non-null and non-empty) or is inert. `zoneMembership.activeOverrides` filters out null / empty sections; `zoneMembership.directionVariants` reads the remaining "active" sections to build the variant cartesian.
+- **Variant** — one match-clause list within a `matchOverride.<side>` (or in a Phase 4 jump rule). Multiple variants → multiple emitted rules. `zoneMembership.directionVariants` documents the section-presence cartesian for jump-match construction.
 
 ### nftables vocabulary
 
@@ -105,6 +105,26 @@ Three sub-steps, in order: lower nodes → resolve wildcards → validate.
 
 Lowered zones merge into `table.zones`; `table.nodes` is cleared. After this step the rest of the pipeline operates on a single zone namespace.
 
+### Zone membership
+
+After node lowering, `computeZoneMembership` calls
+`internal.zone.resolveMembership { zones = ctx.mergedZones; localZone; }`
+once. The resulting `ctx.zoneMembership` is the shared interface used by
+validation and emission. Callers supply zone names, sides or dispatch
+contexts; they never pair declarations with separately fabricated sets.
+
+- `sets` and `setOwners` describe generated transitive sets and their provenance.
+- `childrenOf`, `rootZoneNames`, `ancestorsOf` and `related` answer hierarchy questions.
+- `activeOverrides` returns the contributing sections for reference validation.
+- `hasOwnMatch` and `reachableAt` validate a zone's own declarations and overrides, excluding descendants.
+- `directionVariants` produces dispatch clauses with hook visibility and own/descendant composition handled internally.
+- `crossAxisPairs` identifies unrelated, anchored zones split across effective from-side axes. It retains the warning's accepted to-side and sibling residuals, ignores overrides, and excludes unanchored grouping zones.
+
+Own, descendant and ancestor meanings stay distinct: an empty grouping
+zone can carry a synthetic dispatcher and transitive sets while remaining
+invalid as a direct rule reference. Ancestor gates affect the from-side
+path; ancestor content is never copied down into a child's sets.
+
 ### 1.2 Wildcard resolution
 
 Phase 1 substitutes the wildcard zone (default `"all"`) in every entry's `from` / `to` list with the full set of in-scope zones (declared zones plus `settings.localZone`). The substitution + dedup is inlined inside `internal.normalize.expandWildcardZones` since it has no other consumer:
@@ -126,7 +146,7 @@ Validators run after the compute phases, all in `internal/normalize.nix`. Each a
 - **`checkNameCollisions`** — node names must not collide with zone names (lowering would silently overwrite).
 - **`checkSettings`** — `settings.localZone` and `settings.wildcardZone` must differ from each other and from any declared zone / node name.
 - **`checkZoneRefs`** — every zone reference (in `from`, `to`, `node.zone`) must resolve to a known zone or `settings.localZone`.
-- **`checkZoneMatchable`** — every direction-bound zone ref (`from` → ingress, `to` → egress) must point at a zone whose computed `match` is non-empty on the relevant side.
+- **`checkZoneMatchable`** — every direction-bound zone ref (`from` → ingress, `to` → egress) must point at a zone with its own interfaces, CIDRs or active override on the relevant side. Descendant sets do not make an empty grouping zone directly referenceable.
 - **`checkChainOverridePlacement`** — entries with a `chain` override must land at a hook where their `from` / `to` zones are actually matchable (interface fields aren't valid at every hook).
 - **`checkChainPlacement`** — every entry's resolved `(family, chainType, hook)` triple must be one the kernel accepts (via `nftypes.validChainPlacement`); rejects bridge nat, bridge sroute / droute (no `mangle` on bridge), route at non-output hooks, etc.
 - **`checkRpfilterOverride`** — emits a warning (not an error) when `settings.rpfilter = true` but a user chain override already claims `(prerouting, raw)`; the synthesized rpfilter chain is suppressed and the user-authored chain is used as-is.
@@ -194,7 +214,7 @@ For each zone, generate up to three sets:
 - `<name>_v4` — `type ipv4_addr; flags interval` of v4 CIDRs (coalesced by `libnet.cidr.summarize`).
 - `<name>_v6` — `type ipv6_addr; flags interval` of v6 CIDRs (coalesced by `libnet.cidr.summarize`).
 
-Each set carries the union of the zone's own interfaces/CIDRs **plus every descendant's, transitively**. A child zone is a refinement of its parent, so anything that matches the child must also match the parent's base-chain dispatch jump (the child is reached from there via the parent's child-dispatch sub-rule). Within one family the union only ever widens the parent's match (OR inside the set); a set whose content comes **only** from descendants must not be ANDed into the parent's own gate, which is why jump construction classifies each section by own-ness (§4.4) — adding a descendant never shrinks what an ancestor matches. CIDR sets are coalesced at compile time: exact duplicates collapse, subset overlaps drop (descendant `10.0.0.5/32` inside parent `10.0.0.0/24` → just `10.0.0.0/24`), and adjacent sibling prefixes fuse (`10.0.0.0/24` + `10.0.1.0/24` → `10.0.0.0/23`). The rendered set matches the live kernel state without relying on the kernel-side `auto-merge` flag. Empty sets are skipped. Per-direction match expressions used by jumps are constructed by `internal.emit.mkDirectionVariants` from these set names.
+Each set carries the union of the zone's own interfaces/CIDRs **plus every descendant's, transitively**. A child zone is a refinement of its parent, so anything that matches the child must also match the parent's base-chain dispatch jump (the child is reached from there via the parent's child-dispatch sub-rule). Within one family the union only ever widens the parent's match (OR inside the set); a set whose content comes **only** from descendants must not be ANDed into the parent's own gate, which is why jump construction classifies each section by own-ness (§4.4) — adding a descendant never shrinks what an ancestor matches. CIDR sets are coalesced at compile time: exact duplicates collapse, subset overlaps drop (descendant `10.0.0.5/32` inside parent `10.0.0.0/24` → just `10.0.0.0/24`), and adjacent sibling prefixes fuse (`10.0.0.0/24` + `10.0.1.0/24` → `10.0.0.0/23`). The rendered set matches the live kernel state without relying on the kernel-side `auto-merge` flag. Empty sets are skipped. Per-direction match expressions used by jumps are constructed by `zoneMembership.directionVariants` from these set names.
 
 ### 4.2 Base chains
 
@@ -262,7 +282,7 @@ In each base chain, emit one or more jumps per non-empty sub-chain in that bucke
 
 **Per-direction variants — *not* a single ANDed clause list.** In `inet` family, `ip <addr>` and `ip6 <addr>` clauses cannot be ANDed in the same rule: a v4 packet hitting `ip6 saddr ...` skips the rule entirely (and vice versa). So each direction emits **one variant per address family** that has a non-empty contribution, plus the optional interface prefix when the hook allows it, plus any `extra` section content the user supplied.
 
-**Section resolution.** `mkDirectionVariants` resolves four sections per direction, in this order: override wins if contributing, else fall back to the auto path.
+**Section resolution.** `zoneMembership.directionVariants` resolves four sections per direction, in this order: override wins if contributing, else fall back to the auto path.
 
 | Section      | Auto path                              | Override path                  |
 |--------------|----------------------------------------|--------------------------------|
@@ -275,7 +295,7 @@ A section "contributes" when it's non-null AND non-empty. Empty list (`[ ]`) and
 
 The `interfaces` section is **hook-gated**: dropped when the relevant `iifname` / `oifname` field isn't valid at the hook (defense; `checkChainOverridePlacement` should have caught it). The other sections are hook-agnostic.
 
-**Own-ness.** The auto-path sets are transitive unions (§4.1), so each section is additionally classified as **own** (anchored by the zone's raw `interfaces` / `cidrs` per `internal.zone.ownSectionsOf`, or by an active override — overrides are own by definition) vs **inherited** (present in the union set only through descendants). Only own sections AND together. An inherited section ANDed into the gate would narrow the ancestor's dispatch to just the descendant's traffic — e.g. an address-only node under an interface-only zone would turn the zone's `iifname @<zone>_iifs` gate into `iifname @<zone>_iifs ip saddr @<zone>_v4`, cutting off every other host in the zone. Inherited sections widen the gate instead: inherited v4/v6 each become one extra OR variant behind the own prefix (unless the own gate is interface/extra-only, which is family-agnostic and already covers the subtree), and inherited interfaces become one standalone family-agnostic variant. Pinned by the `parent-mixed-sections` / `parent-mixed-sections-mirror` integration scenarios.
+**Own-ness.** The auto-path sets are transitive unions (§4.1), so each section is additionally classified as **own** (anchored by the zone's raw `interfaces` / `cidrs` as classified privately by the zone module, or by an active override — overrides are own by definition) vs **inherited** (present in the union set only through descendants). Only own sections AND together. An inherited section ANDed into the gate would narrow the ancestor's dispatch to just the descendant's traffic — e.g. an address-only node under an interface-only zone would turn the zone's `iifname @<zone>_iifs` gate into `iifname @<zone>_iifs ip saddr @<zone>_v4`, cutting off every other host in the zone. Inherited sections widen the gate instead: inherited v4/v6 each become one extra OR variant behind the own prefix (unless the own gate is interface/extra-only, which is family-agnostic and already covers the subtree), and inherited interfaces become one standalone family-agnostic variant. Pinned by the `parent-mixed-sections` / `parent-mixed-sections-mirror` integration scenarios.
 
 > Note — *section* here is unrelated to the *bucket slot* concept defined in the Terminology section above. Bucket slots (`preDispatch` / `subChains` / `postDispatch`) are Phase 3 cell placements within a chain bucket; override sections are per-direction match-clause containers within `matchOverride`. Different concepts, same generic vocabulary; they never appear together in code.
 
@@ -337,21 +357,16 @@ When the hook makes the only available field unavailable AND the zone has no add
 Helper signatures:
 
 ```nix
-mkDirectionVariants = { hook, direction, zoneName, active, mergedZones,
-                        zoneSets, localZone }:
-  <list-of-variants>;  # each variant is a list of statements; `active`
-                       # is the set of contributing matchOverride sections
-                       # from `internal.zone.getActiveMatchOverrides`;
-                       # `mergedZones` feeds the own/inherited section
-                       # classification via `internal.zone.ownSectionsOf`
+zoneMembership = internal.zone.resolveMembership { zones = mergedZones; localZone; };
+zoneMembership.directionVariants { hook; direction; zoneName; }
+  # -> list of DSL statement lists; null/localZone -> [ [ ] ]
 
-mkRootJumpRules = { hook, baseChainName, effectiveSubChains, mergedZones,
-                    zoneSets, localZone }:
-  <list-of-rules>;  # base-chain jumps to root sub-chains only
+mkRootJumpRules = { hook, baseChainName, effectiveSubChains, zoneMembership }:
+  <list-of-rules>;  # base-chain jumps to root from-zones only
 
-mkChildDispatchJumpRules = { hook, baseChainName, parent, children,
-                             mergedZones, zoneSets, localZone }:
-  <list-of-rules>;  # in-sub-chain jumps to descendant sub-chains
+mkChildDispatchJumpRules = { hook, baseChainName, parentFromZone, toZone,
+                             effectiveSubChains, zoneMembership }:
+  <list-of-rules>;  # in-sub-chain jumps to from-side descendants
 ```
 
 ### 4.5 User objects
@@ -379,9 +394,10 @@ lib/
                                helpers under snippets/.
   internal/
     # Layer 0 — leaves (no inter-module deps)
-    zone.nix                 — genSets (per-zone nftables sets,
-                               consumed by both Phase 1 validators and
-                               Phase 4 emit).
+    zone.nix                 — resolveMembership (zone interpretation
+                               shared by Phase 1 validators and Phase 4
+                               emit: sets, hierarchy, validation and
+                               dispatch variants).
     entry.nix                — toCells (one entry → list of cells per
                                cartesian product of from / to).
     priority.nix             — resolvePriority (symbol → int),
@@ -401,13 +417,12 @@ lib/
                                chainAttrsOf).
 
     # Layer 1 — phase orchestrators (consume the leaves above)
-    normalize.nix            — Phase 1 orchestrator: pipes 8 compute
+    normalize.nix            — Phase 1 orchestrator: pipes compute
                                phases (convertNodesToZones,
-                               computeZoneSets, computeChildrenOf,
-                               computeRootZoneNames,
+                               computeZoneMembership,
                                collectAllZoneNames,
                                expandWildcardZones, resolvePriorities,
-                               collectZoneRefs) followed by 14
+                               collectZoneRefs) followed by
                                validators (checkParentRefs,
                                checkParentCycles, checkNameCollisions,
                                checkSettings, checkZoneRefs,
@@ -474,7 +489,7 @@ contributors hitting the same forks benefit from the prior thinking.
    **Decision:** implement the special-case extractor in nftzones first. One consumer, small surface, no speculative API design. If a second use case appears (Phase 4 emit doing structural transforms, a future linter, etc.), upstream the generalized walker to nftypes then — designing the walker API with a single consumer risks the wrong abstraction.
 4. **Error aggregation strategy.** Phase 1 validators return error lists. Should Phase 4 emission also return errors, or is "if execution reached Phase 4, emission can't fail" reasonable? The latter assumes Phases 1-3 fully validate.
 5. **Single-table vs multi-table compile.** `mkTable` takes one table; multi-table consumers compose externally. Reconsider only if a real consumer wants a single function call.
-6. **Zone-derived auto-sets in user rule bodies.** Phase 1's `computeZoneSets` materializes `<zone>_iifs` / `<zone>_v4` / `<zone>_v6` into `ctx.zoneSets`, which Phase 4 emits into `table.objects.sets` at output time. A user could in principle reference one of those names from a `match` clause inside their own rule body (e.g. `right = "@lan_v4"`). At Phase 1 validation time those names are not yet in `table.objects.sets` — they're synthesized later — so a naive `checkObjectRefs` would falsely flag them as unknown.
+6. **Zone-derived auto-sets in user rule bodies.** Phase 1's `computeZoneMembership` materializes `<zone>_iifs` / `<zone>_v4` / `<zone>_v6` into `ctx.zoneMembership.sets`, which Phase 4 emits into `table.objects.sets` at output time. A user could in principle reference one of those names from a `match` clause inside their own rule body (e.g. `right = "@lan_v4"`). At Phase 1 validation time those names are not yet in `table.objects.sets` — they're synthesized later — so a naive `checkObjectRefs` would falsely flag them as unknown.
 
     Three options:
 
@@ -504,9 +519,7 @@ compile = table:
 # Phase 1 — internal/normalize.nix
 normalizeTable = lib.pipe (mkInitialState table) [
   convertNodesToZones      # ctx.mergedZones
-  computeZoneSets          # ctx.zoneSets   (consumed in P1 + P4)
-  computeChildrenOf        # ctx.childrenOf (inverse parent map)
-  computeRootZoneNames     # ctx.rootZoneNames
+  computeZoneMembership    # ctx.zoneMembership (consumed in P1 + P4)
   collectAllZoneNames      # ctx.allZoneNames
   expandWildcardZones      # ctx.expandedGroups
   resolvePriorities        # ctx.resolvedPriorities
@@ -533,7 +546,7 @@ dispatchAndSort = lib.pipe state [
   buildChainBuckets        # ctx.chainBuckets
 ];
 
-# Phase 4 — internal/emit.nix (reads ctx.zoneSets from Phase 1)
+# Phase 4 — internal/emit.nix (reads ctx.zoneMembership.sets from Phase 1)
 emitTable = lib.pipe state [
   emitBaseChains           # ctx.baseChains
   emitSubChains            # ctx.subChains

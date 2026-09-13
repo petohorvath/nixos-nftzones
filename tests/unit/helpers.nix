@@ -8,6 +8,7 @@
     - `evalTable` — runs a raw user body through `evalModules`
                     against `nftzones.types.table`, returning the
                     evaluated submodule value.
+    - `membershipFor` — resolves zone/node declarations for membership tests.
     - `evalType`  — runs a single value through `evalModules`
                     against an arbitrary option type, returning the
                     evaluated value (throws if rejected).
@@ -17,19 +18,9 @@
 { pkgs, nftzones }:
 let
   inherit (pkgs) lib;
-in
-{
-  /*
-    Build a realistic `nftzones.types.table` value via evalModules.
-    The table type fills in submodule defaults for `settings`,
-    rule groups, and `objects`; each test only specifies the
-    fields it cares about.
 
-    The hardcoded `fw` option name forces the resulting table's
-    `name` field to "fw" (via the submodule's `default = name;`
-    mechanism). Tests that need a custom name should construct
-    the eval-modules call themselves.
-  */
+  # Evaluate declarations with table defaults; the option name pins the
+  # table name to "fw" for the unit fixtures.
   evalTable =
     body:
     (lib.evalModules {
@@ -38,6 +29,26 @@ in
         { config.fw = body; }
       ];
     }).config.fw;
+
+in
+{
+  inherit evalTable;
+
+  # Resolve real declarations through node lowering and the same zone
+  # interface used by normalization. Deliberately stop before validation
+  # so grouping zones and malformed hierarchy can be exercised too.
+  membershipFor =
+    body:
+    let
+      state = nftzones.internal.normalize.convertNodesToZones {
+        table = evalTable body;
+        ctx = { };
+      };
+    in
+    nftzones.internal.zone.resolveMembership {
+      zones = state.ctx.mergedZones;
+      inherit (state.table.settings) localZone;
+    };
 
   /*
     Run `value` through evalModules against `type`. Useful for

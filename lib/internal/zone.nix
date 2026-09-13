@@ -1,132 +1,59 @@
 /*
-  internal/zone — exposes zone-related helpers under
-  `nftzones.internal.zone`.
+  internal/zone — resolves zone membership once for validation and
+  emission. `resolveMembership { zones; localZone; }` accepts the
+  merged declarations (including lowered nodes). Callers never pair
+  raw declarations with synthetic sets or preselected overrides.
 
-  Exported functions:
-    - `genSets` — emits the per-zone nftables sets a zone
-                  contributes to the table (`<name>_iifs` /
-                  `<name>_v4` / `<name>_v6`). Each set contains
-                  the zone's own interfaces/CIDRs PLUS the
-                  transitive union of every descendant zone's
-                  interfaces/CIDRs. This is the standard zone
-                  hierarchy semantics: a child zone is a
-                  *refinement* of its parent — anything that
-                  matches the child also matches the parent.
-                  Within one family the union only ever *widens*
-                  the parent's match (OR inside the set), so the
-                  parent's base-chain dispatch jump catches
-                  descendant traffic too, and the child-dispatch
-                  jump inside the parent's sub-chain routes it
-                  into the more specific child sub-chain (cf.
-                  Phase 4's `mkChildDispatchJumpRules`). Across
-                  families the union set must never AND into the
-                  parent's own dispatch gate — Phase 4's
-                  `mkDirectionVariants` consults `ownSectionsOf`
-                  so a section populated only by descendants
-                  widens the gate as its own OR variant instead
-                  of narrowing the parent's match to descendant
-                  traffic. Single source of truth for naming and
-                  content — folded once by Phase 1's
-                  `computeZoneSets` into `ctx.zoneSets`, then
-                  consumed by Phase 1 validators (names only)
-                  and Phase 4 emit (full bodies).
-    - `ownSectionsOf` — classifies which match sections a zone
-                  anchors *itself* (interfaces / v4 / v6 from its
-                  raw fields, descendants excluded). Drives Phase
-                  4's dispatch-gate composition: own sections AND
-                  together, descendant-only sections join as OR
-                  variants.
-    - `getActiveMatchOverrides` — returns the active sections of
-                  a zone's matchOverride for a given side, with
-                  null and empty-list sections filtered out. The
-                  result is an attrset whose keys are the active
-                  section names (`interfaces` / `ipv4` / `ipv6`
-                  / `extra`); callers test presence with `?` or
-                  read with `or` defaults. Consumed by every
-                  validator and emit helper that needs to ask
-                  "which sections did the user override?".
+  The resolved value exposes distinct answers:
+    sets / setOwners     — transitive, coalesced sets and their owners;
+    childrenOf / rootZoneNames / ancestorsOf / related
+                         — hierarchy for wildcard expansion, overlap
+                           validation and from-side dispatch topology;
+    activeOverrides      — contributing sections for reference checks;
+    hasOwnMatch          — whether a declared zone can be referenced
+                           on a side (descendants deliberately excluded);
+    reachableAt          — own matchability at a hook and direction;
+    directionVariants    — DSL-built dispatch clauses, with own sections
+                           ANDed and descendant-only sections widening
+                           the gate as OR variants;
+    crossAxisPairs       — unrelated, anchored zones split across the
+                           effective from-side interface/address axes.
 
-  Wired into the surface from `lib/internal/default.nix`.
+  Own declarations, descendant membership and ancestor gates retain
+  separate meanings. Empty grouping zones can dispatch to descendants
+  but cannot be referenced directly without an own match. Hierarchy
+  applies only to from-side dispatch; to-side dispatch remains flat.
 
-  ===== genSets =====
-
-  Inputs:
-    mergedZones — full zone attrset from `ctx.mergedZones`
-                  (declared zones plus lowered nodes). Needed
-                  to look up descendants' interfaces and CIDRs
-                  by name during the transitive walk.
-    childrenOf  — inverse-parent map from `ctx.childrenOf`
-                  (`{ parent → [child, ...] }`). Used to walk
-                  descendants transitively.
-    name        — zone name to emit sets for. Used as the
-                  set-name prefix and as the starting point of
-                  the descendant walk.
-
-  Output:
-    Attrset of `{ "<name>_<suffix>" = <set body>; }` pairs where
-    `<suffix>` is one of `iifs` / `v4` / `v6`. Suffixes are
-    emitted iff the corresponding union (self + descendants) is
-    non-empty.
-
-    Per-family CIDR sets are coalesced via `libnet.cidr.summarize`
-    at compile time: exact duplicates collapse, descendant CIDRs
-    contained in an ancestor CIDR (e.g. `10.0.0.5/32` inside
-    `10.0.0.0/24`) drop out, and sibling CIDRs that fuse into a
-    parent (e.g. `10.0.0.0/24` + `10.0.1.0/24` → `10.0.0.0/23`)
-    are merged. The rendered set therefore equals the live kernel
-    state, with no reliance on `auto-merge` to clean up overlaps
-    at load time. Order is sorted (family, network, prefix).
-
-  Why this exists: both Phase 1's validators (which need the
-  *names* to validate user refs against zone-derived sets) and
-  Phase 4's `assembleOutput` (which needs the full bodies) read
-  from `ctx.zoneSets` populated by a single fold over
-  `mergedZones` in `internal.normalize.computeZoneSets`.
-
-  Example:
-    genSets
-      { lan       = { interfaces = [ "lan0" ];   cidrs = [];
-                      parent = null;  matchOverride = ...; };
-        lan-guest = { interfaces = [ "guest0" ]; cidrs = [];
-                      parent = "lan"; matchOverride = ...; };
-      }
-      { lan = [ "lan-guest" ]; }
-      "lan"
-    => {
-      lan_iifs = { type = "ifname"; elements = [ "lan0" "guest0" ]; };
-    }
-
-  ===== ownSectionsOf =====
-
-  Inputs:
-    zone — one merged-zone value (declared zone or lowered node).
-           Raw `interfaces` / `cidrs` are read with `or [ ]`
-           defaults (mirroring `parentOf` in
-           `internal/normalize.nix`) so raw fixtures that bypass
-           the type system classify as contributing nothing.
-
-  Output:
-    `{ interfaces; v4; v6; }` booleans — true iff the zone's own
-    raw fields populate that section. `matchOverride` sections
-    are deliberately not consulted: an active override is own by
-    definition and `mkDirectionVariants` already holds the active
-    set; this helper only answers whether the *auto* (set-backed)
-    path is anchored by the zone itself or inherited from
-    descendants via the transitive union in `genSets`.
-
-  Why this exists: `genSets` unions descendants into the per-zone
-  sets, so set presence alone cannot distinguish "the zone itself
-  matches this section" from "only a descendant does". Phase 4's
-  gate composition needs that distinction — a descendant-only
-  section ANDed into the ancestor's gate would narrow the
-  ancestor to just the descendant's traffic (the cross-family
-  narrowing bug pinned by
-  `tests/integration/scenarios/parent-mixed-sections.nix`).
+  Hierarchy walks are cycle-safe because this value is constructed
+  before Phase 1 reports invalid parent references and cycles. Missing
+  zone names are filtered by validators, never invented by emission.
 */
 { inputs }:
 let
   inherit (inputs) lib libnet nftypes;
-  inherit (nftypes.dsl) expr;
+  inherit (nftypes.dsl) expr inSet;
+  inherit (nftypes.dsl.fields) meta ip ip6;
+
+  directionToSide = {
+    from = "ingress";
+    to = "egress";
+  };
+
+  # Locally generated output has no input device. Device-bound
+  # ingress chains are outside nftzones' zone-firewall model.
+  interfaceAvailable =
+    hook: direction:
+    builtins.elem hook (
+      if direction == "from" then
+        [
+          "prerouting"
+          "input"
+          "forward"
+          "postrouting"
+        ]
+      else
+        nftypes.compatibility.hooksWithOifname
+    );
 
   cidrToPrefix =
     isV4: parsed:
@@ -140,7 +67,7 @@ let
     including `name` itself. Order is parent-before-child (each
     level appears before its children's children).
 
-    Defensive cycle guard: `computeZoneSets` runs before Phase 1's
+    Defensive cycle guard: `resolveMembership` runs before Phase 1's
     `checkParentCycles` in the validator pipeline, so a cycle
     here would stack-overflow before the dedicated validator
     reports it. The `visited` set short-circuits any revisit so
@@ -171,7 +98,7 @@ let
       # come before descendants' (matching the contribution
       # order). nft's ifname set has no notion of overlap; exact
       # duplicates are the only thing to remove.
-      allIfaces = lib.unique (lib.concatMap (z: z.interfaces) contributing);
+      allIfaces = lib.unique (lib.concatMap (z: z.interfaces or [ ]) contributing);
 
       # CIDRs: `libnet.cidr.summarize` handles family separation,
       # canonicalisation (network bits masked), and the full
@@ -182,7 +109,7 @@ let
       # the live kernel state — no `auto-merge` post-processing
       # needed.
       summarised = libnet.cidr.summarize (
-        map libnet.cidr.parse (lib.concatMap (z: z.cidrs) contributing)
+        map libnet.cidr.parse (lib.concatMap (z: z.cidrs or [ ]) contributing)
       );
       parsedV4 = builtins.filter libnet.cidr.isIpv4 summarised;
       parsedV6 = builtins.filter libnet.cidr.isIpv6 summarised;
@@ -221,7 +148,7 @@ let
   */
   getActiveMatchOverrides =
     zone: side:
-    lib.filterAttrs (_: section: section != null && section != [ ]) zone.matchOverride.${side};
+    lib.filterAttrs (_: section: section != null && section != [ ]) (zone.matchOverride.${side} or { });
 
   /*
     Classify which sections `zone` anchors with its own raw
@@ -239,7 +166,241 @@ let
       v4 = builtins.any libnet.cidr.isIpv4 parsed;
       v6 = builtins.any libnet.cidr.isIpv6 parsed;
     };
+
+  # Strict ancestors, nearest first. Stop at unknown parents and cycles;
+  # Phase 1 owns diagnostics for those invalid declarations.
+  walkParents =
+    mergedZones: name:
+    let
+      step =
+        visited: cur:
+        if cur == null then
+          [ ]
+        else
+          let
+            zone = mergedZones.${cur} or null;
+            parent = if zone == null then null else zone.parent or null;
+          in
+          if parent == null || builtins.elem parent visited || !(mergedZones ? ${parent}) then
+            [ ]
+          else
+            [ parent ] ++ step (visited ++ [ parent ]) parent;
+    in
+    step [ name ] name;
+
+  # One list of DSL statements per OR branch; statements within a
+  # branch AND together. Section provenance stays private here.
+  mkDirectionVariants =
+    {
+      hook,
+      direction,
+      zoneName,
+      active,
+      own,
+      zoneSets,
+      localZone,
+    }:
+    if zoneName == null || zoneName == localZone then
+      [ [ ] ]
+    else
+      let
+        isFromDirection = direction == "from";
+        ifAvailable = interfaceAvailable hook direction;
+
+        ifField = if isFromDirection then meta.iifname else meta.oifname;
+        addrFieldV4 = if isFromDirection then ip.saddr else ip.daddr;
+        addrFieldV6 = if isFromDirection then ip6.saddr else ip6.daddr;
+
+        iifsName = "${zoneName}_iifs";
+        v4Name = "${zoneName}_v4";
+        v6Name = "${zoneName}_v6";
+
+        autoIfs = lib.optional (zoneSets ? ${iifsName}) (inSet ifField (expr.setRef iifsName));
+        autoV4 = lib.optional (zoneSets ? ${v4Name}) (inSet addrFieldV4 (expr.setRef v4Name));
+        autoV6 = lib.optional (zoneSets ? ${v6Name}) (inSet addrFieldV6 (expr.setRef v6Name));
+
+        # Active section wins if present; else fall back to auto.
+        ifsSection = active.interfaces or autoIfs;
+        v4Section = active.ipv4 or autoV4;
+        v6Section = active.ipv6 or autoV6;
+        extraSection = active.extra or [ ];
+
+        # Interfaces section is hook-gated: drop it when the relevant
+        # iif/oif field isn't valid at the hook. checkChainOverride‑
+        # Placement should have flagged this case, so this is defensive.
+        ifsAtHook = if ifAvailable then ifsSection else [ ];
+
+        # An active override is always own, including on grouping zones.
+        ifsOwn = active ? interfaces || own.interfaces;
+        v4Own = active ? ipv4 || own.v4;
+        v6Own = active ? ipv6 || own.v6;
+
+        # Own-anchored prefix, ANDed into every family variant.
+        # `extra` is override-only and therefore always own;
+        # inherited interfaces never join (see inheritedIfsVariant).
+        prefix = (if ifsOwn then ifsAtHook else [ ]) ++ extraSection;
+
+        ownFamilyVariants =
+          lib.optional (v4Own && v4Section != [ ]) (prefix ++ v4Section)
+          ++ lib.optional (v6Own && v6Section != [ ]) (prefix ++ v6Section);
+
+        # Descendant-contributed families widen the gate with one
+        # OR variant each: the own family anchors are family-blind,
+        # so without these a descendant of another family could
+        # never enter the ancestor's sub-chain.
+        inheritedFamilyVariants =
+          lib.optional (!v4Own && v4Section != [ ]) (prefix ++ v4Section)
+          ++ lib.optional (!v6Own && v6Section != [ ]) (prefix ++ v6Section);
+
+        # Descendant-contributed interfaces stand alone as one
+        # family-agnostic variant — ANDing them into the prefix
+        # would narrow the zone's own variants to descendant
+        # traffic.
+        inheritedIfsVariant = lib.optional (!ifsOwn && ifsAtHook != [ ]) ifsAtHook;
+      in
+      if ownFamilyVariants != [ ] then
+        # Family-anchored own gate, widened by whatever the
+        # descendants contribute on top.
+        ownFamilyVariants ++ inheritedFamilyVariants ++ inheritedIfsVariant
+      else if prefix != [ ] then
+        # Interface/extra-only own gate — family-agnostic, so the
+        # whole subtree (including inherited families) already
+        # rides it; nothing to widen.
+        [ prefix ]
+      else
+        # Nothing own (grouping zone): every present section is
+        # descendant-contributed and stands alone.
+        inheritedFamilyVariants ++ inheritedIfsVariant;
+
+  resolveMembership =
+    { zones, localZone }:
+    let
+      # foldlAttrs visits names in lexical order, keeping child dispatch
+      # deterministic without a separately supplied or sorted child map.
+      childrenOf = lib.foldlAttrs (
+        acc: name: zone:
+        let
+          parent = zone.parent or null;
+        in
+        if parent == null then acc else acc // { ${parent} = (acc.${parent} or [ ]) ++ [ name ]; }
+      ) { } zones;
+
+      rootZoneNames =
+        builtins.attrNames (lib.filterAttrs (_: zone: (zone.parent or null) == null) zones)
+        ++ [ localZone ];
+      ancestors = lib.mapAttrs (name: _: walkParents zones name) zones;
+      ancestorsOf = name: if name == null then [ ] else ancestors.${name} or [ ];
+      related = a: b: builtins.elem a (ancestorsOf b) || builtins.elem b (ancestorsOf a);
+
+      setsByZone = lib.mapAttrs (name: _: genSets zones childrenOf name) zones;
+      sets = lib.foldlAttrs (
+        acc: _: value:
+        acc // value
+      ) { } setsByZone;
+      setOwners = lib.foldlAttrs (
+        acc: name: value:
+        acc // lib.mapAttrs (_: _: name) value
+      ) { } setsByZone;
+      ownSections = lib.mapAttrs (_: ownSectionsOf) zones;
+      overrides = lib.mapAttrs (_: zone: {
+        ingress = getActiveMatchOverrides zone "ingress";
+        egress = getActiveMatchOverrides zone "egress";
+      }) zones;
+      activeOverrides = name: side: overrides.${name}.${side};
+
+      # Validation asks about own declarations, not the transitive
+      # sets. This preserves rejection of direct grouping-zone refs.
+      hasOwnMatch =
+        name: side:
+        let
+          zone = zones.${name};
+        in
+        activeOverrides name side != { } || (zone.interfaces or [ ]) != [ ] || (zone.cidrs or [ ]) != [ ];
+
+      reachableAt =
+        name:
+        { hook, direction }:
+        let
+          zone = zones.${name};
+          active = activeOverrides name directionToSide.${direction};
+        in
+        (zone.cidrs or [ ]) != [ ]
+        || active ? ipv4
+        || active ? ipv6
+        || active ? extra
+        || (interfaceAvailable hook direction && (active ? interfaces || (zone.interfaces or [ ]) != [ ]));
+
+      directionVariants =
+        {
+          zoneName,
+          hook,
+          direction,
+        }:
+        mkDirectionVariants {
+          inherit
+            zoneName
+            hook
+            direction
+            localZone
+            ;
+          zoneSets = sets;
+          active = activeOverrides zoneName directionToSide.${direction};
+          own = ownSections.${zoneName};
+        };
+
+      # This warning model uses raw fields only, ignoring overrides.
+      # Parenting signals an intentional refinement. Ancestor axes
+      # describe the from-side path; to-side shadowing and same-parent
+      # sibling shadowing remain accepted residuals of the warning.
+      # Grouping zones have no own axis and stay unclassified, avoiding
+      # duplicate warnings for gates already audited at an ancestor.
+      axisClass = lib.mapAttrs (
+        name: zone:
+        let
+          anchored = (zone.interfaces or [ ]) != [ ] || (zone.cidrs or [ ]) != [ ];
+          path = map (n: zones.${n}) ([ name ] ++ ancestorsOf name);
+          iface = lib.any (z: (z.interfaces or [ ]) != [ ]) path;
+          cidr = lib.any (z: (z.cidrs or [ ]) != [ ]) path;
+        in
+        if !anchored || iface == cidr then
+          null
+        else if iface then
+          "interface"
+        else
+          "cidr"
+      ) zones;
+      names = builtins.attrNames zones;
+      crossAxisPairs = lib.concatLists (
+        lib.imap0 (
+          i: a:
+          lib.concatMap (
+            b:
+            lib.optional (
+              axisClass.${a} != null
+              && axisClass.${b} != null
+              && axisClass.${a} != axisClass.${b}
+              && !(related a b)
+            ) { inherit a b; }
+          ) (lib.drop (i + 1) names)
+        ) names
+      );
+    in
+    {
+      inherit
+        sets
+        setOwners
+        childrenOf
+        rootZoneNames
+        ancestorsOf
+        related
+        activeOverrides
+        hasOwnMatch
+        reachableAt
+        directionVariants
+        crossAxisPairs
+        ;
+    };
 in
 {
-  inherit genSets getActiveMatchOverrides ownSectionsOf;
+  inherit resolveMembership directionToSide;
 }
