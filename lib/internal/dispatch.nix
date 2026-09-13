@@ -27,18 +27,9 @@
   and groups cells by chain name. The chain attrs are preserved
   per group so `buildChainBuckets` doesn't recompute them.
 
-  Each cell's chain is determined by:
-    - The cell's `chain` override if set (`{ hook; priority; }`).
-    - Otherwise per-group default:
-        filters / policies → input / forward / output (filter
-                              priority), dispatched by host
-                              position (`to == localZone` → input,
-                              `from == localZone` → output, else
-                              forward).
-        snats              → postrouting (srcnat priority).
-        dnats              → prerouting  (dstnat priority).
-        sroutes            → prerouting  (mangle priority).
-        droutes            → output      (mangle priority).
+  `internal.placement.chainAttrsForCell` owns the choice of
+  override, local-zone hook, or group default. Phase 1 validates
+  entry placements through the same placement module.
 
   Output shape:
     groupedByChain = {
@@ -125,9 +116,7 @@ let
   inherit (inputs) lib;
   inherit (internal.priority) entryPriorities;
   inherit (internal.placement)
-    defaultGroupChainAttrs
-    filterChainHook
-    filterChainPriority
+    chainAttrsForCell
     baseChainNameOf
     subChainKeyOf
     ;
@@ -138,27 +127,6 @@ let
   # `postChildCells` (fire after children return — parent
   # fallback). Default (500) lands in `postChildCells` naturally.
   preChildCutoff = entryPriorities.postDispatch;
-
-  /*
-    Compute a cell's chain attrs `{ hook; priority; }` — the
-    structured chain identity that travels with the cell through
-    bucketing into Phase 4. Source of truth, in order:
-      1. Cell's `chain` override if set.
-      2. Filter / policy → input / forward / output by host
-         position (filter priority).
-      3. Otherwise per-group default (`defaultGroupChainAttrs`).
-  */
-  chainAttrsOf =
-    group: localZone: cell:
-    if (cell.chain or null) != null then
-      { inherit (cell.chain) hook priority; }
-    else if group == "filters" || group == "policies" then
-      {
-        hook = filterChainHook localZone cell;
-        priority = filterChainPriority;
-      }
-    else
-      defaultGroupChainAttrs.${group};
 
   # Sort by `(priority asc, name asc)`. Caller filters out
   # policies first if needed (policies have no `priority`).
@@ -233,7 +201,7 @@ let
       pairWithChain = lib.mapAttrs (
         group:
         map (cell: {
-          attrs = chainAttrsOf group localZone cell;
+          attrs = chainAttrsForCell group localZone cell;
           inherit cell;
         })
       );

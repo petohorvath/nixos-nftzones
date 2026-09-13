@@ -597,6 +597,81 @@ in
     expected = [ ];
   };
 
+  testCheckChainPlacementAggregatesOverridesAndDefaults = {
+    expr =
+      (runEvalPipeline
+        [
+          convertNodesToZones
+          expandWildcardZones
+          (
+            { table, ctx }:
+            {
+              inherit table;
+              ctx = ctx // {
+                errors = [
+                  {
+                    name = "earlierError";
+                    value = "kept";
+                  }
+                ];
+              };
+            }
+          )
+          checkChainPlacement
+        ]
+        {
+          family = "bridge";
+          settings.localZone = "host";
+          zones.lan.interfaces = [ "br0" ];
+          filters.early = {
+            from = [ "lan" ];
+            to = [ "host" ];
+            rule = [ ];
+            chain = {
+              hook = "prerouting";
+              priority = "mangle";
+            };
+          };
+          snats.masq = {
+            from = [ "lan" ];
+            to = [ "host" ];
+            rule.masquerade = { };
+          };
+          droutes.mark = {
+            to = [ "lan" ];
+            rule = [ ];
+          };
+        }
+      ).errors;
+    expected = [
+      {
+        name = "earlierError";
+        value = "kept";
+      }
+      {
+        name = "invalidChainPlacement";
+        value =
+          "droutes.mark would emit a base chain at "
+          + "(family=bridge, hook=output, priority=mangle) "
+          + "— priority symbol 'mangle' has no value in family 'bridge'";
+      }
+      {
+        name = "invalidChainPlacement";
+        value =
+          "filters.early would emit a base chain at "
+          + "(family=bridge, hook=prerouting, priority=mangle) "
+          + "— priority symbol 'mangle' has no value in family 'bridge'";
+      }
+      {
+        name = "invalidChainPlacement";
+        value =
+          "snats.masq would emit a base chain at "
+          + "(family=bridge, hook=postrouting, priority=srcnat) "
+          + "— kernel rejects chain type 'nat' on hook 'postrouting' for family 'bridge'";
+      }
+    ];
+  };
+
   # ===== checkRpfilterOverride — rpfilter on, no override → silent =====
 
   testCheckRpfilterOverrideNoOverride = {
