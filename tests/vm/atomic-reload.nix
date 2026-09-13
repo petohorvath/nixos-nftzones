@@ -31,7 +31,7 @@
        — pins atomicity: conntrack's ESTABLISHED entry
        survives the swap, v2's stateful prelude accepts the
        in-flight flow.
-    5. Fresh SSH attempt — `ConnectTimeout=3` so the test
+    5. Fresh SSH attempt — `ConnectTimeout=5` so the test
        doesn't hang. v2's lan→wan path has no SSH allow, so
        the SYN dies at the chain-policy drop. Assertion: the
        attempt fails.
@@ -230,133 +230,14 @@ pkgs.testers.nixosTest {
       };
   };
 
-  testScript = ''
+  testScript = builtins.readFile ./reload-verification.py + ''
     start_all()
 
-    client.wait_for_unit("network-online.target")
-    router.wait_for_unit("network-online.target")
-    server.wait_for_unit("network-online.target")
-
-    server.wait_for_unit("sshd.service")
-    server.wait_for_open_port(22)
-
-    # SSH-key bootstrap, same shape as forward.nix.
-    client.succeed("mkdir -p /root/.ssh && chmod 700 /root/.ssh")
-    client.succeed('ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519')
-    pubkey = client.succeed("cat /root/.ssh/id_ed25519.pub").strip()
-    server.succeed("mkdir -p /root/.ssh && chmod 700 /root/.ssh")
-    server.succeed(f"echo '{pubkey}' > /root/.ssh/authorized_keys")
-    server.succeed("chmod 600 /root/.ssh/authorized_keys")
-
-    # Two ssh-opts variants: ssh_opts adds aggressive
-    # ServerAlive so one-shot calls fail fast if the transport
-    # wedges; the persistent master uses ssh_base_opts (no
-    # ServerAlive) so it can't suicide on a brief packet
-    # hiccup during the `nft -f` reload it's meant to survive.
-    ssh_base_opts = (
-        "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
-        "-o ConnectTimeout=5"
-    )
-    ssh_opts = (
-        f"{ssh_base_opts} -o ServerAliveInterval=3 -o ServerAliveCountMax=2"
-    )
-    # ControlMaster keeps a persistent connection that
-    # subsequent ssh calls latch onto via the unix socket.
-    # Decouples "did the new SYN get through?" from "did the
-    # in-flight session survive the reload?".
-    cm_opts = "-o ControlMaster=auto -o ControlPath=/tmp/ssh-cm-%r@%h:%p"
-
-    class diag_subtest:
-        def __init__(self, name):
-            self.name = name
-
-        def __enter__(self):
-            self._cm = subtest(self.name)
-            return self._cm.__enter__()
-
-        def __exit__(self, exc_type, exc, tb):
-            if exc_type is not None:
-                try:
-                    ruleset = router.succeed("nft list ruleset")
-                    ct = router.succeed("conntrack -L 2>/dev/null || true")
-                    master = client.execute(
-                        "systemctl status nft-ssh-master.service --no-pager 2>&1 || true; "
-                        "echo '---'; "
-                        "ps -eo pid,stat,cmd | grep -E '[s]sh.*-NM' || echo '(no master process)'"
-                    )[1]
-                except Exception:
-                    ruleset = ct = master = "(failed to capture)"
-                print(
-                    f"\n=== state at failure of {self.name!r} ===\n"
-                    f"--- nft list ruleset (router) ---\n{ruleset}\n"
-                    f"--- conntrack -L (router) ---\n{ct}\n"
-                    f"--- ssh master ps (client) ---\n{master}\n"
-                    f"=== end state ===\n",
-                    flush=True,
-                )
-            return self._cm.__exit__(exc_type, exc, tb)
-
-    with diag_subtest("v1: persistent SSH works through the lan→wan allow"):
-        # Persistent master in a transient systemd unit. `ssh -f`
-        # alone is racy under the nixos test driver: the forked
-        # master inherits the per-command bash subshell's stdio
-        # pipes, and once that subshell exits its next write
-        # SIGPIPEs the master. Running under `systemd-run`
-        # detaches the master into its own cgroup with stdio
-        # routed to the journal, independent of any subshell.
-        client.succeed(
-            "systemd-run --quiet --collect --unit nft-ssh-master "
-            f"-- ssh {ssh_base_opts} {cm_opts} -NM root@${serverWanIp}"
-        )
-        # `systemd-run` returns when the unit starts; the control
-        # socket needs a beat longer to accept mux requests.
-        client.wait_until_succeeds(
-            f"ssh {cm_opts} -O check root@${serverWanIp}",
-            timeout=15,
-        )
-        out = client.succeed(
-            f"timeout 30 ssh {cm_opts} root@${serverWanIp} 'echo hello-1'"
-        )
-        assert "hello-1" in out, f"v1 SSH didn't echo hello-1: {out!r}"
-
-    with diag_subtest("atomic reload: existing connection survives"):
-        # Atomic per-table swap. `nft -f` processes the whole
-        # file as one transaction; the kernel removes the old
-        # table and installs the new one in a single step,
-        # conntrack untouched.
+    with verify_reload(
+        client=client, router=router, server=server,
+        server_ip="${serverWanIp}", subtest=subtest,
+    ):
+        # One nft transaction swaps the table while leaving conntrack intact.
         router.succeed("nft -f /etc/nftzones-v2.nft")
-
-        # Same persistent connection — if conntrack lost its
-        # ESTABLISHED entry, the next packet would land as
-        # `state new` and v2's policies.lan-to-wan drop would
-        # kill it. A successful echo proves atomicity.
-        out = client.succeed(
-            f"timeout 30 ssh {cm_opts} root@${serverWanIp} 'echo hello-2'"
-        )
-        assert "hello-2" in out, (
-            f"v2 reload broke the in-flight SSH: {out!r}"
-        )
-
-    with diag_subtest("v2: new SSH attempts are blocked by the new policy"):
-        # Fresh SSH attempt without ControlMaster — must go
-        # through the firewall as a NEW connection. v2's
-        # lan→wan path has no SSH allow, so SYN dies at the
-        # policies.lan-to-wan drop. `ConnectTimeout=3` keeps
-        # the failure under a few seconds.
-        result = client.execute(
-            f"timeout 8 ssh {ssh_opts} -o BatchMode=yes "
-            f"root@${serverWanIp} 'echo should-not-arrive'"
-        )
-        assert result[0] != 0, (
-            "expected new SSH attempt to fail after v2 reload, "
-            f"but it succeeded: {result[1]!r}"
-        )
-        # If ControlMaster had quietly latched onto the
-        # existing session even without `-S`, the assertion
-        # above would have spuriously passed. Belt: confirm
-        # `should-not-arrive` did not echo back.
-        assert "should-not-arrive" not in result[1], (
-            f"new SSH leaked an echo through despite v2 drop: {result[1]!r}"
-        )
   '';
 }

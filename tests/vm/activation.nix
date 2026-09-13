@@ -26,7 +26,7 @@
   switch-to-configuration test` from the test driver replaces v1
   with v2 through the real activation path. The test asserts
   ruleset state before and after, plus session survival via
-  ControlMaster (mirrors `atomic-reload.nix`).
+  the shared reload verifier (also used by `atomic-reload.nix`).
 
   Companion file: `atomic-reload.nix` (same scenario via direct
   `nft -f` rather than the activation script).
@@ -207,93 +207,20 @@ pkgs.testers.nixosTest {
       };
   };
 
-  testScript = ''
+  testScript = builtins.readFile ./reload-verification.py + ''
     start_all()
 
-    client.wait_for_unit("network-online.target")
-    router.wait_for_unit("network-online.target")
-    server.wait_for_unit("network-online.target")
-
-    server.wait_for_unit("sshd.service")
-    server.wait_for_open_port(22)
-
-    # SSH-key bootstrap — same shape as atomic-reload.nix.
-    client.succeed("mkdir -p /root/.ssh && chmod 700 /root/.ssh")
-    client.succeed('ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519')
-    pubkey = client.succeed("cat /root/.ssh/id_ed25519.pub").strip()
-    server.succeed("mkdir -p /root/.ssh && chmod 700 /root/.ssh")
-    server.succeed(f"echo '{pubkey}' > /root/.ssh/authorized_keys")
-    server.succeed("chmod 600 /root/.ssh/authorized_keys")
-
-    ssh_base_opts = (
-        "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
-        "-o ConnectTimeout=5"
-    )
-    ssh_opts = (
-        f"{ssh_base_opts} -o ServerAliveInterval=3 -o ServerAliveCountMax=2"
-    )
-    cm_opts = "-o ControlMaster=auto -o ControlPath=/tmp/ssh-cm-%r@%h:%p"
-
-    class diag_subtest:
-        def __init__(self, name):
-            self.name = name
-
-        def __enter__(self):
-            self._cm = subtest(self.name)
-            return self._cm.__enter__()
-
-        def __exit__(self, exc_type, exc, tb):
-            if exc_type is not None:
-                try:
-                    ruleset = router.succeed("nft list ruleset")
-                    ct = router.succeed("conntrack -L 2>/dev/null || true")
-                    services = router.succeed(
-                        "systemctl status nftables.service --no-pager 2>&1 || true"
-                    )
-                except Exception:
-                    ruleset = ct = services = "(failed to capture)"
-                print(
-                    f"\n=== state at failure of {self.name!r} ===\n"
-                    f"--- nft list ruleset (router) ---\n{ruleset}\n"
-                    f"--- conntrack -L (router) ---\n{ct}\n"
-                    f"--- nftables.service (router) ---\n{services}\n"
-                    f"=== end state ===\n",
-                    flush=True,
-                )
-            return self._cm.__exit__(exc_type, exc, tb)
-
-    with diag_subtest("v1: SSH allow rule is live before the switch"):
-        # Sanity: the v1 rendered ruleset must mention `tcp dport 22 accept`
-        # in the lan-to-wan sub-chain. If it doesn't, the test below would
-        # spuriously pass (v1 already blocks).
+    with verify_reload(
+        client=client, router=router, server=server,
+        server_ip="${serverWanIp}", subtest=subtest,
+    ):
         v1_ruleset = router.succeed("nft list table inet fw")
         assert "tcp dport 22 accept" in v1_ruleset, (
             f"v1 didn't render the allow-ssh rule:\n{v1_ruleset}"
         )
 
-        client.succeed(
-            "systemd-run --quiet --collect --unit nft-ssh-master "
-            f"-- ssh {ssh_base_opts} {cm_opts} -NM root@${serverWanIp}"
-        )
-        client.wait_until_succeeds(
-            f"ssh {cm_opts} -O check root@${serverWanIp}",
-            timeout=15,
-        )
-        out = client.succeed(
-            f"timeout 30 ssh {cm_opts} root@${serverWanIp} 'echo hello-1'"
-        )
-        assert "hello-1" in out, f"v1 SSH didn't echo hello-1: {out!r}"
-
-    with diag_subtest("switch-to-configuration: real activation path applies v2"):
-        # The specialisation's `switch-to-configuration test` is the
-        # same script `nixos-rebuild switch` invokes in production. It
-        # runs every activation hook, reloads changed services, and
-        # tears down units removed by the new generation. The nftables
-        # service's reload action runs nixpkgs'
-        # `reload-with-flush-fallback` script under the hood (delete
-        # old table, load new content); a downstream rendering bug
-        # that emits text the kernel rejects would surface as a
-        # non-zero exit here.
+        # Exercise the same activation script nixos-rebuild invokes. A
+        # rendering bug rejected by the nftables reload must fail here.
         router.succeed(
             "/run/current-system/specialisation/v2/bin/switch-to-configuration test"
         )
@@ -302,38 +229,8 @@ pkgs.testers.nixosTest {
         assert "tcp dport 22 accept" not in v2_ruleset, (
             f"v2 still carries the v1 allow rule after switch:\n{v2_ruleset}"
         )
-        # Tail policy survives.
         assert "drop" in v2_ruleset, (
             f"v2 ruleset missing the lan→wan drop policy:\n{v2_ruleset}"
-        )
-
-    with diag_subtest("established session survives the activation"):
-        # ControlMaster's persistent connection rides conntrack's
-        # ESTABLISHED entry. v2's stateful prelude (`ct state
-        # established,related accept`) must let the in-flight flow
-        # through. If activation cleared conntrack or stalled long
-        # enough to drop the entry, this echo would fail.
-        out = client.succeed(
-            f"timeout 30 ssh {cm_opts} root@${serverWanIp} 'echo hello-2'"
-        )
-        assert "hello-2" in out, (
-            f"v2 activation broke the in-flight SSH: {out!r}"
-        )
-
-    with diag_subtest("v2: fresh SSH attempts are blocked by the new policy"):
-        # Identical assertion shape to atomic-reload.nix — proves the
-        # activation didn't just *look* like it applied v2 but actually
-        # rejected new SYNs at the chain policy.
-        result = client.execute(
-            f"timeout 8 ssh {ssh_opts} -o BatchMode=yes "
-            f"root@${serverWanIp} 'echo should-not-arrive'"
-        )
-        assert result[0] != 0, (
-            "expected new SSH attempt to fail after v2 activation, "
-            f"but it succeeded: {result[1]!r}"
-        )
-        assert "should-not-arrive" not in result[1], (
-            f"new SSH leaked an echo through despite v2 drop: {result[1]!r}"
         )
   '';
 }
