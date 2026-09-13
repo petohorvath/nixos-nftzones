@@ -52,7 +52,7 @@ in
         groupedByChain = builtins.isAttrs ctx.groupedByChain;
         chainBuckets = builtins.isAttrs ctx.chainBuckets;
         # Phase 4 artifacts
-        zoneSets = builtins.isAttrs ctx.zoneSets;
+        zoneMembership = builtins.isAttrs ctx.zoneMembership;
         baseChains = builtins.isAttrs ctx.baseChains;
         subChains = builtins.isAttrs ctx.subChains;
         userObjects = builtins.isAttrs ctx.userObjects;
@@ -69,7 +69,7 @@ in
       cells = true;
       groupedByChain = true;
       chainBuckets = true;
-      zoneSets = true;
+      zoneMembership = true;
       baseChains = true;
       subChains = true;
       userObjects = true;

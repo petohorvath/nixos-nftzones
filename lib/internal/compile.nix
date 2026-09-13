@@ -21,7 +21,7 @@
   Input:  an evaluated `nftzones.types.table` value
   Output: `{ table; ctx }` — full pipeline state (every artifact
           each phase wrote — `mergedZones`, `expandedGroups`,
-          `chainBuckets`, `zoneSets`, `baseChains`, `subChains`,
+          `chainBuckets`, `zoneMembership`, `baseChains`, `subChains`,
           `userObjects`, `output`, …). Tests / debugging tools
           consume the full state; the public API surface
           (`mkTable`, `mkRuleset`) extracts just `ctx.output`.

@@ -19,10 +19,8 @@ let
     mkRuleBody
     mkSubChain
     mkSubChains
-    mkDirectionVariants
     mkRootJumpRules
     mkChildDispatchJumpRules
-    isRootFrom
     mkSubChainKey
     subChainNameOf
     buildEffectiveSubChains
@@ -31,7 +29,7 @@ let
     ;
   inherit (nftypes.dsl) expr;
 
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable membershipFor;
 
   /*
     Run Phase 1 → Phase 4 against an evalModules-produced table
@@ -61,25 +59,9 @@ let
   };
 
   /*
-    Empty matchOverride for tests probing the auto path. Each
-    zone with no override sections set is a "regular" zone —
-    interfaces and CIDRs come through `zoneSets`, override is
-    inert. `getActiveMatchOverrides` filters null/empty sections,
-    so `{ }` per side is equivalent to the all-null shape.
-  */
-  mockZone = {
-    matchOverride = {
-      ingress = { };
-      egress = { };
-    };
-    parent = null;
-  };
-  mergedZonesFor = names: pkgs.lib.genAttrs names (_: mockZone);
-
-  /*
     Convenience wrapper: pin family to `"inet"` and default
     settings, with neutral defaults for the jump-related args
-    (no sub-chains by default, so `baseChainName` / `zoneSets` are
+    (no sub-chains by default, so `baseChainName` / `zoneMembership` are
     inert). Tests pass a `bucket` and optionally override the
     rest.
   */
@@ -89,8 +71,7 @@ let
       bucket,
       baseChainName ? "test-chain",
       effectiveSubChains ? { },
-      mergedZones ? { },
-      zoneSets ? { },
+      zoneMembership ? membershipFor { },
     }:
     mkBaseChain {
       family = "inet";
@@ -99,8 +80,7 @@ let
         bucket
         baseChainName
         effectiveSubChains
-        mergedZones
-        zoneSets
+        zoneMembership
         ;
     };
 
@@ -288,39 +268,6 @@ in
     expected = "forward-at-filter__lan-to-wan";
   };
 
-  # ===== isRootFrom — null parent → root =====
-
-  testIsRootFromNullParent = {
-    expr = isRootFrom { lan = mockZone; } "local" "lan";
-    expected = true;
-  };
-
-  # ===== isRootFrom — non-null parent → not root =====
-
-  testIsRootFromWithParent = {
-    expr = isRootFrom {
-      dmz = mockZone;
-      web = mockZone // {
-        parent = "dmz";
-      };
-    } "local" "web";
-    expected = false;
-  };
-
-  # ===== isRootFrom — localZone → root =====
-
-  testIsRootFromLocalZone = {
-    expr = isRootFrom { } "local" "local";
-    expected = true;
-  };
-
-  # ===== isRootFrom — unknown zone → root (defensive) =====
-
-  testIsRootFromUnknown = {
-    expr = isRootFrom { } "local" "ghost";
-    expected = true;
-  };
-
   # ===== buildEffectiveSubChains — direct only (no hierarchy) =====
 
   testBuildEffectiveSubChainsDirect = {
@@ -338,11 +285,13 @@ in
             };
           };
         };
-        mergedZones = mergedZonesFor [
-          "lan"
-          "wan"
-        ];
-        eff = buildEffectiveSubChains bucket mergedZones;
+        mergedZones = {
+          lan = { };
+          wan = { };
+        };
+        eff = buildEffectiveSubChains bucket (membershipFor {
+          zones = mergedZones;
+        });
       in
       builtins.attrNames eff;
     expected = [ "lan-to-wan" ];
@@ -367,12 +316,14 @@ in
           };
         };
         mergedZones = {
-          dmz = mockZone;
-          web-server = mockZone // {
+          dmz = { };
+          web-server = {
             parent = "dmz";
           };
         };
-        eff = buildEffectiveSubChains bucket mergedZones;
+        eff = buildEffectiveSubChains bucket (membershipFor {
+          zones = mergedZones;
+        });
         intermediate = eff."dmz-to-local";
       in
       {
@@ -417,12 +368,14 @@ in
           };
         };
         mergedZones = {
-          dmz = mockZone;
-          web-server = mockZone // {
+          dmz = { };
+          web-server = {
             parent = "dmz";
           };
         };
-        eff = buildEffectiveSubChains bucket mergedZones;
+        eff = buildEffectiveSubChains bucket (membershipFor {
+          zones = mergedZones;
+        });
       in
       builtins.length eff."dmz-to-local".postChildCells;
     expected = 1;
@@ -452,17 +405,19 @@ in
         };
         # cycle: a → b → a
         mergedZones = {
-          a = mockZone // {
+          a = {
             parent = "b";
           };
-          b = mockZone // {
+          b = {
             parent = "a";
           };
-          leaf = mockZone // {
+          leaf = {
             parent = "a";
           };
         };
-        eff = buildEffectiveSubChains bucket mergedZones;
+        eff = buildEffectiveSubChains bucket (membershipFor {
+          zones = mergedZones;
+        });
       in
       builtins.isAttrs eff;
     expected = true;
@@ -637,8 +592,7 @@ in
           };
           chainBuckets = { };
           effectiveSubChainsByBucket = { };
-          mergedZones = { };
-          zoneSets = { };
+          zoneMembership = membershipFor { };
         };
         chain = chains."prerouting-at-raw";
       in
@@ -672,8 +626,7 @@ in
           effectiveSubChainsByBucket = {
             "prerouting-at-raw" = { };
           };
-          mergedZones = { };
-          zoneSets = { };
+          zoneMembership = membershipFor { };
         };
       in
       builtins.length chains."prerouting-at-raw".rules;
@@ -689,8 +642,7 @@ in
       settings = defaultSettings;
       chainBuckets = { };
       effectiveSubChainsByBucket = { };
-      mergedZones = { };
-      zoneSets = { };
+      zoneMembership = membershipFor { };
     };
     expected = { };
   };
@@ -710,8 +662,7 @@ in
           "forward-at-filter" = { };
           "postrouting-at-srcnat" = { };
         };
-        mergedZones = { };
-        zoneSets = { };
+        zoneMembership = membershipFor { };
       })
     );
     expected = [
@@ -1032,14 +983,12 @@ in
         ];
       };
       baseChainName = "forward-at-filter";
-      childrenOf = { };
+
       effectiveSubChains = { };
-      mergedZones = mergedZonesFor [
-        "lan"
-        "wan"
-      ];
-      zoneSets = { };
-      localZone = "local";
+      zoneMembership = membershipFor {
+        zones.lan.interfaces = [ "lan0" ];
+        zones.wan.interfaces = [ "wan0" ];
+      };
     };
     expected = {
       rules = [
@@ -1073,14 +1022,12 @@ in
         ];
       };
       baseChainName = "forward-at-filter";
-      childrenOf = { };
+
       effectiveSubChains = { };
-      mergedZones = mergedZonesFor [
-        "lan"
-        "wan"
-      ];
-      zoneSets = { };
-      localZone = "local";
+      zoneMembership = membershipFor {
+        zones.lan.interfaces = [ "lan0" ];
+        zones.wan.interfaces = [ "wan0" ];
+      };
     };
     expected = {
       rules = [
@@ -1096,10 +1043,7 @@ in
     expr = mkSubChains {
       chainBuckets = { };
       effectiveSubChainsByBucket = { };
-      childrenOf = { };
-      mergedZones = { };
-      zoneSets = { };
-      localZone = "local";
+      zoneMembership = membershipFor { };
     };
     expected = { };
   };
@@ -1128,13 +1072,10 @@ in
       builtins.attrNames (mkSubChains {
         chainBuckets."forward-at-filter" = bucket;
         effectiveSubChainsByBucket."forward-at-filter" = bucket.subChains;
-        childrenOf = { };
-        mergedZones = mergedZonesFor [
-          "lan"
-          "wan"
-        ];
-        zoneSets = { };
-        localZone = "local";
+        zoneMembership = membershipFor {
+          zones.lan.interfaces = [ "lan0" ];
+          zones.wan.interfaces = [ "wan0" ];
+        };
       });
     expected = [ "forward-at-filter__lan-to-wan" ];
   };
@@ -1157,10 +1098,7 @@ in
       builtins.attrNames (mkSubChains {
         chainBuckets."prerouting-at-dstnat" = bucket;
         effectiveSubChainsByBucket."prerouting-at-dstnat" = bucket.subChains;
-        childrenOf = { };
-        mergedZones = mergedZonesFor [ "wan" ];
-        zoneSets = { };
-        localZone = "local";
+        zoneMembership = membershipFor { zones.wan.interfaces = [ "wan0" ]; };
       });
     expected = [ "prerouting-at-dstnat__wan" ];
   };
@@ -1296,316 +1234,6 @@ in
     ];
   };
 
-  # ===== mkDirectionVariants — localZone sentinel =====
-
-  testMkDirectionVariantsLocalZone = {
-    expr = mkDirectionVariants {
-      hook = "input";
-      direction = "to";
-      zoneName = "local";
-      active = { };
-      mergedZones = { };
-      zoneSets = { };
-      localZone = "local";
-    };
-    expected = [ [ ] ];
-  };
-
-  testMkDirectionVariantsNullDirection = {
-    expr = mkDirectionVariants {
-      hook = "prerouting";
-      direction = "to";
-      zoneName = null;
-      active = { };
-      mergedZones = { };
-      zoneSets = { };
-      localZone = "local";
-    };
-    expected = [ [ ] ];
-  };
-
-  testMkDirectionVariantsInterfaceOnly = {
-    expr = mkDirectionVariants {
-      hook = "forward";
-      direction = "from";
-      zoneName = "lan";
-      active = { };
-      mergedZones.lan = {
-        interfaces = [ "lan0" ];
-      };
-      zoneSets = {
-        lan_iifs = {
-          type = "ifname";
-          elements = [ "lan0" ];
-        };
-      };
-      localZone = "local";
-    };
-    expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs")) ]
-    ];
-  };
-
-  testMkDirectionVariantsUnreachable = {
-    expr = mkDirectionVariants {
-      hook = "output";
-      direction = "from";
-      zoneName = "wan";
-      active = { };
-      mergedZones.wan = {
-        interfaces = [ "wan0" ];
-      };
-      zoneSets = {
-        wan_iifs = {
-          type = "ifname";
-          elements = [ "wan0" ];
-        };
-      };
-      localZone = "local";
-    };
-    expected = [ ];
-  };
-
-  testMkDirectionVariantsV4Only = {
-    expr = mkDirectionVariants {
-      hook = "forward";
-      direction = "from";
-      zoneName = "lan";
-      active = { };
-      mergedZones.lan = {
-        cidrs = [ "10.0.0.0/24" ];
-      };
-      zoneSets = {
-        lan_v4 = {
-          type = "ipv4_addr";
-          flags = [ "interval" ];
-          elements = [ ];
-        };
-      };
-      localZone = "local";
-    };
-    expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4")) ]
-    ];
-  };
-
-  testMkDirectionVariantsV4AndV6 = {
-    expr = mkDirectionVariants {
-      hook = "forward";
-      direction = "from";
-      zoneName = "lan";
-      active = { };
-      mergedZones.lan = {
-        cidrs = [
-          "10.0.0.0/24"
-          "fd00::/64"
-        ];
-      };
-      zoneSets = {
-        lan_v4 = {
-          type = "ipv4_addr";
-          flags = [ "interval" ];
-          elements = [ ];
-        };
-        lan_v6 = {
-          type = "ipv6_addr";
-          flags = [ "interval" ];
-          elements = [ ];
-        };
-      };
-      localZone = "local";
-    };
-    expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4")) ]
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6")) ]
-    ];
-  };
-
-  testMkDirectionVariantsIfPlusV4V6 = {
-    expr = mkDirectionVariants {
-      hook = "forward";
-      direction = "from";
-      zoneName = "lan";
-      active = { };
-      mergedZones.lan = {
-        interfaces = [ "lan0" ];
-        cidrs = [
-          "10.0.0.0/24"
-          "fd00::/64"
-        ];
-      };
-      zoneSets = {
-        lan_iifs = {
-          type = "ifname";
-          elements = [ "lan0" ];
-        };
-        lan_v4 = {
-          type = "ipv4_addr";
-          flags = [ "interval" ];
-          elements = [ ];
-        };
-        lan_v6 = {
-          type = "ipv6_addr";
-          flags = [ "interval" ];
-          elements = [ ];
-        };
-      };
-      localZone = "local";
-    };
-    expected = [
-      [
-        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4"))
-      ]
-      [
-        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6"))
-      ]
-    ];
-  };
-
-  /*
-    Own/inherited gate composition — the sets carry descendant
-    content (transitive union), but only sections anchored by the
-    zone's own raw fields may AND together. Pins the fix for the
-    cross-family narrowing bug (see
-    `tests/integration/scenarios/parent-mixed-sections.nix`).
-  */
-
-  # Interface-only zone with a descendant-contributed v4 set
-  # (address-only node under it): the gate stays the
-  # family-agnostic interface match — no `ip saddr` AND clause.
-  testMkDirectionVariantsInheritedFamilySuppressed = {
-    expr = mkDirectionVariants {
-      hook = "forward";
-      direction = "from";
-      zoneName = "lan";
-      active = { };
-      mergedZones.lan = {
-        interfaces = [ "lan0" ];
-      };
-      zoneSets = {
-        lan_iifs = {
-          type = "ifname";
-          elements = [ "lan0" ];
-        };
-        lan_v4 = {
-          type = "ipv4_addr";
-          flags = [ "interval" ];
-          elements = [ ];
-        };
-      };
-      localZone = "local";
-    };
-    expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs")) ]
-    ];
-  };
-
-  # Mirror shape: cidrs-only zone with a descendant-contributed
-  # interface set. The own v4 variant stays un-narrowed and the
-  # inherited interfaces ride a standalone family-agnostic
-  # variant so the descendant's traffic still enters.
-  testMkDirectionVariantsInheritedIfsStandalone = {
-    expr = mkDirectionVariants {
-      hook = "forward";
-      direction = "from";
-      zoneName = "lan";
-      active = { };
-      mergedZones.lan = {
-        cidrs = [ "10.0.0.0/24" ];
-      };
-      zoneSets = {
-        lan_iifs = {
-          type = "ifname";
-          elements = [ "guest0" ];
-        };
-        lan_v4 = {
-          type = "ipv4_addr";
-          flags = [ "interval" ];
-          elements = [ ];
-        };
-      };
-      localZone = "local";
-    };
-    expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4")) ]
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs")) ]
-    ];
-  };
-
-  # Family-anchored zone (iface + v4) with a descendant-only v6
-  # set: the own anchors are family-blind, so the inherited v6
-  # widens the gate with its own variant behind the own prefix.
-  testMkDirectionVariantsInheritedFamilyWidens = {
-    expr = mkDirectionVariants {
-      hook = "forward";
-      direction = "from";
-      zoneName = "lan";
-      active = { };
-      mergedZones.lan = {
-        interfaces = [ "lan0" ];
-        cidrs = [ "10.0.0.0/24" ];
-      };
-      zoneSets = {
-        lan_iifs = {
-          type = "ifname";
-          elements = [ "lan0" ];
-        };
-        lan_v4 = {
-          type = "ipv4_addr";
-          flags = [ "interval" ];
-          elements = [ ];
-        };
-        lan_v6 = {
-          type = "ipv6_addr";
-          flags = [ "interval" ];
-          elements = [ ];
-        };
-      };
-      localZone = "local";
-    };
-    expected = [
-      [
-        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4"))
-      ]
-      [
-        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6"))
-      ]
-    ];
-  };
-
-  # Grouping zone (no own match at all): every section is
-  # descendant-contributed and stands alone — ANDing sections
-  # from different descendants would match their intersection.
-  testMkDirectionVariantsGroupingZone = {
-    expr = mkDirectionVariants {
-      hook = "forward";
-      direction = "from";
-      zoneName = "internal";
-      active = { };
-      mergedZones.internal = { };
-      zoneSets = {
-        internal_iifs = {
-          type = "ifname";
-          elements = [ "guest0" ];
-        };
-        internal_v4 = {
-          type = "ipv4_addr";
-          flags = [ "interval" ];
-          elements = [ ];
-        };
-      };
-      localZone = "local";
-    };
-    expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "internal_v4")) ]
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "internal_iifs")) ]
-    ];
-  };
-
   # ===== mkRootJumpRules — empty =====
 
   testMkRootJumpRulesEmpty = {
@@ -1613,9 +1241,7 @@ in
       hook = "forward";
       baseChainName = "forward-at-filter";
       effectiveSubChains = { };
-      mergedZones = { };
-      zoneSets = { };
-      localZone = "local";
+      zoneMembership = membershipFor { };
     };
     expected = [ ];
   };
@@ -1633,21 +1259,10 @@ in
           postChildCells = [ ];
         };
       };
-      mergedZones = mergedZonesFor [
-        "lan"
-        "wan"
-      ];
-      zoneSets = {
-        lan_iifs = {
-          type = "ifname";
-          elements = [ "lan0" ];
-        };
-        wan_iifs = {
-          type = "ifname";
-          elements = [ "wan0" ];
-        };
+      zoneMembership = membershipFor {
+        zones.lan.interfaces = [ "lan0" ];
+        zones.wan.interfaces = [ "wan0" ];
       };
-      localZone = "local";
     };
     expected = [
       [
@@ -1669,14 +1284,7 @@ in
           postChildCells = [ ];
         };
       };
-      mergedZones = mergedZonesFor [ "wan" ];
-      zoneSets = {
-        wan_iifs = {
-          type = "ifname";
-          elements = [ "wan0" ];
-        };
-      };
-      localZone = "local";
+      zoneMembership = membershipFor { zones.wan.interfaces = [ "wan0" ]; };
     };
     expected = [
       [
@@ -1708,25 +1316,14 @@ in
           postChildCells = [ ];
         };
       };
-      mergedZones = {
-        dmz = mockZone;
-        web-server = mockZone // {
-          parent = "dmz";
+      zoneMembership = membershipFor {
+        zones.dmz.interfaces = [ "dmz0" ];
+        nodes.web-server = {
+          zone = "dmz";
+          address.ipv4 = "10.0.0.5";
         };
-        wan = mockZone;
+        zones.wan.interfaces = [ "wan0" ];
       };
-      zoneSets = {
-        dmz_iifs = {
-          type = "ifname";
-          elements = [ "dmz0" ];
-        };
-        web-server_v4 = { };
-        wan_iifs = {
-          type = "ifname";
-          elements = [ "wan0" ];
-        };
-      };
-      localZone = "local";
     };
     expected = [
       [
@@ -1760,17 +1357,16 @@ in
           postChildCells = [ ];
         };
       };
-      mergedZones = mergedZonesFor [
-        "lan"
-        "wan"
-      ];
-      zoneSets = {
-        lan_v4 = { };
-        lan_v6 = { };
-        wan_v4 = { };
-        wan_v6 = { };
+      zoneMembership = membershipFor {
+        zones.lan.cidrs = [
+          "10.0.0.0/24"
+          "fd00::/64"
+        ];
+        zones.wan.cidrs = [
+          "192.0.2.0/24"
+          "2001:db8::/32"
+        ];
       };
-      localZone = "local";
     };
     expected = [
       [
@@ -1796,7 +1392,7 @@ in
       parentFromZone = "dmz";
       toZone = "local";
       baseChainName = "input-at-filter";
-      childrenOf.dmz = [ "web-server" ];
+
       effectiveSubChains = {
         "dmz-to-local" = {
           from = "dmz";
@@ -1811,16 +1407,13 @@ in
           postChildCells = [ ];
         };
       };
-      mergedZones = {
-        dmz = mockZone;
-        web-server = mockZone // {
-          parent = "dmz";
+      zoneMembership = membershipFor {
+        zones.dmz.interfaces = [ "dmz0" ];
+        nodes.web-server = {
+          zone = "dmz";
+          address.ipv4 = "10.0.0.5";
         };
       };
-      zoneSets = {
-        web-server_v4 = { };
-      };
-      localZone = "local";
     };
     expected = [
       [
@@ -1840,16 +1433,15 @@ in
       parentFromZone = "dmz";
       toZone = "local";
       baseChainName = "input-at-filter";
-      childrenOf.dmz = [ "web-server" ];
+
       effectiveSubChains = { };
-      mergedZones = {
-        dmz = mockZone;
-        web-server = mockZone // {
-          parent = "dmz";
+      zoneMembership = membershipFor {
+        zones.dmz.interfaces = [ "dmz0" ];
+        nodes.web-server = {
+          zone = "dmz";
+          address.ipv4 = "10.0.0.5";
         };
       };
-      zoneSets = { };
-      localZone = "local";
     };
     expected = [ ];
   };
@@ -2148,101 +1740,6 @@ in
         "flowtables"
       ];
     expected = false;
-  };
-
-  testMkDirectionVariantsExtraSection = {
-    expr = mkDirectionVariants {
-      hook = "forward";
-      direction = "from";
-      zoneName = "vpn-users";
-      active = {
-        extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
-      };
-      mergedZones.vpn-users = {
-        cidrs = [
-          "10.8.0.0/24"
-          "fd42::/64"
-        ];
-      };
-      zoneSets = {
-        vpn-users_v4 = { };
-        vpn-users_v6 = { };
-      };
-      localZone = "local";
-    };
-    expected = [
-      [
-        (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256)
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "vpn-users_v4"))
-      ]
-      [
-        (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256)
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "vpn-users_v6"))
-      ]
-    ];
-  };
-
-  testMkDirectionVariantsExtraOnly = {
-    expr = mkDirectionVariants {
-      hook = "forward";
-      direction = "from";
-      zoneName = "marked";
-      active = {
-        extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
-      };
-      mergedZones.marked = { };
-      zoneSets = { };
-      localZone = "local";
-    };
-    expected = [
-      [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ]
-    ];
-  };
-
-  testMkDirectionVariantsIpv4Override = {
-    expr = mkDirectionVariants {
-      hook = "forward";
-      direction = "from";
-      zoneName = "lan";
-      active = {
-        ipv4 = [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "user-v4")) ];
-      };
-      mergedZones.lan = {
-        cidrs = [ "fd00::/64" ];
-      };
-      zoneSets = {
-        lan_v4 = { };
-        lan_v6 = { };
-      };
-      localZone = "local";
-    };
-    expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "user-v4")) ]
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6")) ]
-    ];
-  };
-
-  testMkDirectionVariantsInterfacesGatedByHook = {
-    expr = mkDirectionVariants {
-      hook = "output";
-      direction = "from";
-      zoneName = "lan";
-      active = {
-        interfaces = [
-          (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "user-iifs"))
-        ];
-      };
-      mergedZones.lan = {
-        cidrs = [ "10.0.0.0/24" ];
-      };
-      zoneSets = {
-        lan_v4 = { };
-      };
-      localZone = "local";
-    };
-    expected = [
-      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4")) ]
-    ];
   };
 
   # ===== emitTable — parent hierarchy: child sub-chain receives jump from parent =====

@@ -12,7 +12,7 @@
 let
   inherit (nftzones.internal.normalize)
     convertNodesToZones
-    computeZoneSets
+    computeZoneMembership
     checkChainPlacement
     checkRpfilterOverride
     checkChainOverrideSemantics
@@ -22,8 +22,6 @@ let
     checkNatBodies
     checkParentRefs
     checkParentCycles
-    computeChildrenOf
-    computeRootZoneNames
     checkNameCollisions
     checkPolicyUniqueness
     checkSettings
@@ -425,6 +423,7 @@ in
         (runPipeline
           [
             convertNodesToZones
+            computeZoneMembership
             collectAllZoneNames
           ]
           (
@@ -456,6 +455,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           collectAllZoneNames
         ]
         (
@@ -482,6 +482,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           expandWildcardZones
           checkChainPlacement
         ]
@@ -514,6 +515,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           expandWildcardZones
           checkChainPlacement
         ]
@@ -549,6 +551,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           expandWildcardZones
           checkChainPlacement
         ]
@@ -581,6 +584,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           expandWildcardZones
           checkChainPlacement
         ]
@@ -913,6 +917,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkSettings
         ]
         (
@@ -938,6 +943,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkSettings
         ]
         (
@@ -966,6 +972,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkSettings
         ]
         (
@@ -991,6 +998,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkSettings
         ]
         (
@@ -1017,7 +1025,7 @@ in
     expr =
       (runPipeline [
         convertNodesToZones
-        computeRootZoneNames
+        computeZoneMembership
         collectAllZoneNames
         expandWildcardZones
         checkPolicyUniqueness
@@ -1032,7 +1040,7 @@ in
       (runPipeline
         [
           convertNodesToZones
-          computeRootZoneNames
+          computeZoneMembership
           collectAllZoneNames
           expandWildcardZones
           checkPolicyUniqueness
@@ -1065,7 +1073,7 @@ in
       (runPipeline
         [
           convertNodesToZones
-          computeRootZoneNames
+          computeZoneMembership
           collectAllZoneNames
           expandWildcardZones
           checkPolicyUniqueness
@@ -1107,7 +1115,7 @@ in
       (runPipeline
         [
           convertNodesToZones
-          computeRootZoneNames
+          computeZoneMembership
           collectAllZoneNames
           expandWildcardZones
           checkPolicyUniqueness
@@ -1154,7 +1162,7 @@ in
       (runPipeline
         [
           convertNodesToZones
-          computeRootZoneNames
+          computeZoneMembership
           collectAllZoneNames
           expandWildcardZones
           checkPolicyUniqueness
@@ -1198,7 +1206,7 @@ in
       (runPipeline
         [
           convertNodesToZones
-          computeRootZoneNames
+          computeZoneMembership
           collectAllZoneNames
           expandWildcardZones
         ]
@@ -1233,7 +1241,7 @@ in
       (runPipeline
         [
           convertNodesToZones
-          computeRootZoneNames
+          computeZoneMembership
           collectAllZoneNames
           expandWildcardZones
         ]
@@ -1278,7 +1286,7 @@ in
           runPipeline
             [
               convertNodesToZones
-              computeRootZoneNames
+              computeZoneMembership
               collectAllZoneNames
               expandWildcardZones
             ]
@@ -1351,7 +1359,7 @@ in
             }
             [
               convertNodesToZones
-              computeRootZoneNames
+              computeZoneMembership
               collectAllZoneNames
               expandWildcardZones
             ];
@@ -1683,7 +1691,7 @@ in
       (runPipeline
         [
           convertNodesToZones
-          computeRootZoneNames
+          computeZoneMembership
           collectAllZoneNames
           expandWildcardZones
           collectZoneRefs
@@ -1717,7 +1725,7 @@ in
       (runPipeline
         [
           convertNodesToZones
-          computeRootZoneNames
+          computeZoneMembership
           collectAllZoneNames
           expandWildcardZones
           collectZoneRefs
@@ -1751,6 +1759,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           collectZoneRefs
           checkZoneMatchable
         ]
@@ -1781,6 +1790,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           collectZoneRefs
           checkZoneMatchable
         ]
@@ -1813,6 +1823,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           collectZoneRefs
           checkZoneMatchable
         ]
@@ -1841,6 +1852,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           collectZoneRefs
           checkZoneMatchable
         ]
@@ -1876,6 +1888,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           collectZoneRefs
           checkZoneMatchable
         ]
@@ -1913,6 +1926,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           collectZoneRefs
           checkZoneMatchable
         ]
@@ -1949,6 +1963,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           collectZoneRefs
           checkZoneMatchable
         ]
@@ -1992,6 +2007,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           collectZoneRefs
           checkZoneMatchable
         ]
@@ -2024,6 +2040,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           collectZoneRefs
           checkZoneMatchable
         ]
@@ -2052,6 +2069,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           collectZoneRefs
           checkZoneMatchable
         ]
@@ -2075,6 +2093,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           expandWildcardZones
           checkChainOverridePlacement
         ]
@@ -2107,6 +2126,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           expandWildcardZones
           checkChainOverridePlacement
         ]
@@ -2143,6 +2163,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           expandWildcardZones
           checkChainOverridePlacement
         ]
@@ -2179,6 +2200,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           expandWildcardZones
           checkChainOverridePlacement
         ]
@@ -2224,6 +2246,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           expandWildcardZones
           checkChainOverridePlacement
         ]
@@ -2256,6 +2279,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           expandWildcardZones
           checkChainOverridePlacement
         ]
@@ -2294,7 +2318,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
-          computeRootZoneNames
+          computeZoneMembership
           collectAllZoneNames
           expandWildcardZones
           checkChainOverridePlacement
@@ -2557,57 +2581,6 @@ in
     expected = false;
   };
 
-  # ===== computeZoneSets — empty mergedZones produces empty zoneSets =====
-
-  testComputeZoneSetsEmpty = {
-    expr =
-      (runEvalPipeline [
-        convertNodesToZones
-        computeChildrenOf
-        computeZoneSets
-      ] { name = "fw"; }).zoneSets;
-    expected = { };
-  };
-
-  # ===== computeZoneSets — multi-zone fold produces all expected keys =====
-
-  testComputeZoneSetsMultipleZones = {
-    # Three zones with different field combinations exercise
-    # all three suffixes; the fold merges per-zone genSets
-    # outputs into one flat attrset.
-    expr = pkgs.lib.sort (a: b: a < b) (
-      builtins.attrNames
-        (runEvalPipeline
-          [
-            convertNodesToZones
-            computeChildrenOf
-            computeZoneSets
-          ]
-          {
-            name = "fw";
-            zones = {
-              lan = {
-                interfaces = [ "lan0" ];
-              };
-              wan = {
-                cidrs = [ "0.0.0.0/0" ];
-              };
-              vpn = {
-                interfaces = [ "wg0" ];
-                cidrs = [ "fd00::/8" ];
-              };
-            };
-          }
-        ).zoneSets
-    );
-    expected = [
-      "lan_iifs"
-      "vpn_iifs"
-      "vpn_v6"
-      "wan_v4"
-    ];
-  };
-
   # ===== checkSetNameCollisions — no collision produces no errors =====
 
   testCheckSetNameCollisionsClean = {
@@ -2615,8 +2588,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
-          computeChildrenOf
-          computeZoneSets
+          computeZoneMembership
           checkSetNameCollisions
         ]
         {
@@ -2644,8 +2616,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
-              computeChildrenOf
-              computeZoneSets
+              computeZoneMembership
               checkSetNameCollisions
             ]
             {
@@ -2688,8 +2659,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
-              computeChildrenOf
-              computeZoneSets
+              computeZoneMembership
               checkSetNameCollisions
             ]
             {
@@ -2723,8 +2693,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
-          computeChildrenOf
-          computeZoneSets
+          computeZoneMembership
           checkSetNameCollisions
         ]
         {
@@ -2748,8 +2717,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
-          computeChildrenOf
-          computeZoneSets
+          computeZoneMembership
           checkObjectRefs
         ]
         {
@@ -2774,8 +2742,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
-          computeChildrenOf
-          computeZoneSets
+          computeZoneMembership
           checkObjectRefs
         ]
         {
@@ -2806,8 +2773,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
-              computeChildrenOf
-              computeZoneSets
+              computeZoneMembership
               checkObjectRefs
             ]
             {
@@ -2848,8 +2814,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
-              computeChildrenOf
-              computeZoneSets
+              computeZoneMembership
               checkObjectRefs
             ]
             {
@@ -2908,8 +2873,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
-          computeChildrenOf
-          computeZoneSets
+          computeZoneMembership
           checkObjectRefs
         ]
         {
@@ -2942,8 +2906,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
-              computeChildrenOf
-              computeZoneSets
+              computeZoneMembership
               checkObjectRefs
             ]
             {
@@ -2978,8 +2941,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
-              computeChildrenOf
-              computeZoneSets
+              computeZoneMembership
               checkObjectRefs
             ]
             {
@@ -3014,8 +2976,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
-          computeChildrenOf
-          computeZoneSets
+          computeZoneMembership
           checkObjectRefs
         ]
         {
@@ -3054,8 +3015,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
-              computeChildrenOf
-              computeZoneSets
+              computeZoneMembership
               checkObjectRefs
             ]
             {
@@ -3096,8 +3056,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
-          computeChildrenOf
-          computeZoneSets
+          computeZoneMembership
           checkObjectRefs
         ]
         {
@@ -3129,8 +3088,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
-          computeChildrenOf
-          computeZoneSets
+          computeZoneMembership
           checkObjectRefs
         ]
         {
@@ -3218,15 +3176,13 @@ in
     );
     expected = [
       "allZoneNames"
-      "childrenOf"
       "errors"
       "expandedGroups"
       "mergedZones"
       "resolvedPriorities"
-      "rootZoneNames"
       "warnings"
+      "zoneMembership"
       "zoneRefs"
-      "zoneSets"
     ];
   };
 
@@ -3259,6 +3215,7 @@ in
     expr =
       (runPipeline [
         convertNodesToZones
+        computeZoneMembership
         checkParentRefs
       ] emptyTable).errors;
     expected = [ ];
@@ -3271,6 +3228,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkParentRefs
         ]
         (
@@ -3298,6 +3256,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkParentRefs
         ]
         (
@@ -3325,6 +3284,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkParentRefs
         ]
         (
@@ -3354,6 +3314,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkParentRefs
         ]
         (
@@ -3385,6 +3346,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkParentCycles
         ]
         (
@@ -3412,6 +3374,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkParentCycles
         ]
         (
@@ -3447,6 +3410,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkParentCycles
         ]
         (
@@ -3484,6 +3448,7 @@ in
       (runPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkParentCycles
         ]
         (
@@ -3514,104 +3479,13 @@ in
     ];
   };
 
-  # ===== computeChildrenOf — empty parent set =====
-
-  testComputeChildrenOfEmpty = {
-    expr =
-      (runPipeline [
-        convertNodesToZones
-        computeChildrenOf
-      ] emptyTable).childrenOf;
-    expected = { };
-  };
-
-  # ===== computeChildrenOf — inverse map of parent =====
-
-  testComputeChildrenOfBasic = {
-    expr =
-      (runPipeline
-        [
-          convertNodesToZones
-          computeChildrenOf
-        ]
-        (
-          emptyTable
-          // {
-            zones = {
-              dmz = { };
-              web = {
-                parent = "dmz";
-              };
-              api = {
-                parent = "dmz";
-              };
-              standalone = { };
-            };
-          }
-        )
-      ).childrenOf;
-    # Children sorted alphabetically. `standalone` (no parent) is
-    # not a key in childrenOf.
-    expected = {
-      dmz = [
-        "api"
-        "web"
-      ];
-    };
-  };
-
-  # ===== computeRootZoneNames — only localZone when no zones =====
-
-  testComputeRootZoneNamesEmpty = {
-    expr =
-      (runPipeline [
-        convertNodesToZones
-        computeRootZoneNames
-      ] emptyTable).rootZoneNames;
-    expected = [ "local" ];
-  };
-
-  # ===== computeRootZoneNames — roots only + localZone =====
-
-  testComputeRootZoneNamesBasic = {
-    # `dmz` is a root (no parent); `web` (parent dmz) is not.
-    # `localZone` always appears as a root.
-    expr =
-      let
-        out =
-          (runPipeline
-            [
-              convertNodesToZones
-              computeRootZoneNames
-            ]
-            (
-              emptyTable
-              // {
-                zones = {
-                  dmz = { };
-                  web = {
-                    parent = "dmz";
-                  };
-                  wan = { };
-                };
-              }
-            )
-          ).rootZoneNames;
-      in
-      pkgs.lib.sort (a: b: a < b) out;
-    expected = [
-      "dmz"
-      "local"
-      "wan"
-    ];
-  };
-
   # ===== checkInterfaceOverlap — empty zones =====
 
   testCheckInterfaceOverlapEmpty = {
     expr =
       (runPipeline [
         convertNodesToZones
+        computeZoneMembership
         checkInterfaceOverlap
       ] emptyTable).errors;
     expected = [ ];
@@ -3624,6 +3498,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkInterfaceOverlap
         ]
         {
@@ -3647,6 +3522,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkInterfaceOverlap
         ]
         {
@@ -3676,6 +3552,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkInterfaceOverlap
         ]
         {
@@ -3700,6 +3577,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkInterfaceOverlap
         ]
         {
@@ -3727,6 +3605,7 @@ in
         (runEvalPipeline
           [
             convertNodesToZones
+            computeZoneMembership
             checkInterfaceOverlap
           ]
           {
@@ -3753,6 +3632,7 @@ in
     expr =
       (runPipeline [
         convertNodesToZones
+        computeZoneMembership
         checkCidrOverlap
       ] emptyTable).errors;
     expected = [ ];
@@ -3765,6 +3645,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCidrOverlap
         ]
         {
@@ -3788,6 +3669,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCidrOverlap
         ]
         {
@@ -3817,6 +3699,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCidrOverlap
         ]
         {
@@ -3841,6 +3724,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCidrOverlap
         ]
         {
@@ -3876,6 +3760,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCidrOverlap
         ]
         {
@@ -3899,6 +3784,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCidrOverlap
         ]
         {
@@ -3925,6 +3811,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCidrOverlap
         ]
         {
@@ -4176,6 +4063,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkExtraSectionFields
         ]
         {
@@ -4200,6 +4088,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeZoneMembership
               checkExtraSectionFields
             ]
             {
@@ -4230,6 +4119,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeZoneMembership
               checkExtraSectionFields
             ]
             {
@@ -4255,6 +4145,7 @@ in
         (runEvalPipeline
           [
             convertNodesToZones
+            computeZoneMembership
             checkExtraSectionFields
           ]
           {
@@ -4276,6 +4167,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeZoneMembership
               checkExtraSectionFields
             ]
             {
@@ -4313,6 +4205,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkExtraSectionFields
         ]
         {
@@ -4436,6 +4329,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCrossAxisOverlap
         ]
         {
@@ -4461,6 +4355,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeZoneMembership
               checkCrossAxisOverlap
             ]
             {
@@ -4491,6 +4386,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCrossAxisOverlap
         ]
         {
@@ -4516,6 +4412,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCrossAxisOverlap
         ]
         {
@@ -4549,6 +4446,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCrossAxisOverlap
         ]
         {
@@ -4582,6 +4480,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCrossAxisOverlap
         ]
         {
@@ -4622,6 +4521,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeZoneMembership
               checkCrossAxisOverlap
             ]
             {
@@ -4674,6 +4574,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCrossAxisOverlap
         ]
         {
@@ -4709,6 +4610,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCrossAxisOverlap
         ]
         {
@@ -4741,6 +4643,7 @@ in
           (runEvalPipeline
             [
               convertNodesToZones
+              computeZoneMembership
               checkCrossAxisOverlap
             ]
             {
@@ -4772,6 +4675,7 @@ in
       (runEvalPipeline
         [
           convertNodesToZones
+          computeZoneMembership
           checkCrossAxisOverlap
         ]
         {

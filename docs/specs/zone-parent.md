@@ -200,14 +200,15 @@ node is added without copying every parent-level rule.
 - `lib/internal/normalize.nix`:
   - `checkParentRefs` — resolution validator.
   - `checkParentCycles` — cycle validator.
-  - `computeChildrenOf` — inverse parent map.
-  - `computeRootZoneNames` — list of root zones + localZone.
+  - `computeZoneMembership` — resolves the shared zone interpretation.
   - `expandWildcardZones` — from-side wildcard expands to roots.
+- `lib/internal/zone.nix`:
+  - `resolveMembership` — owns hierarchy, transitive sets, own matchability,
+    override resolution, hook visibility and direction variants.
 - `lib/internal/dispatch.nix`:
   - `subChainOf` — partitions cells into pre/post-child slots.
 - `lib/internal/emit.nix`:
   - `mkSubChainKey` — key composition from `(fromZone, toZone)`.
-  - `isRootFrom` — root predicate.
   - `buildEffectiveSubChains` — synthesize transparent
     intermediate-parent dispatchers.
   - `mkChildDispatchJumpRules` — child-dispatch jumps inside a

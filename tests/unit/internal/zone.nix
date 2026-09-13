@@ -1,8 +1,8 @@
 /*
-  Unit tests for `lib/internal/zone.nix` (exposed as
-  `nftzones.internal.zone.genSets`). Same
-  `testFoo = { expr; expected; }` shape as every other unit test;
-  aggregated by `tests/unit/default.nix`.
+  Zone membership tests use real zone/node declarations through the
+  same resolved interface consumed by validation and emission. Expected
+  sets and dispatch clauses describe observable membership semantics;
+  no synthetic set bodies or separately selected overrides are inputs.
 */
 {
   pkgs,
@@ -12,21 +12,22 @@
 }:
 let
   inherit (nftypes.dsl) expr;
-  inherit (nftzones.internal.zone) genSets getActiveMatchOverrides ownSectionsOf;
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) membershipFor;
 
-  /*
-    Convenience for the single-zone (no descendants) case.
-    `genSets` now takes the full `(mergedZones, childrenOf, name)`
-    triple so it can walk descendants transitively, but most tests
-    just want to inspect what one zone emits in isolation. Wrap
-    the zone in a one-entry mergedZones and pass an empty
-    childrenOf.
-  */
-  genFor =
-    name: zone:
-    genSets {
-      ${name} = zone;
-    } { } name;
+  setsForZone = name: zone: (membershipFor { zones.${name} = zone; }).sets;
+  setsFor =
+    name: body:
+    pkgs.lib.filterAttrs (
+      setName: _:
+      builtins.elem setName [
+        "${name}_iifs"
+        "${name}_v4"
+        "${name}_v6"
+      ]
+    ) (membershipFor body).sets;
+  activeFor =
+    sections: side:
+    (membershipFor { zones.lan.matchOverride.ingress = sections; }).activeOverrides "lan" side;
 
   cidrV4 = "10.0.0.0/24";
   cidrV6 = "2001:db8::/32";
@@ -34,29 +35,22 @@ let
     "eth1"
     "eth2"
   ];
-
-  mockZoneOverride = sections: {
-    matchOverride = {
-      ingress = sections;
-      egress = { };
-    };
-  };
 in
 {
-  # ===== genSets — empty zone produces no sets =====
+  # ===== membership sets — empty zone produces no sets =====
 
-  testGenSetsEmpty = {
-    expr = genFor "lan" {
+  testMembershipSetsEmpty = {
+    expr = setsForZone "lan" {
       interfaces = [ ];
       cidrs = [ ];
     };
     expected = { };
   };
 
-  # ===== genSets — interface-only zone gets `_iifs` only =====
+  # ===== membership sets — interface-only zone gets `_iifs` only =====
 
-  testGenSetsIfsOnly = {
-    expr = genFor "lan" {
+  testMembershipSetsIfsOnly = {
+    expr = setsForZone "lan" {
       interfaces = [ "lan0" ];
       cidrs = [ ];
     };
@@ -68,10 +62,10 @@ in
     };
   };
 
-  # ===== genSets — v4-only CIDR zone gets `_v4` only =====
+  # ===== membership sets — v4-only CIDR zone gets `_v4` only =====
 
-  testGenSetsV4Only = {
-    expr = genFor "lan" {
+  testMembershipSetsV4Only = {
+    expr = setsForZone "lan" {
       interfaces = [ ];
       cidrs = [ cidrV4 ];
     };
@@ -84,10 +78,10 @@ in
     };
   };
 
-  # ===== genSets — v6-only CIDR zone gets `_v6` only =====
+  # ===== membership sets — v6-only CIDR zone gets `_v6` only =====
 
-  testGenSetsV6Only = {
-    expr = genFor "lan" {
+  testMembershipSetsV6Only = {
+    expr = setsForZone "lan" {
       interfaces = [ ];
       cidrs = [ cidrV6 ];
     };
@@ -100,11 +94,11 @@ in
     };
   };
 
-  # ===== genSets — multiple CIDRs of the same family preserve order =====
+  # ===== membership sets — multiple CIDRs of the same family preserve order =====
 
-  testGenSetsMultipleSameFamily = {
+  testMembershipSetsMultipleSameFamily = {
     expr =
-      (genFor "lan" {
+      (setsForZone "lan" {
         interfaces = [ ];
         cidrs = [
           "10.0.0.0/24"
@@ -117,10 +111,10 @@ in
     ];
   };
 
-  # ===== genSets — full dual-stack zone gets all three suffixes (full bodies) =====
+  # ===== membership sets — full dual-stack zone gets all three suffixes (full bodies) =====
 
-  testGenSetsAll = {
-    expr = genFor "lan" {
+  testMembershipSetsAll = {
+    expr = setsForZone "lan" {
       interfaces = ifs;
       cidrs = [
         cidrV4
@@ -145,11 +139,11 @@ in
     };
   };
 
-  # ===== genSets — set names always carry the zone-name prefix =====
+  # ===== membership sets — set names always carry the zone-name prefix =====
 
-  testGenSetsNamePrefix = {
+  testMembershipSetsNamePrefix = {
     expr = pkgs.lib.attrNames (
-      genFor "guest" {
+      setsForZone "guest" {
         interfaces = [ "guest0" ];
         cidrs = [ cidrV4 ];
       }
@@ -160,31 +154,28 @@ in
     ];
   };
 
-  # ===== genSets — parent zone's _iifs includes child interfaces transitively =====
+  # ===== membership sets — parent zone's _iifs includes child interfaces transitively =====
 
-  testGenSetsParentIncludesChildIfaces = {
+  testMembershipSetsParentIncludesChildIfaces = {
     # Models the canonical hierarchy: `lan` (lan0) + `lan-guest`
     # (parent = lan, guest0). The parent's `_iifs` should
     # transitively include guest0 so base-chain dispatch into
     # `lan`'s sub-chain catches guest traffic; the child-dispatch
     # jump inside lan's sub-chain then routes specifically to
     # lan-guest's sub-chain.
-    expr =
-      genSets
-        {
-          lan = {
-            interfaces = [ "lan0" ];
-            cidrs = [ ];
-          };
-          lan-guest = {
-            interfaces = [ "guest0" ];
-            cidrs = [ ];
-          };
-        }
-        {
-          lan = [ "lan-guest" ];
-        }
-        "lan";
+    expr = setsFor "lan" {
+      zones = {
+        lan = {
+          interfaces = [ "lan0" ];
+          cidrs = [ ];
+        };
+        lan-guest = {
+          parent = "lan";
+          interfaces = [ "guest0" ];
+          cidrs = [ ];
+        };
+      };
+    };
     expected = {
       lan_iifs = {
         type = "ifname";
@@ -196,28 +187,25 @@ in
     };
   };
 
-  # ===== genSets — descendant's own set covers only itself =====
+  # ===== membership sets — descendant's own set covers only itself =====
 
-  testGenSetsChildOwnsItself = {
+  testMembershipSetsChildOwnsItself = {
     # `lan-guest` (no further descendants) emits a set with just
     # its own interfaces. Confirms the transitive walk is rooted
     # at the named zone, not at all roots.
-    expr =
-      genSets
-        {
-          lan = {
-            interfaces = [ "lan0" ];
-            cidrs = [ ];
-          };
-          lan-guest = {
-            interfaces = [ "guest0" ];
-            cidrs = [ ];
-          };
-        }
-        {
-          lan = [ "lan-guest" ];
-        }
-        "lan-guest";
+    expr = setsFor "lan-guest" {
+      zones = {
+        lan = {
+          interfaces = [ "lan0" ];
+          cidrs = [ ];
+        };
+        lan-guest = {
+          parent = "lan";
+          interfaces = [ "guest0" ];
+          cidrs = [ ];
+        };
+      };
+    };
     expected = {
       lan-guest_iifs = {
         type = "ifname";
@@ -226,37 +214,36 @@ in
     };
   };
 
-  # ===== genSets — multi-level hierarchy walks transitively =====
+  # ===== membership sets — multi-level hierarchy walks transitively =====
 
-  testGenSetsMultiLevelHierarchy = {
+  testMembershipSetsMultiLevelHierarchy = {
     # Three-level chain: lan ← lan-trusted ← lan-trusted-admin.
     # `lan`'s set should include all three interfaces;
     # `lan-trusted`'s set should include its own + admin's.
     expr =
       let
-        mergedZones = {
+        zones = {
           lan = {
             interfaces = [ "lan0" ];
             cidrs = [ ];
           };
           lan-trusted = {
+            parent = "lan";
             interfaces = [ "trust0" ];
             cidrs = [ ];
           };
           lan-trusted-admin = {
+            parent = "lan-trusted";
             interfaces = [ "admin0" ];
             cidrs = [ ];
           };
         };
-        childrenOf = {
-          lan = [ "lan-trusted" ];
-          lan-trusted = [ "lan-trusted-admin" ];
-        };
+        membership = membershipFor { inherit zones; };
       in
       {
-        lan = (genSets mergedZones childrenOf "lan").lan_iifs.elements;
-        trusted = (genSets mergedZones childrenOf "lan-trusted").lan-trusted_iifs.elements;
-        admin = (genSets mergedZones childrenOf "lan-trusted-admin").lan-trusted-admin_iifs.elements;
+        lan = membership.sets.lan_iifs.elements;
+        trusted = membership.sets.lan-trusted_iifs.elements;
+        admin = membership.sets.lan-trusted-admin_iifs.elements;
       };
     expected = {
       lan = [
@@ -272,146 +259,134 @@ in
     };
   };
 
-  # ===== genSets — parent with no own interfaces still emits set from descendants =====
+  # ===== membership sets — parent with no own interfaces still emits set from descendants =====
 
-  testGenSetsParentWithNoOwnIfaces = {
+  testMembershipSetsParentWithNoOwnIfaces = {
     # Common pattern: a "group" zone with no interfaces of its
-    # own, used only to attach shared rules to its children. The
+    # own, used as a synthetic dispatcher for its children. The
     # group's `_iifs` should still be emitted (so the group's
     # sub-chain has a base-chain jump that catches descendant
     # traffic) — sourced entirely from descendants.
-    expr =
-      genSets
-        {
-          internal = {
-            interfaces = [ ];
-            cidrs = [ ];
-          };
-          int-trusted = {
-            interfaces = [ "trust0" ];
-            cidrs = [ ];
-          };
-          int-guest = {
-            interfaces = [ "guest0" ];
-            cidrs = [ ];
-          };
-        }
-        {
-          internal = [
-            "int-trusted"
-            "int-guest"
-          ];
-        }
-        "internal";
+    expr = setsFor "internal" {
+      zones = {
+        internal = {
+          interfaces = [ ];
+          cidrs = [ ];
+        };
+        int-trusted = {
+          parent = "internal";
+          interfaces = [ "trust0" ];
+          cidrs = [ ];
+        };
+        int-guest = {
+          parent = "internal";
+          interfaces = [ "guest0" ];
+          cidrs = [ ];
+        };
+      };
+    };
     expected = {
       internal_iifs = {
         type = "ifname";
         elements = [
-          "trust0"
           "guest0"
+          "trust0"
         ];
       };
     };
   };
 
-  # ===== genSets — exact-duplicate CIDRs deduped =====
+  # ===== membership sets — exact-duplicate CIDRs deduped =====
 
-  testGenSetsCidrDedup = {
+  testMembershipSetsCidrDedup = {
     # Parent and child both write `10.0.0.0/24` (silly but legal —
     # `checkCidrOverlap` skips ancestor/descendant pairs).
     # `libnet.cidr.summarize` collapses the duplicate at compile
     # time so the rendered set carries one element, not two.
     expr =
-      (genSets
-        {
+      (setsFor "parent" {
+        zones = {
           parent = {
             interfaces = [ ];
             cidrs = [ "10.0.0.0/24" ];
           };
           child = {
+            parent = "parent";
             interfaces = [ ];
             cidrs = [ "10.0.0.0/24" ];
           };
-        }
-        {
-          parent = [ "child" ];
-        }
-        "parent"
-      ).parent_v4.elements;
+        };
+      }).parent_v4.elements;
     expected = [ (expr.prefix "10.0.0.0" 24) ];
   };
 
-  # ===== genSets — descendant CIDR contained in ancestor's drops out =====
+  # ===== membership sets — descendant CIDR contained in ancestor's drops out =====
 
-  testGenSetsCidrSubsetCoalesced = {
+  testMembershipSetsCidrSubsetCoalesced = {
     # Parent has the broader prefix; child has a CIDR strictly
     # inside it. `summarize`'s `containsCidr` check drops the
     # child's redundant element, leaving just the parent's CIDR
     # in the rendered set — `10.0.0.0/8` covers all of
     # `10.0.0.0/24` so the latter adds no addresses.
     expr =
-      (genSets
-        {
+      (setsFor "big" {
+        zones = {
           big = {
             interfaces = [ ];
             cidrs = [ "10.0.0.0/8" ];
           };
           small = {
+            parent = "big";
             interfaces = [ ];
             cidrs = [ "10.0.0.0/24" ];
           };
-        }
-        {
-          big = [ "small" ];
-        }
-        "big"
-      ).big_v4.elements;
+        };
+      }).big_v4.elements;
     expected = [ (expr.prefix "10.0.0.0" 8) ];
   };
 
-  # ===== genSets — sibling CIDRs fuse into a single supernet =====
+  # ===== membership sets — sibling CIDRs fuse into a single supernet =====
 
-  testGenSetsCidrSiblingsFuse = {
+  testMembershipSetsCidrSiblingsFuse = {
     # Two adjacent canonical `/24`s (`10.0.0.0/24` + `10.0.1.0/24`)
     # are siblings of `10.0.0.0/23` and summarize collapses them
     # into that supernet. Edge case worth pinning: the rendered
     # ruleset diverges from user input — this is intentional and
     # semantically equivalent.
     expr =
-      (genSets {
-        parent = {
-          interfaces = [ ];
-          cidrs = [
-            "10.0.0.0/24"
-            "10.0.1.0/24"
-          ];
+      (setsFor "parent" {
+        zones = {
+          parent = {
+            interfaces = [ ];
+            cidrs = [
+              "10.0.0.0/24"
+              "10.0.1.0/24"
+            ];
+          };
         };
-      } { } "parent").parent_v4.elements;
+      }).parent_v4.elements;
     expected = [ (expr.prefix "10.0.0.0" 23) ];
   };
 
-  # ===== genSets — descendant with no contributions adds nothing =====
+  # ===== membership sets — descendant with no contributions adds nothing =====
 
-  testGenSetsEmptyDescendantContributesNothing = {
+  testMembershipSetsEmptyDescendantContributesNothing = {
     # A parent with one interface and a descendant zone that has
     # no interfaces / CIDRs of its own. The parent's set should be
     # unchanged from the no-descendants case.
-    expr =
-      genSets
-        {
-          parent = {
-            interfaces = [ "p0" ];
-            cidrs = [ ];
-          };
-          child = {
-            interfaces = [ ];
-            cidrs = [ ];
-          };
-        }
-        {
-          parent = [ "child" ];
-        }
-        "parent";
+    expr = setsFor "parent" {
+      zones = {
+        parent = {
+          interfaces = [ "p0" ];
+          cidrs = [ ];
+        };
+        child = {
+          parent = "parent";
+          interfaces = [ ];
+          cidrs = [ ];
+        };
+      };
+    };
     expected = {
       parent_iifs = {
         type = "ifname";
@@ -420,11 +395,11 @@ in
     };
   };
 
-  # ===== genSets — cycle in childrenOf doesn't stack-overflow =====
+  # ===== membership sets — cycle in zone parents doesn't stack-overflow =====
 
-  testGenSetsCycleGuard = {
-    # `computeZoneSets` runs before `checkParentCycles` in the
-    # validator pipeline, so a cyclic `childrenOf` would otherwise
+  testMembershipSetsCycleGuard = {
+    # `computeZoneMembership` runs before `checkParentCycles` in the
+    # validator pipeline, so a cyclic parent declarations would otherwise
     # exhaust Nix's max-call-depth before the dedicated cycle
     # check reports the error. The `descendantsOf` walker's
     # `visited` guard short-circuits the revisit; the eventual
@@ -432,23 +407,20 @@ in
     # pins the defense.
     expr =
       let
-        ws =
-          genSets
-            {
-              a = {
-                interfaces = [ "a0" ];
-                cidrs = [ ];
-              };
-              b = {
-                interfaces = [ "b0" ];
-                cidrs = [ ];
-              };
-            }
-            {
-              a = [ "b" ];
-              b = [ "a" ];
-            }
-            "a";
+        ws = setsFor "a" {
+          zones = {
+            a = {
+              parent = "b";
+              interfaces = [ "a0" ];
+              cidrs = [ ];
+            };
+            b = {
+              parent = "a";
+              interfaces = [ "b0" ];
+              cidrs = [ ];
+            };
+          };
+        };
       in
       ws.a_iifs.elements;
     # Order is parent-first, then descendants discovered during
@@ -459,30 +431,27 @@ in
     ];
   };
 
-  # ===== genSets — descendant CIDRs union with parent CIDRs via summarize =====
+  # ===== membership sets — descendant CIDRs union with parent CIDRs via summarize =====
 
-  testGenSetsParentIncludesChildCidrs = {
+  testMembershipSetsParentIncludesChildCidrs = {
     # Parent with CIDR `10.0.0.0/24` and a lowered-node child
     # contributing `10.0.0.5/32` (a typical node-in-zone case).
     # The child's `/32` is contained in the parent's `/24`, so
     # `summarize` drops it from the parent's `_v4` set — the
     # rendered set is the minimal cover.
-    expr =
-      genSets
-        {
-          dmz = {
-            interfaces = [ ];
-            cidrs = [ "10.0.0.0/24" ];
-          };
-          web = {
-            interfaces = [ ];
-            cidrs = [ "10.0.0.5/32" ];
-          };
-        }
-        {
-          dmz = [ "web" ];
-        }
-        "dmz";
+    expr = setsFor "dmz" {
+      zones = {
+        dmz = {
+          interfaces = [ ];
+          cidrs = [ "10.0.0.0/24" ];
+        };
+        web = {
+          parent = "dmz";
+          interfaces = [ ];
+          cidrs = [ "10.0.0.5/32" ];
+        };
+      };
+    };
     expected = {
       dmz_v4 = {
         type = "ipv4_addr";
@@ -492,18 +461,18 @@ in
     };
   };
 
-  # ===== getActiveMatchOverrides — empty side produces empty active set =====
+  # ===== active override sections — empty side produces empty active set =====
 
-  testGetActiveMatchOverridesEmpty = {
-    expr = getActiveMatchOverrides (mockZoneOverride { }) "ingress";
+  testMembershipActiveOverridesEmpty = {
+    expr = activeFor ({ }) "ingress";
     expected = { };
   };
 
-  # ===== getActiveMatchOverrides — null sections filtered out =====
+  # ===== active override sections — null sections filtered out =====
 
-  testGetActiveMatchOverridesNullsFiltered = {
+  testMembershipActiveOverridesNullsFiltered = {
     # All-null sections (the type's default) → empty active set.
-    expr = getActiveMatchOverrides (mockZoneOverride {
+    expr = activeFor ({
       interfaces = null;
       ipv4 = null;
       ipv6 = null;
@@ -512,36 +481,36 @@ in
     expected = { };
   };
 
-  # ===== getActiveMatchOverrides — empty list sections filtered out =====
+  # ===== active override sections — empty list sections filtered out =====
 
-  testGetActiveMatchOverridesEmptyListsFiltered = {
+  testMembershipActiveOverridesEmptyListsFiltered = {
     # `[ ]` is treated the same as `null` — both mean "no
     # constraint contributed".
-    expr = getActiveMatchOverrides (mockZoneOverride {
+    expr = activeFor ({
       ipv4 = [ ];
       extra = [ ];
     }) "ingress";
     expected = { };
   };
 
-  # ===== getActiveMatchOverrides — mixed: some sections active, others null =====
+  # ===== active override sections — mixed: some sections active, others null =====
 
-  testGetActiveMatchOverridesMixed = {
-    expr = getActiveMatchOverrides (mockZoneOverride {
+  testMembershipActiveOverridesMixed = {
+    expr = activeFor ({
       interfaces = null;
-      ipv4 = [ "v4-clause" ];
+      ipv4 = [ (nftypes.dsl.eq nftypes.dsl.fields.ip.saddr "10.0.0.5") ];
       ipv6 = [ ];
-      extra = [ "extra-clause" ];
+      extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
     }) "ingress";
     expected = {
-      ipv4 = [ "v4-clause" ];
-      extra = [ "extra-clause" ];
+      ipv4 = [ (nftypes.dsl.eq nftypes.dsl.fields.ip.saddr "10.0.0.5") ];
+      extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
     };
   };
 
-  # ===== getActiveMatchOverrides — side parameter selects the right side =====
+  # ===== active override sections — side parameter selects the right side =====
 
-  testGetActiveMatchOverridesSideSelection = {
+  testMembershipActiveOverridesSideSelection = {
     # Construct a zone where ingress and egress have different
     # active sections; verify each side is read independently.
     expr =
@@ -549,80 +518,519 @@ in
         zone = {
           matchOverride = {
             ingress = {
-              ipv4 = [ "ing-v4" ];
+              ipv4 = [ (nftypes.dsl.eq nftypes.dsl.fields.ip.saddr "10.0.0.5") ];
             };
             egress = {
-              extra = [ "egr-extra" ];
+              extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 512) ];
             };
           };
         };
       in
       {
-        ing = getActiveMatchOverrides zone "ingress";
-        egr = getActiveMatchOverrides zone "egress";
+        ing = (membershipFor { zones.lan = zone; }).activeOverrides "lan" "ingress";
+        egr = (membershipFor { zones.lan = zone; }).activeOverrides "lan" "egress";
       };
     expected = {
       ing = {
-        ipv4 = [ "ing-v4" ];
+        ipv4 = [ (nftypes.dsl.eq nftypes.dsl.fields.ip.saddr "10.0.0.5") ];
       };
       egr = {
-        extra = [ "egr-extra" ];
+        extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 512) ];
       };
     };
   };
+  testMembershipVariantsLocalZone = {
+    expr = (membershipFor { }).directionVariants {
+      hook = "input";
+      direction = "to";
+      zoneName = "local";
+    };
+    expected = [ [ ] ];
+  };
 
-  # ===== ownSectionsOf — raw fields drive the classification =====
+  testMembershipVariantsNullDirection = {
+    expr = (membershipFor { }).directionVariants {
+      hook = "prerouting";
+      direction = "to";
+      zoneName = null;
+    };
+    expected = [ [ ] ];
+  };
 
-  testOwnSectionsOfDualStack = {
-    expr = ownSectionsOf {
-      interfaces = [ "lan0" ];
-      cidrs = [
-        cidrV4
-        cidrV6
+  testMembershipVariantsInterfaceOnly = {
+    expr =
+      (membershipFor {
+        zones.lan = {
+          interfaces = [ "lan0" ];
+        };
+      }).directionVariants
+        {
+          hook = "forward";
+          direction = "from";
+          zoneName = "lan";
+        };
+    expected = [
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs")) ]
+    ];
+  };
+
+  testMembershipVariantsUnreachable = {
+    expr =
+      (membershipFor {
+        zones.wan = {
+          interfaces = [ "wan0" ];
+        };
+      }).directionVariants
+        {
+          hook = "output";
+          direction = "from";
+          zoneName = "wan";
+        };
+    expected = [ ];
+  };
+
+  testMembershipVariantsV4Only = {
+    expr =
+      (membershipFor {
+        zones.lan = {
+          cidrs = [ "10.0.0.0/24" ];
+        };
+      }).directionVariants
+        {
+          hook = "forward";
+          direction = "from";
+          zoneName = "lan";
+        };
+    expected = [
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4")) ]
+    ];
+  };
+
+  testMembershipVariantsV4AndV6 = {
+    expr =
+      (membershipFor {
+        zones.lan = {
+          cidrs = [
+            "10.0.0.0/24"
+            "fd00::/64"
+          ];
+        };
+      }).directionVariants
+        {
+          hook = "forward";
+          direction = "from";
+          zoneName = "lan";
+        };
+    expected = [
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4")) ]
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6")) ]
+    ];
+  };
+
+  testMembershipVariantsIfPlusV4V6 = {
+    expr =
+      (membershipFor {
+        zones.lan = {
+          interfaces = [ "lan0" ];
+          cidrs = [
+            "10.0.0.0/24"
+            "fd00::/64"
+          ];
+        };
+      }).directionVariants
+        {
+          hook = "forward";
+          direction = "from";
+          zoneName = "lan";
+        };
+    expected = [
+      [
+        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4"))
+      ]
+      [
+        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6"))
+      ]
+    ];
+  };
+
+  testMembershipVariantsInheritedFamilySuppressed = {
+    expr =
+      (membershipFor {
+        zones.lan = {
+          interfaces = [ "lan0" ];
+        };
+        nodes.web = {
+          zone = "lan";
+          address.ipv4 = "10.0.0.5";
+        };
+      }).directionVariants
+        {
+          hook = "forward";
+          direction = "from";
+          zoneName = "lan";
+        };
+    expected = [
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs")) ]
+    ];
+  };
+
+  testMembershipVariantsInheritedIfsStandalone = {
+    expr =
+      (membershipFor {
+        zones.lan = {
+          cidrs = [ "10.0.0.0/24" ];
+        };
+        zones.guest = {
+          parent = "lan";
+          interfaces = [ "guest0" ];
+        };
+      }).directionVariants
+        {
+          hook = "forward";
+          direction = "from";
+          zoneName = "lan";
+        };
+    expected = [
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4")) ]
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs")) ]
+    ];
+  };
+
+  testMembershipVariantsInheritedFamilyWidens = {
+    expr =
+      (membershipFor {
+        zones.lan = {
+          interfaces = [ "lan0" ];
+          cidrs = [ "10.0.0.0/24" ];
+        };
+        zones.v6 = {
+          parent = "lan";
+          cidrs = [ "fd00::/64" ];
+        };
+      }).directionVariants
+        {
+          hook = "forward";
+          direction = "from";
+          zoneName = "lan";
+        };
+    expected = [
+      [
+        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4"))
+      ]
+      [
+        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6"))
+      ]
+    ];
+  };
+
+  testMembershipVariantsGroupingZone = {
+    expr =
+      (membershipFor {
+        zones.internal = { };
+        zones.guest = {
+          parent = "internal";
+          interfaces = [ "guest0" ];
+        };
+        nodes.web = {
+          zone = "internal";
+          address.ipv4 = "10.0.0.5";
+        };
+      }).directionVariants
+        {
+          hook = "forward";
+          direction = "from";
+          zoneName = "internal";
+        };
+    expected = [
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "internal_v4")) ]
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "internal_iifs")) ]
+    ];
+  };
+
+  testMembershipVariantsExtraSection = {
+    expr =
+      (membershipFor {
+        zones.vpn-users = {
+          cidrs = [
+            "10.8.0.0/24"
+            "fd42::/64"
+          ];
+          matchOverride.ingress = {
+            extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
+          };
+        };
+      }).directionVariants
+        {
+          hook = "forward";
+          direction = "from";
+          zoneName = "vpn-users";
+        };
+    expected = [
+      [
+        (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256)
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "vpn-users_v4"))
+      ]
+      [
+        (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256)
+        (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "vpn-users_v6"))
+      ]
+    ];
+  };
+
+  testMembershipVariantsExtraOnly = {
+    expr =
+      (membershipFor {
+        zones.marked = {
+          matchOverride.ingress = {
+            extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
+          };
+        };
+      }).directionVariants
+        {
+          hook = "forward";
+          direction = "from";
+          zoneName = "marked";
+        };
+    expected = [
+      [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ]
+    ];
+  };
+
+  testMembershipVariantsIpv4Override = {
+    expr =
+      (membershipFor {
+        zones.lan = {
+          cidrs = [ "fd00::/64" ];
+          matchOverride.ingress = {
+            ipv4 = [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "user-v4")) ];
+          };
+        };
+      }).directionVariants
+        {
+          hook = "forward";
+          direction = "from";
+          zoneName = "lan";
+        };
+    expected = [
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "user-v4")) ]
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip6.saddr (nftypes.dsl.expr.setRef "lan_v6")) ]
+    ];
+  };
+
+  testMembershipVariantsInterfacesGatedByHook = {
+    expr =
+      (membershipFor {
+        zones.lan = {
+          cidrs = [ "10.0.0.0/24" ];
+          matchOverride.ingress = {
+            interfaces = [
+              (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "user-iifs"))
+            ];
+          };
+        };
+      }).directionVariants
+        {
+          hook = "output";
+          direction = "from";
+          zoneName = "lan";
+        };
+    expected = [
+      [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "lan_v4")) ]
+    ];
+  };
+
+  testMembershipEmptyHierarchy = {
+    expr =
+      let
+        membership = membershipFor { };
+      in
+      {
+        inherit (membership) rootZoneNames childrenOf;
+        missingDirectionAncestors = membership.ancestorsOf null;
+      };
+    expected = {
+      rootZoneNames = [ "local" ];
+      childrenOf = { };
+      missingDirectionAncestors = [ ];
+    };
+  };
+
+  testMembershipHierarchyIncludesLoweredNodes = {
+    expr =
+      let
+        membership = membershipFor {
+          settings.localZone = "self";
+          zones.dmz.interfaces = [ "dmz0" ];
+          zones.group.parent = "dmz";
+          nodes.web = {
+            zone = "group";
+            address.ipv4 = "10.0.0.5";
+          };
+          zones.wan.interfaces = [ "wan0" ];
+        };
+      in
+      {
+        inherit (membership) rootZoneNames childrenOf;
+        ancestors = membership.ancestorsOf "web";
+        related = membership.related "web" "dmz";
+        unrelated = membership.related "wan" "web";
+      };
+    expected = {
+      rootZoneNames = [
+        "dmz"
+        "wan"
+        "self"
       ];
-    };
-    expected = {
-      interfaces = true;
-      v4 = true;
-      v6 = true;
-    };
-  };
-
-  testOwnSectionsOfIfsOnly = {
-    expr = ownSectionsOf {
-      interfaces = [ "lan0" ];
-      cidrs = [ ];
-    };
-    expected = {
-      interfaces = true;
-      v4 = false;
-      v6 = false;
+      childrenOf = {
+        dmz = [ "group" ];
+        group = [ "web" ];
+      };
+      ancestors = [
+        "group"
+        "dmz"
+      ];
+      related = true;
+      unrelated = false;
     };
   };
 
-  testOwnSectionsOfV6Only = {
-    expr = ownSectionsOf {
-      interfaces = [ ];
-      cidrs = [ cidrV6 ];
-    };
+  testMembershipUnresolvedParentStopsWalk = {
+    expr = (membershipFor { zones.lan.parent = "missing"; }).ancestorsOf "lan";
+    expected = [ ];
+  };
+
+  testMembershipCycleStopsWalk = {
+    expr =
+      (membershipFor {
+        zones.a.parent = "b";
+        zones.b.parent = "a";
+      }).ancestorsOf
+        "a";
+    expected = [ "b" ];
+  };
+
+  testMembershipSetOwnersPreserveUnderscores = {
+    expr =
+      (membershipFor {
+        zones.lan_guest.interfaces = [ "guest0" ];
+        nodes.web = {
+          zone = "lan_guest";
+          address.ipv4 = "10.0.0.5";
+        };
+      }).setOwners;
     expected = {
-      interfaces = false;
-      v4 = false;
-      v6 = true;
+      lan_guest_iifs = "lan_guest";
+      lan_guest_v4 = "lan_guest";
+      web_v4 = "web";
     };
   };
 
-  # ===== ownSectionsOf — missing raw fields classify as contributing nothing =====
-
-  testOwnSectionsOfMissingFields = {
-    # Raw fixtures that bypass the type system may omit the
-    # fields entirely; `or [ ]` reads make that equivalent to
-    # explicit emptiness.
-    expr = ownSectionsOf { };
+  # Grouping dispatch and reference validation ask different questions.
+  testMembershipGroupingHasNoOwnMatch = {
+    expr =
+      let
+        membership = membershipFor {
+          zones.group = { };
+          nodes.web = {
+            zone = "group";
+            address.ipv4 = "10.0.0.5";
+          };
+        };
+      in
+      {
+        hasOwnMatch = membership.hasOwnMatch "group" "ingress";
+        reachable = membership.reachableAt "group" {
+          hook = "input";
+          direction = "from";
+        };
+        variants = membership.directionVariants {
+          zoneName = "group";
+          hook = "input";
+          direction = "from";
+        };
+      };
     expected = {
-      interfaces = false;
-      v4 = false;
-      v6 = false;
+      hasOwnMatch = false;
+      reachable = false;
+      variants = [ [ (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (expr.setRef "group_v4")) ] ];
     };
+  };
+
+  testMembershipOverrideIsSideSpecific = {
+    expr =
+      let
+        membership = membershipFor {
+          zones.marked.matchOverride.ingress.extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
+        };
+      in
+      {
+        ingress = membership.hasOwnMatch "marked" "ingress";
+        egress = membership.hasOwnMatch "marked" "egress";
+        reachable = membership.reachableAt "marked" {
+          hook = "output";
+          direction = "from";
+        };
+      };
+    expected = {
+      ingress = true;
+      egress = false;
+      reachable = true;
+    };
+  };
+
+  testMembershipHookVisibility = {
+    expr =
+      let
+        membership = membershipFor { zones.lan.interfaces = [ "lan0" ]; };
+      in
+      map
+        (hook: {
+          from = membership.reachableAt "lan" {
+            inherit hook;
+            direction = "from";
+          };
+          to = membership.reachableAt "lan" {
+            inherit hook;
+            direction = "to";
+          };
+        })
+        [
+          "prerouting"
+          "input"
+          "forward"
+          "output"
+          "postrouting"
+          "ingress"
+        ];
+    expected = [
+      {
+        from = true;
+        to = false;
+      }
+      {
+        from = true;
+        to = false;
+      }
+      {
+        from = true;
+        to = true;
+      }
+      {
+        from = false;
+        to = true;
+      }
+      {
+        from = true;
+        to = true;
+      }
+      {
+        from = false;
+        to = false;
+      }
+    ];
   };
 }

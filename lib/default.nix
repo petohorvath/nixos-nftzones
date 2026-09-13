@@ -8,7 +8,7 @@ let
     returns one attrset per source module; each module's exports stay
     under that submodule key, so callers reach functions as
     `nftzones.internal.<module>.<fn>` (e.g.
-    `nftzones.internal.zone.genSets`,
+    `nftzones.internal.zone.resolveMembership`,
     `nftzones.internal.compile.mkTable`).
 
     Stability: `nftzones.internal.*` carries no semver guarantee.

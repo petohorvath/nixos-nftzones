@@ -34,7 +34,7 @@
     jumps. See `docs/specs/zone-parent.md` for the dispatch model.
     The empty per-side attrsets are valid `zoneMatchOverrideSide`
     values: every section defaults to `null`, and downstream
-    consumers go through `internal.zone.getActiveMatchOverrides`,
+    consumers go through `zoneMembership.activeOverrides`,
     which filters null/empty sections out — so the all-null shape
     is indistinguishable from `{ }` for any read.
 

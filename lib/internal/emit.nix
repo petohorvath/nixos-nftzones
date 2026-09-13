@@ -1,324 +1,58 @@
 /*
-  internal/emit — Phase 4 of the compile pipeline, exposed under
-  `nftzones.internal.emit`.
+  internal/emit — Phase 4 of the compile pipeline.
 
-  Composes the rest of the pipeline state into one
-  `nftypes.dsl.table` value via small focused helpers. Output is
-  written to `ctx.output`.
+  Builds nftables base chains, per-pair sub-chains and table output
+  with nftypes DSL builders. Zone semantics come from the resolved
+  `ctx.zoneMembership` value produced in Phase 1. Emit supplies only
+  the hook, direction and zone name when requesting match variants.
 
-  Pipeline pattern: each phase takes `{ table; ctx }` and returns
-  the same shape, mirroring earlier phases.
+  From-side dispatch is hierarchical: roots jump from base chains;
+  descendants jump from their parents' sub-chains. Missing intermediate
+  sub-chains are synthesized along the ancestor path. Each sub-chain
+  emits pre-child cells, child jumps, then post-child cells (including
+  policy tails), preserving child-first dispatch and parent fallback.
+  To-side dispatch remains flat and is not repeated in child jumps.
+  Root jumps form the cartesian product of direction variants and drop
+  incompatible IPv4/IPv6 pairs before adding the DSL jump statement.
 
-  Phase pipeline (Phase 4, post-step-5 — every sub-phase below
-  contributes one `ctx` artifact; `assembleOutput` rolls them
-  into the final table body):
+  Pure helpers accept `zoneMembership` wherever sets, hierarchy or
+  dispatch clauses are needed; callers do not coordinate raw zone
+  declarations, active overrides and generated sets.
 
-      { table; ctx (post-Phase 3) }
-        ↓ computeEffectiveSubChains  ctx.effectiveSubChainsByBucket
-        ↓ emitBaseChains             ctx.baseChains
-        ↓ emitSubChains              ctx.subChains
-        ↓ emitUserObjects            ctx.userObjects
-        ↓ assembleOutput             ctx.output (nftypes.dsl.table value)
-      { table; ctx }
+  ===== computeEffectiveSubChains =====
+  Reads:  ctx.chainBuckets, ctx.zoneMembership
+  Writes: ctx.effectiveSubChainsByBucket
 
-  `ctx.zoneSets` is materialized once in Phase 1
-  (`internal.normalize.computeZoneSets`) — the same artifact
-  serves both Phase 1 validators (`checkSetNameCollisions`,
-  `checkObjectRefs`) and Phase 4 emit (jump construction +
-  `assembleOutput`'s final body), avoiding redundant evaluation.
-
-  `ctx.effectiveSubChainsByBucket` is the same idea applied per
-  base chain bucket: each bucket's full sub-chain map (direct +
-  intermediate dispatchers) is computed once in
-  `computeEffectiveSubChains` and consumed by both
-  `mkBaseChain` (root-jump emission) and `mkSubChain` (chain
-  body construction).
-
-  ===== assembleTable =====
-
-  Input:  `{ family; name; body; }`
-  Output: an `nftypes.dsl.table` marker value.
-
-  Thin wrapper around `nftypes.dsl.table family name body` so
-  callers stay on the named-attrset shape. `body` may carry
-  `sets`, `chains`, object containers, and table-level options
-  (`flags`, `comment`); all are optional. As Phase 4 grows the
-  body expands.
-
-  ===== mkRuleBody =====
-
-  Pure helper: emit one cell's rule body (list of nftypes
-  statements). Dispatches on cell shape — no explicit group arg
-  needed. See the `===== Output shape =====` section in
-  `lib/internal/expand.nix` for the per-group cell shapes this
-  consumes:
-    - `cell ? verdict`         → policy (single verdict statement)
-    - `cell.rule ? snat`       → snat with address translation
-    - `cell.rule ? masquerade` → snat masquerade
-    - `cell.rule ? action`     → dnat (match clauses + dnat /
-                                 redirect action)
-    - else                     → filter / sroute / droute (cell.rule
-                                 is already a list of statements)
-
-  All NAT/verdict statements are constructed via `nftypes.dsl.*`
-  builders so they pass the marker-validation that prevents raw
-  libnftables-json shapes from leaking through.
-
-  ===== subChainNameOf =====
-
-  Pure helper: build the full nftables sub-chain name from a
-  `baseChainName` (`"<hook>-at-<priority>"` from Phase 3) and a
-  `subChainKey` (Phase 3's local key within `bucket.subChains`,
-  e.g. `"lan-to-wan"` / `"wan"`). Output is `"<base>__<sub>"` per
-  design doc §4.3 — used both as the chain attribute in
-  `body.chains` for sub-chains and as the `jump` target in base
-  chains.
-
-  ===== mkSubChainKey =====
-
-  Pure helper: compose a sub-chain key from explicit
-  `(fromZone, toZone)` components — the unpacked counterpart to
-  `dispatch.subChainKeyOf` (which takes a cell). Used by
-  `buildEffectiveSubChains` to fabricate intermediate-parent
-  sub-chain keys without re-parsing strings.
-
-  ===== isRootFrom =====
-
-  Pure predicate: is this from-zone a root (no parent)?
-  `localZone` is always a root by construction — the sentinel
-  has no `mergedZones` entry. Unknown zones are also treated as
-  roots defensively (consistent with the localZone case).
-
-  ===== buildEffectiveSubChains =====
-
-  Pure helper: for one base chain bucket, compute the full set of
-  sub-chain records to emit — direct cell-bearing sub-chains
-  plus transparent intermediate-parent dispatchers synthesized
-  along each cell-bearing sub-chain's parent chain. Returns an
-  attrset keyed by `subChainKey`.
-
-  Why intermediates: only root from-zones jump from the base
-  chain. A descendant zone with cells (e.g. `web-server`) is
-  only reachable through a chain of parent dispatch jumps
-  starting at its root ancestor. If any ancestor lacks its own
-  cells, an empty placeholder chain still has to exist so the
-  parent above can dispatch into it.
-
-  Direct sub-chain records carry `preChildCells` and
-  `postChildCells` from Phase 3. Synthesized intermediates are
-  seeded with empty cell lists; emit fills them with just the
-  child-dispatch jumps.
-
-  ===== mkSubChain =====
-
-  Pure helper: build one sub-chain body (regular non-base chain
-  with a `rules` field) from one sub-chain record. Body order:
-
-    1. preChildCells   — sorted (priority asc, name asc) by
-                          Phase 3.
-    2. child-dispatch jumps to children with content (one rule
-                          per child × from-side variant).
-    3. postChildCells  — sorted (priority asc, name asc;
-                          policies appended last as tail rules)
-                          by Phase 3.
-
-  Sub-chains with no `from` (droute-style) carry no
-  child-dispatch — hierarchy applies only on the from-side.
-
-  ===== mkSubChains =====
-
-  Walks every base chain bucket's effective sub-chains
-  (see `buildEffectiveSubChains`), producing one sub-chain entry
-  per `(baseChainName, subChainKey)` pair, keyed by the full
-  sub-chain name (see `subChainNameOf`). Reuses Phase 3 keys
-  verbatim so the name → `(hook, priority, from, to)` mapping is
-  mechanical and auditable in the generated JSON.
-
-  ===== mkDirectionVariants =====
-
-  Pure helper: build the match-clause variants for one direction
-  (`from` / `to`) of one sub-chain at a given hook. Returns a
-  list of variants — each variant is a list of statements ANDed
-  within a single rule. The cartesian product across both
-  directions is taken in `mkRootJumpRules`.
-
-  Why per-variant rather than ANDed clauses: in `inet` family,
-  `ip <addr>` and `ip6 <addr>` clauses can't be ANDed in the
-  same rule — packets of the wrong family skip the rule entirely.
-  So one variant per address family with a non-empty set, plus
-  the optional interface prefix when the hook allows it.
-
-  Sections carry an *own-ness* classification (via
-  `internal.zone.ownSectionsOf`; an active matchOverride section
-  is own by definition): the union sets from
-  `internal.zone.genSets` also hold descendant content, and only
-  sections the zone anchors itself may AND together. A
-  descendant-only ("inherited") section ANDed into the gate would
-  narrow the ancestor's dispatch to just the descendant's
-  traffic. Inherited sections widen instead:
-    - inherited v4 / v6 → one extra OR variant each (behind the
-      own prefix) so descendant traffic of a family the zone
-      lacks still enters — unless the own gate is
-      interface/extra-only, which is family-agnostic and covers
-      the whole subtree already;
-    - inherited interfaces → one standalone family-agnostic
-      variant (never joins the prefix).
-
-  Variant count per direction ("own" = anchored by the zone's
-  raw fields or an override; "inh" = present only via
-  descendants in the union set):
-
-    zone has              | variants emitted
-    ----------------------|----------------------------------
-    empty                 | 0
-    own iface only        | 1 (family-agnostic)
-    own iface + inh v4/v6 | 1 (family-agnostic covers subtree)
-    own v4 only           | 1
-    own v4 + own v6       | 2
-    own iface + own v4    | 1 (iface prefix + v4)
-    own iface + own v4/v6 | 2 (each with iface prefix)
-    own v4 + inh v6       | 2 (v4, v6 — no cross-AND)
-    own v4 + inh iface    | 2 (v4; standalone iface)
-    all inherited         | 1 per present section (no ANDing)
-
-  Set references (`@<zone>_iifs`, `@<zone>_v4`, `@<zone>_v6`)
-  point at the zone-derived sets emitted by Phase 1's
-  `computeZoneSets`.
-
-  Wildcard cases:
-    - `zoneName == null` (single-direction sub-chain — dnat /
-      sroute have no `to`, droute has no `from`).
-    - `zoneName == localZone` (sentinel; matched by the chain
-      dispatch already, no further constraint).
-  Both return `[ [ ] ]` (one empty variant, contributing nothing
-  to the cartesian product).
-
-  ===== mkChildDispatchJumpRules =====
-
-  Pure helper: build the child-dispatch jump rules for one
-  parent sub-chain. For each child of `parentFromZone` that has
-  a sub-chain in `effectiveSubChains` for the same `toZone`,
-  emit one jump per from-side variant of the child's match.
-  Targets `__<child>-to-<to>` (or `__<child>` for
-  single-direction sub-chains).
-
-  To-side is implicit — by the time control reaches a parent's
-  sub-chain, traffic already matched the to-side at the
-  chain-jump point. Child-dispatch only re-checks the from-side,
-  narrowing into the more specific child match.
-
-  ===== mkRootJumpRules =====
-
-  Pure helper: build the dispatch jump rules for one base chain
-  bucket. Walks each effective sub-chain; emits jumps only for
-  sub-chains whose `from` is a root from-zone — descendants
-  ride into their sub-chain via the parent's child-dispatch
-  jumps, not via the base chain.
-
-  For each emitted (root) sub-chain, computes the `from` / `to`
-  direction variants and produces one jump per variant pair
-  (cartesian product), dropping cross-family combinations
-  (e.g. v4-from × v6-to) that nft refuses to compile in `inet`
-  tables.
-
-  Sub-chains with no `from` (droute-style) are also emitted from
-  the base chain — they have no parent hierarchy to ride
-  through.
-
-  ===== mkBaseChain =====
-
-  Pure helper: produces one base chain attrset (chainBody shape per
-  `nftypes.dsl.table` docstring) for a given `{ family; settings;
-  bucket; baseChainName; mergedZones; zoneSets; }`. Includes:
-    - `type` derived via `nftypes.compatibility.chainTypeFor`.
-    - `hook`, `prio` (priority resolved to int via
-      `nftypes.resolvePriority`).
-    - `policy` (filter chains only) from `settings.chainPolicy`.
-    - `rules` — boilerplate for filter chains plus root-zone
-      dispatch jumps:
-        1. stateful   (`ct state established,related accept`,
-                       `ct state invalid drop`) when filter chain
-                       and `settings.stateful`.
-        2. loopback   (`iif lo accept`) when filter input chain
-                       and `settings.loopback`.
-        3. root-zone dispatch jumps via `mkRootJumpRules` —
-                       one rule per (root from-zone × from-variant
-                       × to-variant) tuple.
-
-  Per-cell rule bodies (whether for the parent's own rules or
-  for descendants) live inside their respective sub-chains —
-  see `mkSubChain`. The rpfilter chain is built separately by
-  `mkBaseChains` and never injected into a user-authored chain.
-
-  ===== mkBaseChains =====
-
-  Walks `ctx.chainBuckets` producing the chain attrset for the
-  table body. Threads `baseChainName`, `mergedZones`, and
-  `zoneSets` to `mkBaseChain` for jump-rule construction. If
-  `settings.rpfilter` is enabled and no user override has
-  claimed `prerouting-at-raw`, synthesizes a dedicated chain
-  carrying just `fib saddr . iif oif eq 0 drop`. A user
-  override at `(prerouting, raw)` always wins; Phase 1's
-  `checkRpfilterOverride` warns when both are set so the
-  suppression is visible.
+  Caches direct and synthetic intermediate sub-chains once per bucket
+  for both root-jump and child-jump emission.
 
   ===== emitBaseChains =====
-
-  Reads:  ctx.chainBuckets, ctx.zoneSets, table.{family, settings}
+  Reads:  ctx.chainBuckets, ctx.effectiveSubChainsByBucket,
+          ctx.zoneMembership, table.{family, settings}
   Writes: ctx.baseChains
 
-  Pipeline phase that wraps `mkBaseChains` and stashes the chain
-  attrset on `ctx`. Reads `ctx.zoneSets` (produced in Phase 1 by
-  `internal.normalize.computeZoneSets`) to construct the jump-match
-  clauses.
+  Emits hook/priority headers, filter boilerplate and root jumps.
+  Adds the optional rpfilter chain unless a user bucket owns its slot.
 
   ===== emitSubChains =====
-
-  Reads:  ctx.chainBuckets
+  Reads:  ctx.chainBuckets, ctx.effectiveSubChainsByBucket,
+          ctx.zoneMembership
   Writes: ctx.subChains
 
-  Pipeline phase that wraps `mkSubChains` and stashes the sub-chain
-  attrset on `ctx`.
-
   ===== emitUserObjects =====
-
   Reads:  table.objects
   Writes: ctx.userObjects
 
-  Pure passthrough: `table.objects.<kind>.<name>` flows into
-  `ctx.userObjects.<kind>.<name>` and then `body.<kind>.<name>` of
-  the assembled table value. The type layer's `asUserBody` (in
-  `lib/types/table.nix`) has already stripped `family` / `name` /
-  `table` / `handle`; the nftypes renderer fills them back in
-  from the parent table. Named-object reference validation lives
-  upstream in Phase 1's `internal.normalize.checkObjectRefs`.
-
   ===== assembleOutput =====
-
-  Reads:  ctx.zoneSets, ctx.baseChains, ctx.subChains,
-          ctx.userObjects, table.{family, name}
+  Reads:  ctx.zoneMembership.sets, ctx.baseChains, ctx.subChains,
+          ctx.userObjects, table.{family, name, flags, comment}
   Writes: ctx.output
 
-  Final pipeline phase: rolls the per-artifact ctx fields into
-  one `nftypes.dsl.table` value via `assembleTable`.
-
-  Body composition rules:
-    - Base chains and sub-chains share `body.chains` — keys don't
-      collide because base chains use the bare `<baseChainName>`
-      and sub-chains use `<baseChainName>__<subChainKey>`.
-    - User-defined sets merge with auto-generated zone sets under
-      `body.sets`. Name collisions resolve user-wins; a future
-      Phase 1 validator should flag these at compile time.
-    - Other user-object kinds (counters / quotas / limits / …)
-      pass through as their own body field. Empty kinds are
-      skipped so the output JSON stays minimal.
+  Merges generated sets with user sets (collisions were rejected in
+  Phase 1) and assembles a marker-tagged `nftypes.dsl.table` value.
 
   ===== emitTable =====
-
-  Orchestrator: pipes `emitBaseChains`, `emitSubChains`,
-  `emitUserObjects`, then `assembleOutput`. Returns `{ table; ctx }`
-  with `ctx.output` set. `ctx.zoneSets` is consumed (produced in
-  Phase 1 by `internal.normalize.computeZoneSets`).
+  Runs the phases above in order, threading `{ table; ctx }`.
 */
 { inputs, internal }:
 let
@@ -338,12 +72,9 @@ let
   inherit (nftypes.dsl.fields)
     meta
     ct
-    ip
-    ip6
     ;
   inherit (nftypes) chainTypeFor priorityNameOf;
-  inherit (internal.zone) getActiveMatchOverrides ownSectionsOf;
-  inherit (internal.placement) baseChainNameOf walkParents hooksWithIifname;
+  inherit (internal.placement) baseChainNameOf;
 
   # Boilerplate rule constants (each rule = list of statements).
   statefulRules = [
@@ -453,20 +184,6 @@ let
       toZone;
 
   /*
-    Predicate: is this from-zone a root (no parent)?
-    `localZone` is always a root by construction — it's a
-    sentinel that has no `mergedZones` entry. Defensive default
-    for unknown zones (also missing from `mergedZones`) is
-    "root", matching the localZone case. Reads
-    `zone.parent or null` to accommodate raw test fixtures.
-  */
-  isRootFrom =
-    mergedZones: localZone: fromZone:
-    fromZone == localZone
-    || !(mergedZones ? ${fromZone})
-    || (mergedZones.${fromZone}.parent or null) == null;
-
-  /*
     For one base chain bucket, compute the full set of sub-chain
     records to emit — direct cell-bearing sub-chains plus
     transparent intermediate-parent dispatchers synthesized along
@@ -490,14 +207,8 @@ let
     sub-chain.
   */
   buildEffectiveSubChains =
-    bucket: mergedZones:
+    bucket: zoneMembership:
     let
-      # Strict ancestor walk lives in `internal.placement.walkParents`.
-      # Phase 1's `checkParentCycles` rejects any cycle before we get
-      # here; the helper's own `visited` guard is defensive so unit-
-      # test fixtures that bypass Phase 1 don't infinite-loop.
-      ancestorsOf = name: walkParents mergedZones name;
-
       mkEmptyRecord =
         fromZone: toZone:
         lib.optionalAttrs (fromZone != null) { from = fromZone; }
@@ -519,7 +230,7 @@ let
             key = mkSubChainKey ancestor toZone;
           in
           if acc ? ${key} then acc else acc // { ${key} = mkEmptyRecord ancestor toZone; }
-        ) { } (ancestorsOf fromZone);
+        ) { } (zoneMembership.ancestorsOf fromZone);
 
       allIntermediates = lib.foldlAttrs (
         acc: _subChainKey: record:
@@ -545,21 +256,12 @@ let
       parentFromZone,
       toZone,
       baseChainName,
-      childrenOf,
       effectiveSubChains,
-      mergedZones,
-      zoneSets,
-      localZone,
+      zoneMembership,
     }:
     let
-      children = if parentFromZone == null then [ ] else childrenOf.${parentFromZone} or [ ];
-
-      activeFor =
-        zoneName:
-        if zoneName == localZone || !(mergedZones ? ${zoneName}) then
-          { }
-        else
-          getActiveMatchOverrides mergedZones.${zoneName} "ingress";
+      children =
+        if parentFromZone == null then [ ] else zoneMembership.childrenOf.${parentFromZone} or [ ];
 
       mkJumpsForChild =
         childName:
@@ -570,16 +272,10 @@ let
           [ ]
         else
           let
-            fromVariants = mkDirectionVariants {
-              inherit
-                hook
-                mergedZones
-                zoneSets
-                localZone
-                ;
+            fromVariants = zoneMembership.directionVariants {
+              inherit hook;
               direction = "from";
               zoneName = childName;
-              active = activeFor childName;
             };
             jumpStmt = jump (subChainNameOf baseChainName childKey);
           in
@@ -606,11 +302,8 @@ let
       hook,
       subChain,
       baseChainName,
-      childrenOf,
       effectiveSubChains,
-      mergedZones,
-      zoneSets,
-      localZone,
+      zoneMembership,
     }:
     let
       parentFromZone = subChain.from or null;
@@ -622,11 +315,8 @@ let
           parentFromZone
           toZone
           baseChainName
-          childrenOf
           effectiveSubChains
-          mergedZones
-          zoneSets
-          localZone
+          zoneMembership
           ;
       };
 
@@ -647,10 +337,7 @@ let
     {
       chainBuckets,
       effectiveSubChainsByBucket,
-      childrenOf,
-      mergedZones,
-      zoneSets,
-      localZone,
+      zoneMembership,
     }:
     lib.foldlAttrs (
       acc: baseChainName: bucket:
@@ -665,185 +352,12 @@ let
           inherit
             subChain
             baseChainName
-            childrenOf
             effectiveSubChains
-            mergedZones
-            zoneSets
-            localZone
+            zoneMembership
             ;
         })
       ) effectiveSubChains
     ) { } chainBuckets;
-
-  /*
-    Build the match-clause variants for one direction of one
-    sub-chain at a given hook. Returns a list of variants — each
-    variant is a list of statements ANDed within a single rule.
-    Multiple variants → multiple rules (the cartesian product is
-    taken in `mkRootJumpRules` / `mkChildDispatchJumpRules`).
-
-    Why per-variant rather than ANDed clauses: in `inet` family,
-    `ip <addr>` and `ip6 <addr>` cannot be ANDed in the same
-    rule — packets of the wrong family skip the rule entirely.
-    So one variant per address family that has a non-empty set,
-    plus the optional interface prefix when the hook allows it.
-
-    Section resolution (`active` is the user's active override
-    sections from `internal.zone.getActiveMatchOverrides`):
-      - `interfaces` section: `active.interfaces` if the user
-        provided it, else auto `inSet <ifField> @<zone>_iifs`.
-        Hook-gated — only included when `iifname` / `oifname`
-        is valid at the hook.
-      - `ipv4` / `ipv6` sections: user override if present, else
-        auto `inSet <addrField> @<zone>_<v4|v6>`. Always valid
-        at any hook.
-      - `extra` section: family-agnostic user clauses (mark,
-        vlan, cgroup, …); no auto path. Joined into the prefix
-        when present.
-
-    Own-ness: the union sets behind the auto path also carry
-    descendant content (`internal.zone.genSets`), so each section
-    is classified own (anchored by the zone's raw fields —
-    `internal.zone.ownSectionsOf` — or by an active override) vs
-    inherited (descendant-contributed only). Only own sections
-    AND together; an inherited section ANDed into the gate would
-    narrow the ancestor's dispatch to just the descendant's
-    traffic — adding a descendant must never shrink what an
-    ancestor matches.
-
-    Variant construction:
-      - prefix           = own ifsAtHook ++ extraSection
-      - one variant per non-empty own family section:
-          [ prefix ++ v4Section ], [ prefix ++ v6Section ]
-      - own family variants present → widen with the inherited
-        leftovers: one OR variant per inherited family
-        ([ prefix ++ famSection ], patching the own anchors'
-        family-blindness) plus a standalone [ ifsAtHook ] when
-        interfaces are inherited (family-agnostic, so it must
-        not be constrained by the zone's own sections).
-      - no own family sections but prefix non-empty → single
-        prefix-only variant. Family-agnostic: descendant traffic
-        of every family already enters through it (an
-        address-only child lives behind the parent's own
-        interfaces), so inherited families add no variant.
-      - nothing own (grouping zone) → every present section
-        stands alone as one variant. Different descendants may
-        contribute different sections; ANDing them would match
-        only their intersection.
-
-    Special cases:
-      - `zoneName == null` (single-direction sub-chain — dnat /
-        sroute have no `to`, droute has no `from`)         → `[ [ ] ]`.
-      - `zoneName == localZone` (sentinel; never matchable as a
-        zone — the chain dispatch already used it)         → `[ [ ] ]`.
-
-    Phase 1's `checkChainOverridePlacement` and `checkZoneMatchable`
-    guarantee a referenced zone has at least one matchable section at
-    its hook, so the `[ ]` empty-result branch shouldn't fire for
-    non-localZone refs. If it does (defense), the cartesian product
-    in `mkRootJumpRules` / `mkChildDispatchJumpRules` drops the entire
-    jump for that sub-chain.
-  */
-  mkDirectionVariants =
-    {
-      hook,
-      direction,
-      zoneName,
-      active,
-      mergedZones,
-      zoneSets,
-      localZone,
-    }:
-    if zoneName == null || zoneName == localZone then
-      [ [ ] ]
-    else
-      let
-        isFromDirection = direction == "from";
-        iifAvailable = builtins.elem hook hooksWithIifname;
-        oifAvailable = builtins.elem hook nftypes.compatibility.hooksWithOifname;
-        ifAvailable = if isFromDirection then iifAvailable else oifAvailable;
-
-        ifField = if isFromDirection then meta.iifname else meta.oifname;
-        addrFieldV4 = if isFromDirection then ip.saddr else ip.daddr;
-        addrFieldV6 = if isFromDirection then ip6.saddr else ip6.daddr;
-
-        iifsName = "${zoneName}_iifs";
-        v4Name = "${zoneName}_v4";
-        v6Name = "${zoneName}_v6";
-
-        autoIfs = lib.optional (zoneSets ? ${iifsName}) (inSet ifField (expr.setRef iifsName));
-        autoV4 = lib.optional (zoneSets ? ${v4Name}) (inSet addrFieldV4 (expr.setRef v4Name));
-        autoV6 = lib.optional (zoneSets ? ${v6Name}) (inSet addrFieldV6 (expr.setRef v6Name));
-
-        # Active section wins if present; else fall back to auto.
-        ifsSection = active.interfaces or autoIfs;
-        v4Section = active.ipv4 or autoV4;
-        v6Section = active.ipv6 or autoV6;
-        extraSection = active.extra or [ ];
-
-        # Interfaces section is hook-gated: drop it when the relevant
-        # iif/oif field isn't valid at the hook. checkChainOverride‑
-        # Placement should have flagged this case, so this is defensive.
-        ifsAtHook = if ifAvailable then ifsSection else [ ];
-
-        /*
-          Own-ness per section: an active override is own by
-          definition; the auto path is own iff the zone's raw
-          fields anchor it (`internal.zone.ownSectionsOf`).
-          A zone missing from `mergedZones` (raw fixtures;
-          unreachable through the validated pipeline) classifies
-          everything as own, reproducing the all-AND composition
-          a flat zone gets.
-        */
-        own =
-          if mergedZones ? ${zoneName} then
-            ownSectionsOf mergedZones.${zoneName}
-          else
-            {
-              interfaces = true;
-              v4 = true;
-              v6 = true;
-            };
-        ifsOwn = active ? interfaces || own.interfaces;
-        v4Own = active ? ipv4 || own.v4;
-        v6Own = active ? ipv6 || own.v6;
-
-        # Own-anchored prefix, ANDed into every family variant.
-        # `extra` is override-only and therefore always own;
-        # inherited interfaces never join (see inheritedIfsVariant).
-        prefix = (if ifsOwn then ifsAtHook else [ ]) ++ extraSection;
-
-        ownFamilyVariants =
-          lib.optional (v4Own && v4Section != [ ]) (prefix ++ v4Section)
-          ++ lib.optional (v6Own && v6Section != [ ]) (prefix ++ v6Section);
-
-        # Descendant-contributed families widen the gate with one
-        # OR variant each: the own family anchors are family-blind,
-        # so without these a descendant of another family could
-        # never enter the ancestor's sub-chain.
-        inheritedFamilyVariants =
-          lib.optional (!v4Own && v4Section != [ ]) (prefix ++ v4Section)
-          ++ lib.optional (!v6Own && v6Section != [ ]) (prefix ++ v6Section);
-
-        # Descendant-contributed interfaces stand alone as one
-        # family-agnostic variant — ANDing them into the prefix
-        # would narrow the zone's own variants to descendant
-        # traffic.
-        inheritedIfsVariant = lib.optional (!ifsOwn && ifsAtHook != [ ]) ifsAtHook;
-      in
-      if ownFamilyVariants != [ ] then
-        # Family-anchored own gate, widened by whatever the
-        # descendants contribute on top.
-        ownFamilyVariants ++ inheritedFamilyVariants ++ inheritedIfsVariant
-      else if prefix != [ ] then
-        # Interface/extra-only own gate — family-agnostic, so the
-        # whole subtree (including inherited families) already
-        # rides it; nothing to widen.
-        [ prefix ]
-      else
-        # Nothing own (grouping zone): every present section is
-        # descendant-contributed and stands alone.
-        inheritedFamilyVariants ++ inheritedIfsVariant;
 
   /*
     Classify a variant (list of match statements) by network-layer
@@ -880,18 +394,9 @@ let
       hook,
       baseChainName,
       effectiveSubChains,
-      mergedZones,
-      zoneSets,
-      localZone,
+      zoneMembership,
     }:
     let
-      activeFor =
-        zoneName: side:
-        if zoneName == null || zoneName == localZone then
-          { }
-        else
-          getActiveMatchOverrides mergedZones.${zoneName} side;
-
       tagFamily = variant: {
         inherit variant;
         family = variantFamily variant;
@@ -902,34 +407,26 @@ let
         let
           fromZone = subChain.from or null;
           toZone = subChain.to or null;
-          isRoot = fromZone == null || isRootFrom mergedZones localZone fromZone;
+          isRoot = fromZone == null || builtins.elem fromZone zoneMembership.rootZoneNames;
         in
         if !isRoot then
           [ ]
         else
           let
-            fromVariants = map tagFamily (mkDirectionVariants {
-              inherit
-                hook
-                mergedZones
-                zoneSets
-                localZone
-                ;
-              direction = "from";
-              zoneName = fromZone;
-              active = activeFor fromZone "ingress";
-            });
-            toVariants = map tagFamily (mkDirectionVariants {
-              inherit
-                hook
-                mergedZones
-                zoneSets
-                localZone
-                ;
-              direction = "to";
-              zoneName = toZone;
-              active = activeFor toZone "egress";
-            });
+            fromVariants = map tagFamily (
+              zoneMembership.directionVariants {
+                inherit hook;
+                direction = "from";
+                zoneName = fromZone;
+              }
+            );
+            toVariants = map tagFamily (
+              zoneMembership.directionVariants {
+                inherit hook;
+                direction = "to";
+                zoneName = toZone;
+              }
+            );
             jumpStmt = jump (subChainNameOf baseChainName subChainKey);
           in
           map ({ from, to }: from.variant ++ to.variant ++ [ jumpStmt ]) (
@@ -951,12 +448,9 @@ let
       bucket,
       baseChainName,
       effectiveSubChains,
-      mergedZones,
-      zoneSets,
+      zoneMembership,
     }:
     let
-      inherit (settings) localZone;
-
       chainType = chainTypeFor family bucket.hook bucket.priority;
       priorityName = priorityNameOf family bucket.priority;
 
@@ -977,9 +471,7 @@ let
         inherit
           baseChainName
           effectiveSubChains
-          mergedZones
-          zoneSets
-          localZone
+          zoneMembership
           ;
       };
 
@@ -1003,8 +495,7 @@ let
       settings,
       chainBuckets,
       effectiveSubChainsByBucket,
-      mergedZones,
-      zoneSets,
+      zoneMembership,
     }:
     let
       fromBuckets = lib.mapAttrs (
@@ -1015,8 +506,7 @@ let
             settings
             bucket
             baseChainName
-            mergedZones
-            zoneSets
+            zoneMembership
             ;
           effectiveSubChains = effectiveSubChainsByBucket.${baseChainName};
         }
@@ -1064,7 +554,7 @@ let
     artifact — caching avoids the parent-chain walks happening
     twice per bucket.
 
-    Mirrors the `ctx.zoneSets` precedent: one fold in Phase 1
+    Mirrors the `ctx.zoneMembership.sets` precedent: one fold in Phase 1
     feeds two Phase 1 validators and Phase 4 emit.
   */
   computeEffectiveSubChains =
@@ -1073,7 +563,7 @@ let
       inherit table;
       ctx = ctx // {
         effectiveSubChainsByBucket = lib.mapAttrs (
-          _baseChainName: bucket: buildEffectiveSubChains bucket ctx.mergedZones
+          _baseChainName: bucket: buildEffectiveSubChains bucket ctx.zoneMembership
         ) ctx.chainBuckets;
       };
     };
@@ -1088,8 +578,7 @@ let
           inherit (ctx)
             chainBuckets
             effectiveSubChainsByBucket
-            mergedZones
-            zoneSets
+            zoneMembership
             ;
         };
       };
@@ -1104,11 +593,8 @@ let
           inherit (ctx)
             chainBuckets
             effectiveSubChainsByBucket
-            childrenOf
-            mergedZones
-            zoneSets
+            zoneMembership
             ;
-          inherit (table.settings) localZone;
         };
       };
     };
@@ -1142,7 +628,7 @@ let
       # under one `body.sets` field. Collisions are rejected
       # upstream by `internal.normalize.checkSetNameCollisions`,
       # so this merge is always safe — `//` semantics don't matter.
-      allSets = ctx.zoneSets // (ctx.userObjects.sets or { });
+      allSets = ctx.zoneMembership.sets // (ctx.userObjects.sets or { });
 
       # Other user-object kinds pass through as their own body
       # field. Empty kinds are skipped so the output stays clean.
@@ -1182,11 +668,9 @@ in
     mkRuleBody
     subChainNameOf
     mkSubChainKey
-    isRootFrom
     buildEffectiveSubChains
     mkSubChain
     mkSubChains
-    mkDirectionVariants
     mkChildDispatchJumpRules
     mkRootJumpRules
     mkBaseChain
