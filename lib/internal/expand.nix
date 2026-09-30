@@ -17,34 +17,6 @@
       { table; ctx (post-Phase 1) }
         ↓ expandTable    ctx.cells
       { table; ctx }
-
-  ===== expandTable =====
-
-  Reads:  ctx.expandedGroups, ctx.resolvedPriorities,
-          table.{filters, policies, snats, dnats, sroutes, droutes}
-  Writes: ctx.cells
-
-  For each entry in each rule group, overlays the entry's body
-  with its wildcard-expanded directions (replacing the user's
-  raw `from` / `to` lists) and the resolved int priority (where
-  applicable), then cartesian-products via
-  `internal.entry.toCells`. The result is a flat list of cells per
-  group.
-
-  Each cell preserves the entry's body fields (`rule`, `comment`,
-  `chain`, …) plus a `name` field carrying the original entry's
-  attrset key — Phase 3 sorts by `(priority, name)` and the name
-  acts as a stable tiebreaker.
-
-  Output shape (`chain` is always-present, may be null):
-    cells = {
-      filters  = [ { from; to;   name; rule; priority; comment; chain; } … ];
-      policies = [ { from; to;   name; verdict; comment } … ];   # no priority
-      snats    = [ { from; to;   name; rule; priority; comment; chain; } … ];
-      dnats    = [ { from;       name; rule; priority; comment; chain; } … ];
-      sroutes  = [ { from;       name; rule; priority; comment } … ];
-      droutes  = [ {       to;   name; rule; priority; comment } … ];
-    };
 */
 { inputs, internal }:
 let

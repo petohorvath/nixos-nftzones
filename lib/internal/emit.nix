@@ -18,41 +18,6 @@
   Pure helpers accept `zoneMembership` wherever sets, hierarchy or
   dispatch clauses are needed; callers do not coordinate raw zone
   declarations, active overrides and generated sets.
-
-  ===== computeEffectiveSubChains =====
-  Reads:  ctx.chainBuckets, ctx.zoneMembership
-  Writes: ctx.effectiveSubChainsByBucket
-
-  Caches direct and synthetic intermediate sub-chains once per bucket
-  for both root-jump and child-jump emission.
-
-  ===== emitBaseChains =====
-  Reads:  ctx.chainBuckets, ctx.effectiveSubChainsByBucket,
-          ctx.zoneMembership, table.{family, settings}
-  Writes: ctx.baseChains
-
-  Emits hook/priority headers, filter boilerplate and root jumps.
-  Adds the optional rpfilter chain unless a user bucket owns its slot.
-
-  ===== emitSubChains =====
-  Reads:  ctx.chainBuckets, ctx.effectiveSubChainsByBucket,
-          ctx.zoneMembership
-  Writes: ctx.subChains
-
-  ===== emitUserObjects =====
-  Reads:  table.objects
-  Writes: ctx.userObjects
-
-  ===== assembleOutput =====
-  Reads:  ctx.zoneMembership.sets, ctx.baseChains, ctx.subChains,
-          ctx.userObjects, table.{family, name, flags, comment}
-  Writes: ctx.output
-
-  Merges generated sets with user sets (collisions were rejected in
-  Phase 1) and assembles a marker-tagged `nftypes.dsl.table` value.
-
-  ===== emitTable =====
-  Runs the phases above in order, threading `{ table; ctx }`.
 */
 { inputs, internal }:
 let

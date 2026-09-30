@@ -6,59 +6,6 @@
   verify every named ref in a user's rule body resolves to a key
   in `table.objects.<kind>`. Independent helper so the walker can
   be unit-tested without booting Phase 1.
-
-  ===== extractRefs =====
-
-  Inputs:
-    value — any subtree of a rule body (a list of statements, a
-            single statement, an expression, or a primitive). The
-            walker recurses uniformly over lists and attrsets and
-            ignores primitives.
-
-  Output:
-    A list of `{ kind; name; }` records, one per named ref found.
-    `kind` is the `table.objects.<kind>` plural key (e.g.
-    `"counters"`, `"ctHelpers"`, `"flowtables"`) — chosen so the
-    caller can resolve refs as `table.objects.${kind} ? ${name}`.
-
-  Recognized patterns (all produced by `nftypes.dsl.*` helpers —
-  see `tests/unit/internal/refs.nix` for the spike that confirmed
-  each shape):
-
-    String-bodied statement refs (single-key attrset, body is str)
-      { counter         = "n"; }  → { kind = "counters";       …}
-      { quota           = "n"; }  → { kind = "quotas";         …}
-      { limit           = "n"; }  → { kind = "limits";         …}
-      { secmark         = "n"; }  → { kind = "secmarks";       …}
-      { tunnel          = "n"; }  → { kind = "tunnels";        …}
-      { synproxy        = "n"; }  → { kind = "synproxies";     …}
-      { "ct helper"     = "n"; }  → { kind = "ctHelpers";      …}
-      { "ct timeout"    = "n"; }  → { kind = "ctTimeouts";     …}
-      { "ct expectation"= "n"; }  → { kind = "ctExpectations"; …}
-
-    Attrset-bodied refs (named field inside the body)
-      { set  = { op; elem; set = "n"; }; }      → sets       (set statement)
-      { map  = { op; elem; data; map = "n"; }; }→ maps       (map statement)
-      { flow = { op; flowtable = "n"; }; }      → flowtables (flow statement)
-
-    Expression-level refs (single-key attrset, recursed under
-    `match.right`, `vmap.data`, etc.)
-      { set  = "n"; }                           → sets  (named set lookup)
-      { map  = { key; data = "n"; }; }          → maps  (named map lookup)
-      { vmap = { key; data = "n"; }; }          → maps  (vmap statement)
-
-  Disambiguation between statement-`set`/-`map` and expression-
-  `set`/-`map` (which share the outer key) is done by inspecting
-  the body shape: statement form is an attrset carrying an `op`
-  field; expression `set` is either a string (named) or a list
-  (anonymous); expression `map` is `{ key; data; }`.
-
-  Recursion: the walker descends into every attrset value and
-  every list element after extracting at the current level, so
-  nested refs (e.g. a set lookup inside a `match.right`, or a
-  named ref inside `set` statement's `stmt` sub-list) are picked
-  up automatically. Primitives (strings, ints, nulls, booleans)
-  are leaves with no refs.
 */
 { inputs }:
 let
