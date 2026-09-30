@@ -13,7 +13,7 @@
        ├── web-server  192.168.2.10
        └── mail-server 192.168.2.20
 
-  Dispatch model (see docs/specs/zone-parent.md):
+  Dispatch model (see docs/zone-hierarchy.md):
     - Traffic to a node's /32 enters that node's sub-chain.
       `lan → web-server:443` hits the `web-inbound` rule.
     - If the node sub-chain doesn't match, evaluation falls
