@@ -14,7 +14,6 @@
   lists whose elements stay as thunks until forced.
 */
 {
-  pkgs,
   nftzones,
   nftypes,
   libnet,

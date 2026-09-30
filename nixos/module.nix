@@ -6,15 +6,16 @@
   ruleset reload, and the build-time `nft --check` pipeline; this
   module is the typed translator.
 
-  Two-stage function: the outer takes the `nftzones` and `nftypes`
-  libs (applied by `flake.nix` from the host system's `libBySystem`
-  and the `nftypes` flake input); the inner is the standard NixOS
-  module function. Keeping these libs out of `_module.args` means
-  user-facing modules never see them as injected arguments — both
-  are reached via their own flake inputs.
+  Two-stage function: the outer takes the `libnet` and `nftypes`
+  libraries (applied by `flake.nix` with `importApply`); the inner is
+  the standard NixOS module function. The module builds `nftzones`
+  from the evaluating system's `lib`, so option types match the
+  consumer's nixpkgs revision. Keeping these libraries out of
+  `_module.args` means user-facing modules never see them as injected
+  arguments; both are reached via their own flake inputs.
 */
 {
-  nftzones,
+  libnet,
   nftypes,
 }:
 {
@@ -25,6 +26,13 @@
 }:
 let
   cfg = config.networking.nftzones;
+
+  nftzones = import ../lib {
+    inputs = {
+      inherit lib nftypes;
+      libnet = libnet.withLib lib;
+    };
+  };
 
   renderTable = if cfg.pretty then nftypes.toTextBlockPretty else nftypes.toTextBlock;
 

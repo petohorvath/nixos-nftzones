@@ -4,7 +4,7 @@ This document describes the nftzones compile pipeline — the function chain tha
 
 ## Motivation
 
-The user-facing types under `nftzones.types` (zone, node, filter, snat, dnat, sroute, droute, policy, table) form an *input language* for declaratively describing a zone-based firewall. The compile pipeline is the function that *interprets* that language: lowering it to the libnftables-json shapes the kernel consumes.
+The user-facing types under `nftzones.types` (zone, node, filter, snat, dnat, sroute, droute, policy, table) form an _input language_ for declaratively describing a zone-based firewall. The compile pipeline is the function that _interprets_ that language: lowering it to the libnftables-json shapes the kernel consumes.
 
 Without the pipeline, the type system catches structural errors but nothing produces a runnable firewall. The compile pipeline closes that gap.
 
@@ -12,12 +12,12 @@ Without the pipeline, the type system catches structural errors but nothing prod
 
 The pipeline (and the surrounding code) names the data-model levels consistently:
 
-- **Group** — one of the rule-bearing collections on a table: `filters`, `policies`, `snats`, `dnats`, `sroutes`, `droutes`. Each group is `attrsOf <kind-submodule>`. *Not* used for `zones` and `nodes` — those are zone-level declarations and have their own terminology ("zone declaration", "node declaration").
-- **Entry** — one item inside a group, keyed by name. `table.filters.allow-ssh` is an entry; the body field on it (`entry.rule`, the list of nftypes statements) is unambiguous because the wrapper is an *entry*, not a *rule*.
-- **Direction** — `from` or `to`, the zone-name fields on an entry. Some groups are bidirectional (filters, policies, snats — both `from` and `to`); others are single-direction (`dnats`, `sroutes` have only `from`; `droutes` only `to`). Direction is the *entry's* perspective on the source/destination axis.
-- **Side** — `ingress` or `egress`, the per-axis match fields on a zone (`zone.matchOverride.<side>`). Side is the *zone's* perspective on the same axis: a packet entering the firewall matches a zone's `ingress` side; a packet leaving matches its `egress` side. Mapped from direction via `internal.zone.directionToSide`: `from → ingress`, `to → egress`. Two terms exist because each reads naturally only in its native frame ("entry's from-direction" / "zone's ingress side"); collapsing produces awkward constructs like "the to side" or "the egress direction".
+- **Group** — one of the rule-bearing collections on a table: `filters`, `policies`, `snats`, `dnats`, `sroutes`, `droutes`. Each group is `attrsOf <kind-submodule>`. _Not_ used for `zones` and `nodes` — those are zone-level declarations and have their own terminology ("zone declaration", "node declaration").
+- **Entry** — one item inside a group, keyed by name. `table.filters.allow-ssh` is an entry; the body field on it (`entry.rule`, the list of nftypes statements) is unambiguous because the wrapper is an _entry_, not a _rule_.
+- **Direction** — `from` or `to`, the zone-name fields on an entry. Some groups are bidirectional (filters, policies, snats — both `from` and `to`); others are single-direction (`dnats`, `sroutes` have only `from`; `droutes` only `to`). Direction is the _entry's_ perspective on the source/destination axis.
+- **Side** — `ingress` or `egress`, the per-axis match fields on a zone (`zone.matchOverride.<side>`). Side is the _zone's_ perspective on the same axis: a packet entering the firewall matches a zone's `ingress` side; a packet leaving matches its `egress` side. Mapped from direction via `internal.zone.directionToSide`: `from → ingress`, `to → egress`. Two terms exist because each reads naturally only in its native frame ("entry's from-direction" / "zone's ingress side"); collapsing produces awkward constructs like "the to side" or "the egress direction".
 - **Cell** — a concrete `(from, to)` instance of an entry produced by Phase 2's cartesian product. Same shape as the entry but with the listed directions as scalars instead of lists. An entry with `from = [ "lan" "guest" ]; to = [ "wan" "vpn" ]` produces four cells. For single-direction groups, a cell has only the relevant scalar (e.g., a `dnat` cell has `from = "wan"` and no `to`).
-- **Slot** — one of two positions a cell occupies *within its sub-chain*, decided by the cell's resolved priority: `preChildCells` (emit *before* the child-dispatch jumps in that sub-chain) or `postChildCells` (emit *after*). The cutoff is at resolved priority `100` (`preDispatch` = 50 → preChildCells; default = 500 → postChildCells). Phase 3 buckets cells by `(chain, sub-chain, slot)`; Phase 4 emits each slot in order.
+- **Slot** — one of two positions a cell occupies _within its sub-chain_, decided by the cell's resolved priority: `preChildCells` (emit _before_ the child-dispatch jumps in that sub-chain) or `postChildCells` (emit _after_). The cutoff is at resolved priority `100` (`preDispatch` = 50 → preChildCells; default = 500 → postChildCells). Phase 3 buckets cells by `(chain, sub-chain, slot)`; Phase 4 emits each slot in order.
 - **Bucket** — Phase 3 container holding all cells destined for one `(hook, priority)` placement, organized by sub-chain. `ctx.chainBuckets.<baseChainName> = { hook; priority; subChains; }`. Each sub-chain inside carries its own `preChildCells` / `postChildCells` slots. Phase 4 emits one base chain per bucket; the base chain itself holds only the dispatch jumps.
 - **Section** — one of the four sub-keys of `zone.matchOverride.<side>`: `interfaces` / `ipv4` / `ipv6` / `extra`. A section either contributes a clause to a direction's match (when non-null and non-empty) or is inert. `zoneMembership.activeOverrides` filters out null / empty sections; `zoneMembership.directionVariants` reads the remaining "active" sections to build the variant cartesian.
 - **Variant** — one match-clause list within a `matchOverride.<side>` (or in a Phase 4 jump rule). Multiple variants → multiple emitted rules. `zoneMembership.directionVariants` documents the section-presence cartesian for jump-match construction.
@@ -37,7 +37,7 @@ These are nftables's own concepts; nftzones adopts the same terms verbatim:
 
 The same string travels from Phase 3 (as an attrset key) through to Phase 4 (as the actual nftables chain name):
 
-- **`baseChainName`** = `"<hook>-at-<priority>"` (e.g. `"forward-at-filter"`). Computed by `internal.placement.baseChainNameOf`, with family-aware canonicalization of integer and symbol priorities. Used as the bucket key in `chainBuckets` *and* as the base chain's name in the emitted nftables output.
+- **`baseChainName`** = `"<hook>-at-<priority>"` (e.g. `"forward-at-filter"`). Computed by `internal.placement.baseChainNameOf`, with family-aware canonicalization of integer and symbol priorities. Used as the bucket key in `chainBuckets` _and_ as the base chain's name in the emitted nftables output.
 - **`subChainKey`** — local key within `bucket.subChains` (e.g. `"lan-to-wan"` / `"wan"` / `"lan"`). Computed by `internal.placement.subChainKeyOf` from a cell's `from` / `to`.
 - **`subChainName`** — full sub-chain name in the nftables output, `"<baseChainName>__<subChainKey>"` (e.g. `"forward-at-filter__lan-to-wan"`). Computed by `internal.emit.subChainNameOf`.
 
@@ -45,7 +45,7 @@ The same string travels from Phase 3 (as an attrset key) through to Phase 4 (as 
 
 The pair shows up under two names depending on context:
 
-- **Chain placement** — user-facing term, used in type docstrings (the `chain` override on `filters` / `snats` / `dnats`, typed as `primitives.chainOverride`). Describes what the override *does*: pins the entry to a specific base chain.
+- **Chain placement** — user-facing term, used in type docstrings (the `chain` override on `filters` / `snats` / `dnats`, typed as `primitives.chainOverride`). Describes what the override _does_: pins the entry to a specific base chain.
 - **Chain attrs** — implementation term, used in `internal.dispatch` / `internal.emit`. Describes the attrset shape `{ hook; priority; }` carried alongside cells.
 
 Same concept, different framings.
@@ -190,14 +190,14 @@ Each cell preserves the original entry's body (`rule`, `priority`, `comment`, et
 
 Each cell goes to a chain based on its group:
 
-| Group | Chain dispatch |
-|---|---|
-| `filters` | Selected by `internal.placement.chainAttrsForCell` — input / forward / output based on whether `from` / `to` reference `settings.localZone`. |
-| `policies` | Same as `filters` — policies become tail rules in the same per-pair sub-chains. |
-| `snats` | Always postrouting (`type nat hook postrouting priority srcnat`). |
-| `dnats` | Always prerouting (`type nat hook prerouting priority dstnat`). |
-| `sroutes` | Always prerouting (`type route hook prerouting priority mangle`). |
-| `droutes` | Always output (`type route hook output priority mangle`). |
+| Group      | Chain dispatch                                                                                                                               |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `filters`  | Selected by `internal.placement.chainAttrsForCell` — input / forward / output based on whether `from` / `to` reference `settings.localZone`. |
+| `policies` | Same as `filters` — policies become tail rules in the same per-pair sub-chains.                                                              |
+| `snats`    | Always postrouting (`type nat hook postrouting priority srcnat`).                                                                            |
+| `dnats`    | Always prerouting (`type nat hook prerouting priority dstnat`).                                                                              |
+| `sroutes`  | Always prerouting (`type route hook prerouting priority mangle`).                                                                            |
+| `droutes`  | Always output (`type route hook output priority mangle`).                                                                                    |
 
 The per-entry `chain` override submodule on `filters` / `snats` / `dnats` redirects a cell to a custom hook + priority chain (e.g., rpfilter at `prerouting + raw`).
 
@@ -232,7 +232,7 @@ One base chain per `(hook, priority)` bucket from `ctx.chainBuckets` (Phase 3). 
 - **Route base chains** — `prerouting` at `mangle` (sroute), `output` at `mangle` (droute).
 - **Optional `rpfilter` chain** — emitted only when `settings.rpfilter = true`. `type filter hook prerouting priority raw;` with one rule: `fib saddr . iif oif eq 0 drop`.
 
-**Chain type derivation.** `chainAttrs` carries `(hook, priority)` only; `type` is derived locally in `emit.nix`. nftypes does *not* expose this mapping (only `nftypes.enums.chainType = [ "filter" "nat" "route" ]` and `nftypes.compatibility.familiesByChainType` for validation). Rule:
+**Chain type derivation.** `chainAttrs` carries `(hook, priority)` only; `type` is derived locally in `emit.nix`. nftypes does _not_ expose this mapping (only `nftypes.enums.chainType = [ "filter" "nat" "route" ]` and `nftypes.compatibility.familiesByChainType` for validation). Rule:
 
 ```nix
 chainTypeOf = chainAttrs:
@@ -254,7 +254,7 @@ Covers all default placements (snat → `nat`, dnat → `nat`, sroute / droute �
 2. (filter input only) loopback boilerplate (`iif lo accept`) if `settings.loopback` (default true).
 3. **Root-zone dispatch jumps** — one jump per root sub-chain (see §4.4). Built by `internal.emit.mkRootJumpRules`. Descendant sub-chains are reached through their parent's child-dispatch, not the base chain.
 
-Chain `policy <chainPolicy>` is declared on the chain header (filter chains only), not as a rule. Cells with `preDispatch` / `postDispatch` priority symbols land in their sub-chain's `preChildCells` / `postChildCells` slot — *not* in the base chain.
+Chain `policy <chainPolicy>` is declared on the chain header (filter chains only), not as a rule. Cells with `preDispatch` / `postDispatch` priority symbols land in their sub-chain's `preChildCells` / `postChildCells` slot — _not_ in the base chain.
 
 ### 4.3 Per-pair sub-chains
 
@@ -262,15 +262,15 @@ For each non-empty `(chain, from, to)` bucket, emit one chain. Inside it: sorted
 
 **Naming convention:** `<baseChainName>__<subChainKey>` (double-underscore separator), reusing Phase 3's `chainBuckets` keys verbatim. The `baseChainName` is the bucket key from Phase 3 (`"<hook>-at-<priority>"`); the `subChainKey` is the local key within `bucket.subChains` (`"<from>-to-<to>"`, `"<from>"`, or `"<to>"`):
 
-| Group / scenario | Sub-chain name |
-|---|---|
-| Filter `lan → wan` (forward) | `forward-at-filter__lan-to-wan` |
-| Filter `wan → local` (input) | `input-at-filter__wan-to-local` |
-| Filter `local → wan` (output) | `output-at-filter__local-to-wan` |
-| Snat `lan → wan` | `postrouting-at-srcnat__lan-to-wan` |
-| Dnat `wan` (single-direction `from`) | `prerouting-at-dstnat__wan` |
-| Droute `vpn` (single-direction `to`) | `output-at-mangle__vpn` |
-| rpfilter override `(prerouting, raw)`, `wan → local` | `prerouting-at-raw__wan-to-local` |
+| Group / scenario                                     | Sub-chain name                      |
+| ---------------------------------------------------- | ----------------------------------- |
+| Filter `lan → wan` (forward)                         | `forward-at-filter__lan-to-wan`     |
+| Filter `wan → local` (input)                         | `input-at-filter__wan-to-local`     |
+| Filter `local → wan` (output)                        | `output-at-filter__local-to-wan`    |
+| Snat `lan → wan`                                     | `postrouting-at-srcnat__lan-to-wan` |
+| Dnat `wan` (single-direction `from`)                 | `prerouting-at-dstnat__wan`         |
+| Droute `vpn` (single-direction `to`)                 | `output-at-mangle__vpn`             |
+| rpfilter override `(prerouting, raw)`, `wan → local` | `prerouting-at-raw__wan-to-local`   |
 
 Verbose but unambiguous: each name is a literal concat of `chainBuckets` keys, so the name → `(hook, priority, from, to)` mapping is mechanical and auditable in the generated JSON.
 
@@ -287,16 +287,16 @@ Verbose but unambiguous: each name is a literal concat of `chainBuckets` keys, s
 
 In each base chain, emit one or more jumps per non-empty sub-chain in that bucket's `subChains`. Match conditions select packets belonging to the `(from, to)` pair using per-zone sets from §4.1 — or via `zone.matchOverride.<side>` slot content where the user supplied an override — and the verdict is `jump <sub-chain-name>`.
 
-**Per-direction variants — *not* a single ANDed clause list.** In `inet` family, `ip <addr>` and `ip6 <addr>` clauses cannot be ANDed in the same rule: a v4 packet hitting `ip6 saddr ...` skips the rule entirely (and vice versa). So each direction emits **one variant per address family** that has a non-empty contribution, plus the optional interface prefix when the hook allows it, plus any `extra` section content the user supplied.
+**Per-direction variants — _not_ a single ANDed clause list.** In `inet` family, `ip <addr>` and `ip6 <addr>` clauses cannot be ANDed in the same rule: a v4 packet hitting `ip6 saddr ...` skips the rule entirely (and vice versa). So each direction emits **one variant per address family** that has a non-empty contribution, plus the optional interface prefix when the hook allows it, plus any `extra` section content the user supplied.
 
 **Section resolution.** `zoneMembership.directionVariants` resolves four sections per direction, in this order: override wins if contributing, else fall back to the auto path.
 
-| Section      | Auto path                              | Override path                  |
-|--------------|----------------------------------------|--------------------------------|
-| `interfaces` | `inSet <ifField> @<zone>_iifs`         | `override.<side>.interfaces`   |
-| `ipv4`       | `inSet <addrField> @<zone>_v4`         | `override.<side>.ipv4`         |
-| `ipv6`       | `inSet ip6.<addr> @<zone>_v6`          | `override.<side>.ipv6`         |
-| `extra`      | (none — no auto path)                  | `override.<side>.extra`        |
+| Section      | Auto path                      | Override path                |
+| ------------ | ------------------------------ | ---------------------------- |
+| `interfaces` | `inSet <ifField> @<zone>_iifs` | `override.<side>.interfaces` |
+| `ipv4`       | `inSet <addrField> @<zone>_v4` | `override.<side>.ipv4`       |
+| `ipv6`       | `inSet ip6.<addr> @<zone>_v6`  | `override.<side>.ipv6`       |
+| `extra`      | (none — no auto path)          | `override.<side>.extra`      |
 
 A section "contributes" when it's non-null AND non-empty. Empty list (`[ ]`) and `null` are equivalent — both mean "no constraint here" and let the auto path take over.
 
@@ -304,7 +304,7 @@ The `interfaces` section is **hook-gated**: dropped when the relevant `iifname` 
 
 **Own-ness.** The auto-path sets are transitive unions (§4.1), so each section is additionally classified as **own** (anchored by the zone's raw `interfaces` / `cidrs` as classified privately by the zone module, or by an active override — overrides are own by definition) vs **inherited** (present in the union set only through descendants). Only own sections AND together. An inherited section ANDed into the gate would narrow the ancestor's dispatch to just the descendant's traffic — e.g. an address-only node under an interface-only zone would turn the zone's `iifname @<zone>_iifs` gate into `iifname @<zone>_iifs ip saddr @<zone>_v4`, cutting off every other host in the zone. Inherited sections widen the gate instead: inherited v4/v6 each become one extra OR variant behind the own prefix (unless the own gate is interface/extra-only, which is family-agnostic and already covers the subtree), and inherited interfaces become one standalone family-agnostic variant. Pinned by the `parent-mixed-sections` / `parent-mixed-sections-mirror` integration scenarios.
 
-> Note — *section* here is unrelated to the *bucket slot* concept defined in the Terminology section above. Bucket slots (`preDispatch` / `subChains` / `postDispatch`) are Phase 3 cell placements within a chain bucket; override sections are per-direction match-clause containers within `matchOverride`. Different concepts, same generic vocabulary; they never appear together in code.
+> Note — _section_ here is unrelated to the _bucket slot_ concept defined in the Terminology section above. Bucket slots (`preDispatch` / `subChains` / `postDispatch`) are Phase 3 cell placements within a chain bucket; override sections are per-direction match-clause containers within `matchOverride`. Different concepts, same generic vocabulary; they never appear together in code.
 
 **Variant construction.**
 
@@ -322,20 +322,20 @@ result    = if ownFams ≠ [ ] then ownFams ++ inhFams ++ inhIfs
 
 The reachable cases (auto-path only — section-resolution simplified to "no override anywhere"; "inh" = inherited, i.e. present in the union set only through descendants; the empty-zone case below is unreachable in practice because `checkZoneMatchable` rejects it in Phase 1):
 
-| Zone has        | Variants emitted (per direction) |
-|---|---|
-| own iface only  | `[[ <ifField> @<zone>_iifs ]]` |
-| own iface + inh v4/v6 | 1 variant — iface only (family-agnostic; the subtree rides the own gate) |
-| own v4 only     | `[[ <ipFamily> <addrField> @<zone>_v4 ]]` |
-| own v6 only     | `[[ ip6 <addrField> @<zone>_v6 ]]` |
-| own v4 + own v6 | 2 variants — one v4, one v6 |
-| own iface + own v4 | 1 variant — iface prefix + v4 |
-| own iface + own v6 | 1 variant — iface prefix + v6 |
-| own iface + own v4 + own v6 | 2 variants — each with iface prefix |
-| own v4 + inh v6 | 2 variants — v4, v6 (no cross-AND) |
-| own v4 + inh iface | 2 variants — v4; standalone iface (family-agnostic) |
-| all inherited (grouping zone) | 1 standalone variant per present section |
-| empty *(unreachable)* | `[ ]` — defense only; `checkZoneMatchable` rejects empty zones at Phase 1 |
+| Zone has                      | Variants emitted (per direction)                                          |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| own iface only                | `[[ <ifField> @<zone>_iifs ]]`                                            |
+| own iface + inh v4/v6         | 1 variant — iface only (family-agnostic; the subtree rides the own gate)  |
+| own v4 only                   | `[[ <ipFamily> <addrField> @<zone>_v4 ]]`                                 |
+| own v6 only                   | `[[ ip6 <addrField> @<zone>_v6 ]]`                                        |
+| own v4 + own v6               | 2 variants — one v4, one v6                                               |
+| own iface + own v4            | 1 variant — iface prefix + v4                                             |
+| own iface + own v6            | 1 variant — iface prefix + v6                                             |
+| own iface + own v4 + own v6   | 2 variants — each with iface prefix                                       |
+| own v4 + inh v6               | 2 variants — v4, v6 (no cross-AND)                                        |
+| own v4 + inh iface            | 2 variants — v4; standalone iface (family-agnostic)                       |
+| all inherited (grouping zone) | 1 standalone variant per present section                                  |
+| empty _(unreachable)_         | `[ ]` — defense only; `checkZoneMatchable` rejects empty zones at Phase 1 |
 
 Where `<ifField>` is `iifname` (from-direction) or `oifname` (to-direction), and `<addrField>` is `saddr` / `daddr` likewise. With overrides in play, every cell can be replaced by user content; `extra` adds an extra family-agnostic prefix to every variant (e.g. `meta mark @<zone>_marks` for fwmark-defined zone membership).
 
@@ -349,13 +349,13 @@ fromVariant ++ toVariant ++ [ (jump (subChainNameOf baseChainName subChainKey)) 
 
 **Hook-direction semantics** — interface fields are not always available; use `nftypes.compatibility.hooksWithOifname` (`[ "forward" "output" "postrouting" ]`) to gate the `oifname` clause. `iifname` is valid at every hook except `output`. The interface prefix is suppressed when the hook makes the field unavailable; address clauses are always allowed.
 
-| Hook | `iifname` valid? | `oifname` valid? |
-|---|---|---|
-| `prerouting` | ✓ | ✗ |
-| `input` | ✓ | ✗ |
-| `forward` | ✓ | ✓ |
-| `output` | ✗ | ✓ |
-| `postrouting` | ✓ | ✓ |
+| Hook          | `iifname` valid? | `oifname` valid? |
+| ------------- | ---------------- | ---------------- |
+| `prerouting`  | ✓                | ✗                |
+| `input`       | ✓                | ✗                |
+| `forward`     | ✓                | ✓                |
+| `output`      | ✗                | ✓                |
+| `postrouting` | ✓                | ✓                |
 
 When the hook makes the only available field unavailable AND the zone has no addr sets, the direction produces 0 variants. This case shouldn't reach Phase 4 because `checkChainOverridePlacement` (Phase 1) flags it; if it does (defense), the empty cartesian product drops the entire jump for that sub-chain — sub-chain becomes unreachable rather than over-permissive.
 
@@ -485,25 +485,25 @@ contributors hitting the same forks benefit from the prior thinking.
 2. **Chain naming convention.** Sketched as `fwd-<from>-to-<to>`, `in-<from>` etc. in the original draft; bikeshed before implementation landed.
 
    **Decision: `<hook>-at-<priority>` for base chains, `<base>__<key>` for sub-chains.** See "Naming convention for chain identifiers" in the Terminology section above. The original sketch (`fwd-…`) was abandoned — the `<hook>-at-<priority>` form generalizes across hooks (filter / nat / route / mangle / raw / security) and matches the bucket key in `chainBuckets`.
-3. **Cross-reference walking.** Named-object reference validation requires walking statement trees (counter / limit / quota / ct-helper / ct-timeout / ct-expectation / secmark / synproxy / tunnel references inside `entry.rule` bodies, plus set / map lookups inside `match` expressions). Two paths:
 
+3. **Cross-reference walking.** Named-object reference validation requires walking statement trees (counter / limit / quota / ct-helper / ct-timeout / ct-expectation / secmark / synproxy / tunnel references inside `entry.rule` bodies, plus set / map lookups inside `match` expressions). Two paths:
    - **Special-case extractor** — pattern-match on the ~12 statement variants that can carry named-object refs, plus the expression-level set/map lookups inside matches. Smaller surface; brittle to nftypes adding variants.
    - **Generic walker** — recurse over any statement / expression tree, parameterized by a per-node visitor. Schema knowledge (which sub-fields of each variant are sub-statements / sub-expressions) lives naturally in nftypes alongside the schemas, so the walker would be upstreamed there (`nftypes.lib.walk.statements` / `walk.expressions` / `walk.rule`) rather than living in `internal/statements.nix`.
 
-   `nftypes` currently doesn't expose a walker. Its `lib/dsl/structure/render.nix` walks the *table* tree (table → chains → rules) with stock `lib.concatMap` iteration but never recurses into statement bodies; `lib/dsl/internal/validate.nix` runs bodies through `lib.evalModules` for shape checking, which doesn't traverse content. What `nftypes` *does* expose are the inputs both approaches need: `nftypes.lib.types.statements` enumerates the variant tags, the `attrTag` shape (single-key attrset where the key is the tag) makes dispatch a one-liner, and `<variant>Body` schemas locate where references live in each body.
+   `nftypes` currently doesn't expose a walker. Its `lib/dsl/structure/render.nix` walks the _table_ tree (table → chains → rules) with stock `lib.concatMap` iteration but never recurses into statement bodies; `lib/dsl/internal/validate.nix` runs bodies through `lib.evalModules` for shape checking, which doesn't traverse content. What `nftypes` _does_ expose are the inputs both approaches need: `nftypes.lib.types.statements` enumerates the variant tags, the `attrTag` shape (single-key attrset where the key is the tag) makes dispatch a one-liner, and `<variant>Body` schemas locate where references live in each body.
 
    **Decision:** implement the special-case extractor in nftzones first. One consumer, small surface, no speculative API design. If a second use case appears (Phase 4 emit doing structural transforms, a future linter, etc.), upstream the generalized walker to nftypes then — designing the walker API with a single consumer risks the wrong abstraction.
+
 4. **Error aggregation strategy.** Phase 1 validators return error lists. Should Phase 4 emission also return errors, or is "if execution reached Phase 4, emission can't fail" reasonable? The latter assumes Phases 1-3 fully validate.
 5. **Single-table vs multi-table compile.** `mkTable` takes one table; multi-table consumers compose externally. Reconsider only if a real consumer wants a single function call.
 6. **Zone-derived auto-sets in user rule bodies.** Phase 1's `computeZoneMembership` materializes `<zone>_iifs` / `<zone>_v4` / `<zone>_v6` into `ctx.zoneMembership.sets`, which Phase 4 emits into `table.objects.sets` at output time. A user could in principle reference one of those names from a `match` clause inside their own rule body (e.g. `right = "@lan_v4"`). At Phase 1 validation time those names are not yet in `table.objects.sets` — they're synthesized later — so a naive `checkObjectRefs` would falsely flag them as unknown.
 
-    Three options:
+   Three options:
+   - **(a) Parallel namespace** — `checkObjectRefs` resolves names against both `objects.sets.<name>` keys and the predictable `<zone>_{iifs,v4,v6}` names derived from `mergedZones`. No schema change; gives users an escape hatch when raw `match` against zone membership is more natural than `from` / `to`.
+   - **(b) Pre-seed synthetic sets** — add a Phase 1 sub-phase that materializes zone-derived sets into a virtual `objects.sets` view before validation. Cleaner separation but more pipeline machinery.
+   - **(c) Disallow user refs to zone-derived names** — document `from` / `to` as the only sanctioned way to express zone membership in match clauses; explicitly reject `@<zone>_{iifs,v4,v6}` shapes inside rule bodies.
 
-    - **(a) Parallel namespace** — `checkObjectRefs` resolves names against both `objects.sets.<name>` keys and the predictable `<zone>_{iifs,v4,v6}` names derived from `mergedZones`. No schema change; gives users an escape hatch when raw `match` against zone membership is more natural than `from` / `to`.
-    - **(b) Pre-seed synthetic sets** — add a Phase 1 sub-phase that materializes zone-derived sets into a virtual `objects.sets` view before validation. Cleaner separation but more pipeline machinery.
-    - **(c) Disallow user refs to zone-derived names** — document `from` / `to` as the only sanctioned way to express zone membership in match clauses; explicitly reject `@<zone>_{iifs,v4,v6}` shapes inside rule bodies.
-
-    **Decision: (a)** — same cost as (c), but preserves the escape hatch for users who need raw `match` against zone membership. `checkObjectRefs` will resolve names against the union of `objects.sets.<name>` keys and the predictable `<zone>_{iifs,v4,v6}` names derived from `mergedZones`.
+   **Decision: (a)** — same cost as (c), but preserves the escape hatch for users who need raw `match` against zone membership. `checkObjectRefs` will resolve names against the union of `objects.sets.<name>` keys and the predictable `<zone>_{iifs,v4,v6}` names derived from `mergedZones`.
 
 ## Status
 

@@ -136,12 +136,12 @@ chain input-at-filter__web-server-to-local {
 
 Per-packet:
 
-| Packet                            | Path                                                                 |
-|-----------------------------------|----------------------------------------------------------------------|
-| `10.0.0.7 → fw:22` (LAN, not web) | dmz jump → SSH rate-limit → accept                                   |
-| `10.0.0.5 → fw:80` (web, HTTP)    | dmz jump → web-server jump → port 80 → accept                        |
+| Packet                            | Path                                                                       |
+| --------------------------------- | -------------------------------------------------------------------------- |
+| `10.0.0.7 → fw:22` (LAN, not web) | dmz jump → SSH rate-limit → accept                                         |
+| `10.0.0.5 → fw:80` (web, HTTP)    | dmz jump → web-server jump → port 80 → accept                              |
 | `10.0.0.5 → fw:22` (web, SSH)     | dmz jump → web-server chain (no match) → returns → SSH rate-limit → accept |
-| `10.0.0.99 → fw:80` (other DMZ)   | dmz jump → web-server jump misses → SSH rate-limit misses → policy drop |
+| `10.0.0.99 → fw:80` (other DMZ)   | dmz jump → web-server jump misses → SSH rate-limit misses → policy drop    |
 
 ## Rejected alternatives
 

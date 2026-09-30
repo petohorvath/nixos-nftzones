@@ -86,7 +86,7 @@ pkgs.testers.nixosTest {
       };
 
     bridge =
-      { lib, pkgs, ... }:
+      { lib, ... }:
       {
         imports = [ nftzonesModule ];
 

@@ -1,0 +1,15 @@
+excludes = [".git/**", ".direnv/**", "result", "result-*/**", "*.lock"]
+
+[formatter.nix]
+command = "nixfmt"
+includes = ["*.nix"]
+
+[formatter.shell]
+command = "shfmt"
+options = ["-w", "-i", "2"]
+includes = ["*.sh", ".envrc"]
+
+[formatter.prose]
+command = "prettier"
+options = ["--write"]
+includes = ["*.md", "*.yaml", "*.yml", "*.json"]

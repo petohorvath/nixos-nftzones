@@ -195,10 +195,8 @@ pkgs.testers.nixosTest {
             # installs this rule when eth2 comes up.
             routingPolicyRules = [
               {
-                routingPolicyRuleConfig = {
-                  FirewallMark = 100;
-                  Table = 100;
-                };
+                FirewallMark = 100;
+                Table = 100;
               }
             ];
 
@@ -208,11 +206,9 @@ pkgs.testers.nixosTest {
             # unreachable back to the source.
             routes = [
               {
-                routeConfig = {
-                  Type = "unreachable";
-                  Destination = "0.0.0.0/0";
-                  Table = 100;
-                };
+                Type = "unreachable";
+                Destination = "0.0.0.0/0";
+                Table = 100;
               }
             ];
           };

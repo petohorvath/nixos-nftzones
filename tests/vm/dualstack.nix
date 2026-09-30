@@ -85,8 +85,8 @@ pkgs.testers.nixosTest {
           # family-appropriate "any" (0.0.0.0/0 or ::/0) when
           # only Gateway= is given.
           routes = [
-            { routeConfig.Gateway = routerLanIp4; }
-            { routeConfig.Gateway = routerLanIp6; }
+            { Gateway = routerLanIp4; }
+            { Gateway = routerLanIp6; }
           ];
         };
       };
@@ -225,8 +225,8 @@ pkgs.testers.nixosTest {
             "${serverWanIp6}/64"
           ];
           routes = [
-            { routeConfig.Gateway = routerWanIp4; }
-            { routeConfig.Gateway = routerWanIp6; }
+            { Gateway = routerWanIp4; }
+            { Gateway = routerWanIp6; }
           ];
         };
       };

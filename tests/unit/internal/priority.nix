@@ -4,9 +4,7 @@
   shape as every other unit test; aggregated by `tests/unit/default.nix`.
 */
 {
-  pkgs,
   nftzones,
-  nftypes,
   ...
 }:
 let

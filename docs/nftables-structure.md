@@ -42,43 +42,43 @@ table inet filter {
 }
 ```
 
-| Flag | Effect |
-|---|---|
-| `dormant` | Base chains are unregistered; rules are not evaluated. |
-| `owner` | Table is bound to the creating process; removed when it exits. |
+| Flag      | Effect                                                               |
+| --------- | -------------------------------------------------------------------- |
+| `dormant` | Base chains are unregistered; rules are not evaluated.               |
+| `owner`   | Table is bound to the creating process; removed when it exits.       |
 | `persist` | Pairs with `owner`; orphaned table survives and accepts a new owner. |
 
 ### Address Families
 
 Each table belongs to exactly one address family. The family selects which packet types the table sees and which hooks are available. Identifiers are namespaced by family: `inet filter` and `ip filter` are distinct tables.
 
-| Family | Packets | Notes |
-|---|---|---|
-| `ip` | IPv4 | Default if family is omitted. |
-| `ip6` | IPv6 | |
-| `inet` | IPv4 + IPv6 | Hybrid; lets one table cover both. |
-| `arp` | IPv4 ARP | Mangle ARP for clustering. |
-| `bridge` | Ethernet via bridge devices | Different priority constants. |
-| `netdev` | Any ethertype on a device | Per-interface ingress/egress. |
+| Family   | Packets                     | Notes                              |
+| -------- | --------------------------- | ---------------------------------- |
+| `ip`     | IPv4                        | Default if family is omitted.      |
+| `ip6`    | IPv6                        |                                    |
+| `inet`   | IPv4 + IPv6                 | Hybrid; lets one table cover both. |
+| `arp`    | IPv4 ARP                    | Mangle ARP for clustering.         |
+| `bridge` | Ethernet via bridge devices | Different priority constants.      |
+| `netdev` | Any ethertype on a device   | Per-interface ingress/egress.      |
 
 ## Chain
 
 A chain is an ordered list of rules within a table. Two kinds exist.
 
-| Kind | Created with | Purpose |
-|---|---|---|
-| **Base chain** | `type`, `hook`, `priority` clauses | Entry point from a hook. |
-| **Regular chain** | No hook clauses | Jump or goto target for organization. |
+| Kind              | Created with                       | Purpose                               |
+| ----------------- | ---------------------------------- | ------------------------------------- |
+| **Base chain**    | `type`, `hook`, `priority` clauses | Entry point from a hook.              |
+| **Regular chain** | No hook clauses                    | Jump or goto target for organization. |
 
 Anonymous regular chains are also allowed, defined inline within a verdict statement.
 
 ### Base chain types
 
-| Type | Families | Hooks | Purpose |
-|---|---|---|---|
-| `filter` | all | all valid for the family | Default; standard packet filtering. |
-| `nat` | `ip`, `ip6`, `inet` | `prerouting`, `input`, `output`, `postrouting` | NAT via conntrack. First packet of a flow only. |
-| `route` | `ip`, `ip6`, `inet` | `output` | Trigger a re-route lookup if header fields changed. |
+| Type     | Families            | Hooks                                          | Purpose                                             |
+| -------- | ------------------- | ---------------------------------------------- | --------------------------------------------------- |
+| `filter` | all                 | all valid for the family                       | Default; standard packet filtering.                 |
+| `nat`    | `ip`, `ip6`, `inet` | `prerouting`, `input`, `output`, `postrouting` | NAT via conntrack. First packet of a flow only.     |
+| `route`  | `ip`, `ip6`, `inet` | `output`                                       | Trigger a re-route lookup if header fields changed. |
 
 Restrictions:
 
@@ -90,23 +90,23 @@ Restrictions:
 
 Priority is a signed integer that orders chains attached to the same hook. Lower runs first; equal priorities have undefined order. Standard names map to integers and may be combined arithmetically (`mangle - 5`).
 
-| Name | Value | Families | Hooks |
-|---|---|---|---|
-| `raw` | `-300` | `ip`, `ip6`, `inet` | all |
-| `mangle` | `-150` | `ip`, `ip6`, `inet` | all |
-| `dstnat` | `-100` | `ip`, `ip6`, `inet` | `prerouting` |
-| `filter` | `0` | `ip`, `ip6`, `inet`, `arp`, `netdev` | all |
-| `security` | `50` | `ip`, `ip6`, `inet` | all |
-| `srcnat` | `100` | `ip`, `ip6`, `inet` | `postrouting` |
+| Name       | Value  | Families                             | Hooks         |
+| ---------- | ------ | ------------------------------------ | ------------- |
+| `raw`      | `-300` | `ip`, `ip6`, `inet`                  | all           |
+| `mangle`   | `-150` | `ip`, `ip6`, `inet`                  | all           |
+| `dstnat`   | `-100` | `ip`, `ip6`, `inet`                  | `prerouting`  |
+| `filter`   | `0`    | `ip`, `ip6`, `inet`, `arp`, `netdev` | all           |
+| `security` | `50`   | `ip`, `ip6`, `inet`                  | all           |
+| `srcnat`   | `100`  | `ip`, `ip6`, `inet`                  | `postrouting` |
 
 The `bridge` family uses different values:
 
-| Name | Value | Hooks |
-|---|---|---|
-| `dstnat` | `-300` | `prerouting` |
-| `filter` | `-200` | all |
-| `out` | `100` | `output` |
-| `srcnat` | `300` | `postrouting` |
+| Name     | Value  | Hooks         |
+| -------- | ------ | ------------- |
+| `dstnat` | `-300` | `prerouting`  |
+| `filter` | `-200` | all           |
+| `out`    | `100`  | `output`      |
+| `srcnat` | `300`  | `postrouting` |
 
 ### Policy
 
@@ -143,13 +143,13 @@ A trailing `*` is a kernel-supported wildcard, resolved against currently regist
 
 A hook is a kernel attachment point in the packet path. Base chains register on a hook with a priority; packets traversing that hook are evaluated by every base chain attached to it, in priority order.
 
-| Family | Hooks |
-|---|---|
-| `ip`, `ip6`, `inet` | `prerouting`, `input`, `forward`, `output`, `postrouting` |
-| `inet` (kernel ≥ 5.10) | also `ingress` |
-| `arp` | `input`, `output` |
-| `bridge` | same five as IPv4/IPv6 |
-| `netdev` | `ingress`, `egress` (per device) |
+| Family                 | Hooks                                                     |
+| ---------------------- | --------------------------------------------------------- |
+| `ip`, `ip6`, `inet`    | `prerouting`, `input`, `forward`, `output`, `postrouting` |
+| `inet` (kernel ≥ 5.10) | also `ingress`                                            |
+| `arp`                  | `input`, `output`                                         |
+| `bridge`               | same five as IPv4/IPv6                                    |
+| `netdev`               | `ingress`, `egress` (per device)                          |
 
 Packet flow for the IP families:
 
@@ -194,14 +194,14 @@ A rule has at most one **terminal** statement (`accept`, `drop`, `reject`, `jump
 
 Verdicts steer control flow.
 
-| Verdict | Effect |
-|---|---|
-| `accept` | End current base chain. Packet continues to the next base chain on the hook. |
-| `drop` | End evaluation entirely. Packet is discarded. |
-| `continue` | Fall through to the next rule (default). |
-| `return` | Pop the call stack; resume after the calling `jump`. |
-| `jump` *chain* | Push position, evaluate *chain*, return on `return` or end-of-chain. |
-| `goto` *chain* | Like `jump` but does not push; `return` from *chain* exits to the base chain's policy. |
+| Verdict        | Effect                                                                                 |
+| -------------- | -------------------------------------------------------------------------------------- |
+| `accept`       | End current base chain. Packet continues to the next base chain on the hook.           |
+| `drop`         | End evaluation entirely. Packet is discarded.                                          |
+| `continue`     | Fall through to the next rule (default).                                               |
+| `return`       | Pop the call stack; resume after the calling `jump`.                                   |
+| `jump` _chain_ | Push position, evaluate _chain_, return on `return` or end-of-chain.                   |
+| `goto` _chain_ | Like `jump` but does not push; `return` from _chain_ exits to the base chain's policy. |
 
 Evaluation rules:
 
@@ -227,10 +227,10 @@ chain input {
 
 Sets are typed collections referenced by rules.
 
-| Form | Lifetime | Mutable |
-|---|---|---|
-| **Anonymous** | Tied to the rule that uses it | No |
-| **Named** | Independent of any rule | Yes |
+| Form          | Lifetime                      | Mutable |
+| ------------- | ----------------------------- | ------- |
+| **Anonymous** | Tied to the rule that uses it | No      |
+| **Named**     | Independent of any rule       | Yes     |
 
 ```
 table inet filter {
@@ -252,23 +252,23 @@ table inet filter {
 }
 ```
 
-| Specification | Meaning |
-|---|---|
-| `type` | Element data type (`ipv4_addr`, `inet_service`, `ether_addr`, ...). |
-| `typeof` | Derive the type from an expression (e.g. `typeof ip saddr . tcp dport`). |
-| `flags` | Behavioral flags. |
-| `timeout` | Default per-element TTL. Required if rules add elements at runtime. |
-| `gc-interval` | Garbage collection cadence for timed entries. |
-| `size` | Maximum element count. Required if rules add elements at runtime. |
-| `policy` | `performance` (default) or `memory`. |
-| `auto-merge` | Coalesce overlapping intervals automatically. |
+| Specification | Meaning                                                                  |
+| ------------- | ------------------------------------------------------------------------ |
+| `type`        | Element data type (`ipv4_addr`, `inet_service`, `ether_addr`, ...).      |
+| `typeof`      | Derive the type from an expression (e.g. `typeof ip saddr . tcp dport`). |
+| `flags`       | Behavioral flags.                                                        |
+| `timeout`     | Default per-element TTL. Required if rules add elements at runtime.      |
+| `gc-interval` | Garbage collection cadence for timed entries.                            |
+| `size`        | Maximum element count. Required if rules add elements at runtime.        |
+| `policy`      | `performance` (default) or `memory`.                                     |
+| `auto-merge`  | Coalesce overlapping intervals automatically.                            |
 
-| Flag | Meaning |
-|---|---|
-| `constant` | Contents fixed at creation. |
-| `dynamic` | Allow updates from the packet path. |
+| Flag       | Meaning                                          |
+| ---------- | ------------------------------------------------ |
+| `constant` | Contents fixed at creation.                      |
+| `dynamic`  | Allow updates from the packet path.              |
 | `interval` | Store ranges. Mutually exclusive with `dynamic`. |
-| `timeout` | Allow per-element timeouts. |
+| `timeout`  | Allow per-element timeouts.                      |
 
 ## Maps
 
@@ -318,16 +318,16 @@ Flowtables attach to the `ingress` hook before `prerouting`. The `flow add @ft` 
 
 Stateful objects are named containers attached to a table. Rules reference them by `<type> name <name>`.
 
-| Type | Purpose |
-|---|---|
-| `counter` | Packet/byte counts. |
-| `quota` | Cap on bytes; matches until exceeded. |
-| `limit` | Token-bucket rate limit. |
-| `ct helper` | Conntrack helper bindings (FTP, SIP, ...). |
-| `ct timeout` | Per-flow conntrack timeouts. |
-| `ct expectation` | Programmable conntrack expectations. |
-| `secmark` | SELinux secmark labels. |
-| `synproxy` | SYN-proxy parameters. |
+| Type             | Purpose                                    |
+| ---------------- | ------------------------------------------ |
+| `counter`        | Packet/byte counts.                        |
+| `quota`          | Cap on bytes; matches until exceeded.      |
+| `limit`          | Token-bucket rate limit.                   |
+| `ct helper`      | Conntrack helper bindings (FTP, SIP, ...). |
+| `ct timeout`     | Per-flow conntrack timeouts.               |
+| `ct expectation` | Programmable conntrack expectations.       |
+| `secmark`        | SELinux secmark labels.                    |
+| `synproxy`       | SYN-proxy parameters.                      |
 
 ```
 table inet filter {
@@ -360,11 +360,11 @@ map port_to_iface {
 }
 ```
 
-| Option | Meaning |
-|---|---|
-| `timeout` | Override the set's default TTL. |
+| Option    | Meaning                                        |
+| --------- | ---------------------------------------------- |
+| `timeout` | Override the set's default TTL.                |
 | `expires` | Remaining lifetime; primarily for replication. |
-| `comment` | Per-element annotation. |
+| `comment` | Per-element annotation.                        |
 
 ## Handles, Identifiers, and Comments
 

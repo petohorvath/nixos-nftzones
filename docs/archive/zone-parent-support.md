@@ -47,14 +47,14 @@ making node-zone affiliation observable in the compiled output.
 
 ## Behavioural shift
 
-| Today                                                          | After                                                                                  |
-|----------------------------------------------------------------|----------------------------------------------------------------------------------------|
-| All `(from, to)` sub-chains jump from the base chain           | Only **root** from-zones jump from the base chain                                      |
-| Sub-chain dispatch order: alphabetical                         | Sub-chain dispatch order: hierarchical (root → child recursion)                        |
-| Priority cutoff at 100 = base-chain pre/post slots             | Priority cutoff at 100 = per-sub-chain pre/post slots around child-dispatch jumps      |
-| `from = [ "all" ]` expands to every zone                       | `from = [ "all" ]` expands to roots + localZone                                        |
-| `node.zone` validated but inert                                | `node.zone` establishes hierarchy in the compiled output                               |
-| Base chain has explicit pre/post slots from `priority < 100` / `>= 100` (special) | Base chain has only boilerplate + jumps to root sub-chains                             |
+| Today                                                                             | After                                                                             |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| All `(from, to)` sub-chains jump from the base chain                              | Only **root** from-zones jump from the base chain                                 |
+| Sub-chain dispatch order: alphabetical                                            | Sub-chain dispatch order: hierarchical (root → child recursion)                   |
+| Priority cutoff at 100 = base-chain pre/post slots                                | Priority cutoff at 100 = per-sub-chain pre/post slots around child-dispatch jumps |
+| `from = [ "all" ]` expands to every zone                                          | `from = [ "all" ]` expands to roots + localZone                                   |
+| `node.zone` validated but inert                                                   | `node.zone` establishes hierarchy in the compiled output                          |
+| Base chain has explicit pre/post slots from `priority < 100` / `>= 100` (special) | Base chain has only boilerplate + jumps to root sub-chains                        |
 
 Existing rulesets that don't declare `parent` and don't use
 `nodes.*` continue to compile unchanged — every zone has
@@ -123,6 +123,7 @@ No structural change. Cells still cartesian-product `from × to`.
 ### Phase 5 — Tests
 
 Unit:
+
 - `tests/unit/internal/normalize.nix`: validators (parent refs,
   parent cycles, localZone-as-parent), `computeChildrenOf`,
   `computeRootZoneNames`, modified `expandWildcardZones`.
@@ -131,6 +132,7 @@ Unit:
   root-only base-chain jumps.
 
 Integration:
+
 - `parent-basic.nix` — lan with web-server node; verify hierarchy.
 - `parent-priorities.nix` — pre vs post relative to child dispatch.
 - `parent-deep-nesting.nix` — three or more levels.

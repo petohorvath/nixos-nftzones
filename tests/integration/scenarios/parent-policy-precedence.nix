@@ -25,8 +25,7 @@
   surface as a failed integration check rather than a quiet
   behavioural change.
 */
-{ nftypes, ... }:
-{
+_: {
   body = {
     zones = {
       lan = {

@@ -37,10 +37,10 @@ A zone may mix kinds. Membership of a packet is determined per packet by checkin
 
 Zones can also declare a **parent** zone, which builds a tree of zones. Traffic is dispatched into the most-specific child sub-chain; rules attached to the parent run as fallbacks if no child handles the packet first. See [`specs/zone-parent.md`](specs/zone-parent.md) for hierarchy semantics, dispatch model, and the `node` shorthand for single-host children.
 
-| Member kind | Matched against (source side) | Matched against (destination side) |
-|---|---|---|
-| interface | `iif` / `iifname` | `oif` / `oifname` |
-| network or address | `ip saddr` / `ip6 saddr` | `ip daddr` / `ip6 daddr` |
+| Member kind        | Matched against (source side) | Matched against (destination side) |
+| ------------------ | ----------------------------- | ---------------------------------- |
+| interface          | `iif` / `iifname`             | `oif` / `oifname`                  |
+| network or address | `ip saddr` / `ip6 saddr`      | `ip daddr` / `ip6 daddr`           |
 
 A zone with only interfaces is purely topological. A zone with only networks is purely address-based and ignores which interface a packet came in on. Mixed zones combine both predicates (typically with logical AND, so a packet must satisfy both to belong).
 
@@ -51,7 +51,7 @@ Every packet seen by the firewall has two zone identities:
 - **Source zone** — derived from the ingress interface and source address.
 - **Destination zone** — derived from the egress interface and destination address.
 
-Rules and policies are directed: they target an ordered pair `src → dst`. Allowing traffic in one direction does not implicitly allow it in the other (return traffic is handled separately, see *Stateful Traffic*).
+Rules and policies are directed: they target an ordered pair `src → dst`. Allowing traffic in one direction does not implicitly allow it in the other (return traffic is handled separately, see _Stateful Traffic_).
 
 ```
               src zone           dst zone
@@ -73,13 +73,13 @@ policy all -> all drop       # implicit catch-all: deny
 
 Common defaults:
 
-| Direction | Typical policy |
-|---|---|
-| trusted → untrusted | `accept` |
-| untrusted → trusted | `drop` |
-| trusted → local | `accept` |
-| untrusted → local | `drop` |
-| local → all | `accept` |
+| Direction           | Typical policy |
+| ------------------- | -------------- |
+| trusted → untrusted | `accept`       |
+| untrusted → trusted | `drop`         |
+| trusted → local     | `accept`       |
+| untrusted → local   | `drop`         |
+| local → all         | `accept`       |
 
 ## Rules
 
@@ -94,7 +94,7 @@ rule guest -> lan drop                                       # isolate guests
 
 Rule order within a zone pair follows the same first-match semantics as nftables. A rule that issues `accept` or `drop` ends evaluation for that pair; the policy applies only when no rule matches.
 
-In the API, this construct is exposed as `filters.<name>` rather than `rules.<name>` — the word *filter* disambiguates the zone-pair-scoped exception (the concept this section describes) from an nftables `rule`, which is one statement-list line inside a chain. A single nftzones filter can compile to several nftables rules (one per cell in the cartesian `from × to` expansion).
+In the API, this construct is exposed as `filters.<name>` rather than `rules.<name>` — the word _filter_ disambiguates the zone-pair-scoped exception (the concept this section describes) from an nftables `rule`, which is one statement-list line inside a chain. A single nftzones filter can compile to several nftables rules (one per cell in the cartesian `from × to` expansion).
 
 For the common "open / drop / reject these ports" patterns, `nftzones.snippets.*` returns a ready-made rule body so the user does not have to construct match + verdict by hand against the underlying DSL. See the README "Snippets" section for the full input/output contract.
 
@@ -113,18 +113,18 @@ Without an intra-zone policy, the implementation's catch-all default applies (ty
 
 A zone-based firewall recognises two configurable special zone names — both implementations use them, even if they pick different defaults:
 
-| Special zone | Default name | Meaning |
-|---|---|---|
-| local zone | `local` | The firewall machine itself. Configurable via `settings.localZone`. |
-| wildcard zone | `all` | Matches every declared zone. Used for broad policies and catch-alls. Configurable via `settings.wildcardZone`. |
+| Special zone  | Default name | Meaning                                                                                                        |
+| ------------- | ------------ | -------------------------------------------------------------------------------------------------------------- |
+| local zone    | `local`      | The firewall machine itself. Configurable via `settings.localZone`.                                            |
+| wildcard zone | `all`        | Matches every declared zone. Used for broad policies and catch-alls. Configurable via `settings.wildcardZone`. |
 
 The local zone is interpreted by direction:
 
-| Position | Meaning |
-|---|---|
-| local as **source** | Packet was generated by a local process. Matches in the `output` hook. |
-| local as **destination** | Packet terminates on the firewall. Matches in the `input` hook. |
-| local on neither side | Forwarded packet. Matches in the `forward` hook. |
+| Position                 | Meaning                                                                |
+| ------------------------ | ---------------------------------------------------------------------- |
+| local as **source**      | Packet was generated by a local process. Matches in the `output` hook. |
+| local as **destination** | Packet terminates on the firewall. Matches in the `input` hook.        |
+| local on neither side    | Forwarded packet. Matches in the `forward` hook.                       |
 
 The wildcard zone is mostly used in policies (`policy all -> all drop`) and broad allow rules (`rule local -> all accept`).
 
@@ -145,16 +145,16 @@ Other compile-time knobs live alongside on `settings` — `stateful` (default `t
 
 ## NAT and Policy Routing
 
-Filters and policies cover the *filter* hooks — what is allowed, what is dropped. Four further entry groups cover the *NAT* and *route* hooks, where a packet's addresses or routing fate are rewritten rather than verdict-checked. All four reuse the directed-zone-pair model: an entry names a `from` and / or `to` zone list and carries a rule body. The compile pipeline routes each group to the appropriate base chain (postrouting / prerouting / output, at the canonical NAT / mangle priority).
+Filters and policies cover the _filter_ hooks — what is allowed, what is dropped. Four further entry groups cover the _NAT_ and _route_ hooks, where a packet's addresses or routing fate are rewritten rather than verdict-checked. All four reuse the directed-zone-pair model: an entry names a `from` and / or `to` zone list and carries a rule body. The compile pipeline routes each group to the appropriate base chain (postrouting / prerouting / output, at the canonical NAT / mangle priority).
 
-| Group | Hook + priority | Directions | Typical use |
-|---|---|---|---|
-| `snats.<name>`   | `postrouting + srcnat` | `from` and `to` | Source NAT — rewrite outbound source addresses (masquerade, fixed-source SNAT) |
-| `dnats.<name>`   | `prerouting + dstnat`  | `from` only     | Destination NAT — port forwarding, redirect to localhost |
-| `sroutes.<name>` | `prerouting + mangle`  | `from` only     | Source-zone-keyed mark-set for policy routing of forwarded traffic |
+| Group            | Hook + priority        | Directions      | Typical use                                                                     |
+| ---------------- | ---------------------- | --------------- | ------------------------------------------------------------------------------- |
+| `snats.<name>`   | `postrouting + srcnat` | `from` and `to` | Source NAT — rewrite outbound source addresses (masquerade, fixed-source SNAT)  |
+| `dnats.<name>`   | `prerouting + dstnat`  | `from` only     | Destination NAT — port forwarding, redirect to localhost                        |
+| `sroutes.<name>` | `prerouting + mangle`  | `from` only     | Source-zone-keyed mark-set for policy routing of forwarded traffic              |
 | `droutes.<name>` | `output + mangle`      | `to` only       | Destination-zone-keyed mark-set for policy routing of locally-generated traffic |
 
-`dnats` / `sroutes` carry no `to` because prerouting fires *before* the routing decision — the destination zone (which depends on routing) is undefined at that point. `droutes` carry no `from` because output-hook chains only see locally-generated packets, so the source zone is always `localZone`.
+`dnats` / `sroutes` carry no `to` because prerouting fires _before_ the routing decision — the destination zone (which depends on routing) is undefined at that point. `droutes` carry no `from` because output-hook chains only see locally-generated packets, so the source zone is always `localZone`.
 
 ### Source NAT (`snats`)
 
@@ -177,7 +177,7 @@ snats.web-snat = {
 
 ### Destination NAT (`dnats`)
 
-Rewrite the destination address of inbound traffic — port forwarding. `rule.match` constrains *which* packets are rewritten (typically a destination port); `rule.action.dnat = { addr; port; }` is the rewrite. `rule.action.redirect = { port; }` is a shorthand for "redirect to localhost on this port."
+Rewrite the destination address of inbound traffic — port forwarding. `rule.match` constrains _which_ packets are rewritten (typically a destination port); `rule.action.dnat = { addr; port; }` is the rewrite. `rule.action.redirect = { port; }` is a shorthand for "redirect to localhost on this port."
 
 ```nix
 dnats.public-https = {
@@ -200,7 +200,7 @@ dnats.ssh-redirect = {
 
 ### Source policy routing (`sroutes`)
 
-Tag inbound packets from a specific source zone with a firewall mark, so a `ip rule fwmark` outside nftables can steer them onto an alternate routing table — the kernel-correct way to do per-zone policy routing of *forwarded* traffic. The rule body carries no verdict; it sets the mark and falls through to the routing decision.
+Tag inbound packets from a specific source zone with a firewall mark, so a `ip rule fwmark` outside nftables can steer them onto an alternate routing table — the kernel-correct way to do per-zone policy routing of _forwarded_ traffic. The rule body carries no verdict; it sets the mark and falls through to the routing decision.
 
 ```nix
 sroutes.guest-via-vpn = {
@@ -214,7 +214,7 @@ A matching `ip rule fwmark 100 table 100` plus a default route in routing table 
 
 ### Destination policy routing (`droutes`)
 
-Same idea as `sroutes`, but for *locally-generated* traffic and keyed on the destination zone — useful for multi-WAN selection (e.g. all traffic destined for `lan-remote` goes via VPN).
+Same idea as `sroutes`, but for _locally-generated_ traffic and keyed on the destination zone — useful for multi-WAN selection (e.g. all traffic destined for `lan-remote` goes via VPN).
 
 ```nix
 droutes.lan-via-vpn = {
@@ -237,12 +237,12 @@ zones.vpn-users = {
 
 Each side has four nullable sections:
 
-| Section      | Substitutes for                                          |
-|--------------|----------------------------------------------------------|
-| `interfaces` | the auto `<ifField> @<zone>_iifs` interface clause       |
-| `ipv4`       | the auto `ip <addr> @<zone>_v4` family clause            |
-| `ipv6`       | the auto `ip6 <addr> @<zone>_v6` family clause           |
-| `extra`      | family-agnostic prefix (mark, vlan, cgroup, …); no auto  |
+| Section      | Substitutes for                                         |
+| ------------ | ------------------------------------------------------- |
+| `interfaces` | the auto `<ifField> @<zone>_iifs` interface clause      |
+| `ipv4`       | the auto `ip <addr> @<zone>_v4` family clause           |
+| `ipv6`       | the auto `ip6 <addr> @<zone>_v6` family clause          |
+| `extra`      | family-agnostic prefix (mark, vlan, cgroup, …); no auto |
 
 Override sections compose with the auto path section-by-section. Setting `ipv4` only overrides v4; v6 still uses the auto set if the zone has v6 CIDRs. Setting `extra` adds clauses to every variant without disabling the auto path.
 
@@ -250,7 +250,7 @@ The `interfaces` section is hook-gated — it's only emitted at hooks where the 
 
 ## Stateful Traffic
 
-Zones describe direction-keyed *policy*; on their own they say nothing about how reply packets are handled. Two designs are possible:
+Zones describe direction-keyed _policy_; on their own they say nothing about how reply packets are handled. Two designs are possible:
 
 - **Stateless.** Every packet is classified into a zone pair independently. A reply from `wan` to `lan` requires an explicit `wan -> lan` rule, which forces most useful policies to be written symmetrically in both directions and makes asymmetric defaults like `lan -> wan accept` / `wan -> lan drop` unusable for any real connection.
 - **Stateful (conntrack).** Connections are tracked, and packets matching `ct state established,related` are accepted up front, before any zone-pair rule runs. A `lan -> wan accept` policy then implicitly allows return traffic, because the reply matches the established state and never reaches the `wan -> lan` policy.

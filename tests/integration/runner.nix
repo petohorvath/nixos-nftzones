@@ -219,9 +219,7 @@ let
       description = rejection.description or "no description";
     in
     if attempt.success then
-      throw (
-        "nftzones rejection scenario '${name}': expected mkRuleset to throw on the supplied body, but it compiled cleanly. (${description})"
-      )
+      throw "nftzones rejection scenario '${name}': expected mkRuleset to throw on the supplied body, but it compiled cleanly. (${description})"
     else
       pkgs.runCommand "nftzones-rejection-${name}" { } "touch $out";
 in

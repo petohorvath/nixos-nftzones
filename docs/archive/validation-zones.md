@@ -93,7 +93,7 @@ If validation is baked into a library-provided module, the consumer just imports
 
 ## Library convention check
 
-A dedicated `lib/validate/` namespace is **not** an established Nix/NixOS convention. Most libraries either inline the checks in their NixOS module's `config.assertions` or expose a single helper function alongside whatever else they provide; nixpkgs has `lib.asserts` for assertion *combinators* (`assertMsg`, `assertOneOf`) but nothing analogous to a domain-specific validators namespace. Whichever location nftzones picks is project-internal taste.
+A dedicated `lib/validate/` namespace is **not** an established Nix/NixOS convention. Most libraries either inline the checks in their NixOS module's `config.assertions` or expose a single helper function alongside whatever else they provide; nixpkgs has `lib.asserts` for assertion _combinators_ (`assertMsg`, `assertOneOf`) but nothing analogous to a domain-specific validators namespace. Whichever location nftzones picks is project-internal taste.
 
 ## Open questions
 

@@ -2,247 +2,61 @@
   description = "nixos-nftzones — library for zone-based nftables firewall configuration";
 
   inputs = {
-    # `nixpkgs` is the default package set for everything this flake
-    # exposes to consumers — `lib`, the NixOS module, the devShell, the
-    # formatter — pinned to the current stable release branch. libnet /
-    # nftypes / git-hooks all follow it.
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-
-    # The `nixpkgs-unstable` flake input is consumed *only* by the
-    # `*-unstable` check tiers (see `checks` below): the unit /
-    # integration / examples / vm suites run a second time against the
-    # `nixos-unstable` branch so upstream breakage surfaces in this
-    # repo's CI rather than downstream. Nothing user-facing depends on
-    # it.
-    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
-
-    libnet.url = "github:petohorvath/nix-libnet";
-    libnet.inputs.nixpkgs.follows = "nixpkgs";
-    libnet.inputs.git-hooks.follows = "git-hooks";
-
-    nftypes.url = "github:petohorvath/nix-nftypes";
-    nftypes.inputs.nixpkgs.follows = "nixpkgs";
-
-    # Build-time only: drives the pre-commit / pre-push git
-    # hooks installed by the devShell. Not a runtime dep of the
-    # library or NixOS module.
-    git-hooks.url = "github:cachix/git-hooks.nix";
-    git-hooks.inputs.nixpkgs.follows = "nixpkgs";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    flake-parts = {
+      url = "github:hercules-ci/flake-parts";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
+    # Sibling libraries are pinned by commit until they publish release tags.
+    libnet = {
+      url = "github:petohorvath/nix-libnet?rev=2e544133d906e7c631d08ce1b57770edca8e3349";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.git-hooks.inputs.nixpkgs.follows = "nixpkgs";
+    };
+    # Downstream flakes read `inputs.nftypes`, so keep this input name.
+    nftypes = {
+      url = "github:petohorvath/nix-nftypes?rev=aab9d4bc4f7b1dafb1d2d3297c8e010713745d3a";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
-    {
-      self,
-      nixpkgs,
-      nixpkgs-unstable,
+    inputs@{
+      flake-parts,
       libnet,
       nftypes,
-      git-hooks,
+      nixpkgs,
+      ...
     }:
-    let
+    flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [
         "x86_64-linux"
         "aarch64-linux"
-        "x86_64-darwin"
-        "aarch64-darwin"
       ];
 
-      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+      imports = [ flake-parts.flakeModules.partitions ];
 
-      mkLib =
-        pkgs:
-        import ./lib {
+      partitions.dev.module = ./dev;
+
+      partitionedAttrs = {
+        checks = "dev";
+        devShells = "dev";
+        formatter = "dev";
+        legacyPackages = "dev";
+      };
+
+      flake = {
+        lib = import ./lib {
           inputs = {
-            inherit (pkgs) lib;
-            libnet = libnet.lib.withLib pkgs.lib;
+            inherit (nixpkgs) lib;
+            libnet = libnet.lib.withLib nixpkgs.lib;
             nftypes = nftypes.lib;
           };
         };
-
-      # Compute the per-system library once. `mkLib`'s `import
-      # ./lib` is already memoized by file path, but threading
-      # one canonical `libBySystem` through downstream consumers
-      # keeps the wiring explicit and removes the temptation to
-      # call `mkLib pkgs` ad-hoc in new code paths.
-      libBySystem = forAllSystems mkLib;
-
-      # The same library built against `nixpkgs-unstable`, used
-      # only by the `*-unstable` check tiers. Kept parallel to
-      # `libBySystem` rather than computed ad-hoc, for the same
-      # reason.
-      libBySystemUnstable = nixpkgs.lib.genAttrs systems (
-        system: mkLib nixpkgs-unstable.legacyPackages.${system}
-      );
-
-      # `./modules/nftzones.nix` is a function
-      # `{ nftzones, nftypes }: { ... } NixOS module`. Partial-applying
-      # both libs here keeps them private compile-time deps of the
-      # module rather than something leaking onto `_module.args` and
-      # surfacing in every sibling module's argument list. User code
-      # reaches nftzones / nftypes via their own flake inputs, not via
-      # module args.
-      #
-      # Parameterized over the per-system library set so the
-      # `*-unstable` VM tier can compile with the unstable build;
-      # `nixosModules.default` and every other consumer use the
-      # stable `nftzonesModule`.
-      mkNftzonesModule =
-        libSet:
-        { pkgs, ... }:
-        {
-          imports = [
-            (import ./modules/nftzones.nix {
-              nftzones = libSet.${pkgs.stdenv.hostPlatform.system};
-              nftypes = nftypes.lib;
-            })
-          ];
+        nixosModules.default = flake-parts.lib.importApply ./nixos/module.nix {
+          libnet = libnet.lib;
+          nftypes = nftypes.lib;
         };
-      nftzonesModule = mkNftzonesModule libBySystem;
-      nftzonesModuleUnstable = mkNftzonesModule libBySystemUnstable;
-
-      # The unit / integration / examples / vm tiers, parameterized
-      # over a package set and its matching `nftzones` lib + module so
-      # the same suite can run against either nixpkgs flake input. The
-      # `pre-commit` check is added once, independent of the nixpkgs
-      # branch, in `checks` below.
-      mkTestTiers =
-        {
-          pkgs,
-          nftzones,
-          nftzonesModule,
-        }:
-        let
-          testArgs = {
-            inherit pkgs nftzonesModule nftzones;
-            nftypes = nftypes.lib;
-            libnet = libnet.lib.withLib pkgs.lib;
-          };
-          runner = import ./tests/unit/runner.nix { inherit pkgs; };
-          unitTests = import ./tests/unit/default.nix testArgs;
-          vmTestsLinux = nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
-            vm = import ./tests/vm/default.nix testArgs;
-          };
-        in
-        {
-          unit = runner.runTests unitTests;
-          integration = import ./tests/integration/default.nix testArgs;
-          examples = import ./examples/default.nix testArgs;
-        }
-        // vmTestsLinux;
-
-      # Pre-commit + pre-push git hooks managed by git-hooks.nix.
-      # The devShell's `shellHook` installs them into
-      # `.git/hooks/` on every `nix develop` / direnv reload;
-      # `--no-verify` remains the per-invocation escape hatch.
-      #
-      # Two tiers:
-      #
-      # - pre-commit (default stage): `treefmt` driven by
-      #   `pkgs.nixfmt-tree` — the same binary `nix fmt` runs, so
-      #   the hook can never disagree with `nix fmt` / CI's
-      #   `git diff --exit-code` formatting gate.
-      # - pre-push: builds the fast `nix flake check` tiers
-      #   (unit + integration + examples). VM tests stay
-      #   CI-only — they need `/dev/kvm` and the NixOS test
-      #   machinery is multiple GB, too slow even for pre-push.
-      #
-      # The `pre-commit` stage hook is also exposed under
-      # `checks.<system>.pre-commit` so `nix flake check` (and
-      # CI) verify the configured hooks pass. The `pre-push`
-      # hook is stage-restricted, so it does NOT recurse into
-      # `nix build .#checks…` from inside that derivation.
-      gitHooksBySystem = forAllSystems (
-        pkgs:
-        let
-          system = pkgs.stdenv.hostPlatform.system;
-          fastCheckTargets = nixpkgs.lib.concatStringsSep " " [
-            ".#checks.${system}.unit"
-            ".#checks.${system}.integration"
-            ".#checks.${system}.examples"
-          ];
-        in
-        git-hooks.lib.${system}.run {
-          src = ./.;
-          hooks = {
-            # Format with the same `treefmt` binary `nix fmt`
-            # invokes (`nixfmt-tree` ships a wrapped
-            # `bin/treefmt` with config baked in). Keeps the
-            # hook locked to `nix fmt`'s output — no risk of the
-            # hook passing while CI's `git diff --exit-code`
-            # gate fails, or vice versa.
-            treefmt = {
-              enable = true;
-              package = pkgs.nixfmt-tree;
-            };
-
-            flake-check-fast = {
-              enable = true;
-              name = "nix flake check (unit + integration + examples)";
-              entry = "nix build --no-link --print-build-logs ${fastCheckTargets}";
-              pass_filenames = false;
-              stages = [ "pre-push" ];
-            };
-          };
-        }
-      );
-    in
-    {
-      lib = libBySystem;
-      formatter = forAllSystems (pkgs: pkgs.nixfmt-tree);
-      checks = forAllSystems (
-        pkgs:
-        let
-          system = pkgs.stdenv.hostPlatform.system;
-          stable = mkTestTiers {
-            inherit pkgs nftzonesModule;
-            nftzones = libBySystem.${system};
-          };
-          unstable = mkTestTiers {
-            pkgs = nixpkgs-unstable.legacyPackages.${system};
-            nftzones = libBySystemUnstable.${system};
-            nftzonesModule = nftzonesModuleUnstable;
-          };
-        in
-        stable
-        // nixpkgs.lib.mapAttrs' (name: value: nixpkgs.lib.nameValuePair "${name}-unstable" value) unstable
-        // {
-          pre-commit = gitHooksBySystem.${system};
-        }
-      );
-      nixosModules.default = nftzonesModule;
-
-      devShells = forAllSystems (
-        pkgs:
-        let
-          system = pkgs.stdenv.hostPlatform.system;
-        in
-        {
-          default = pkgs.mkShellNoCC {
-            # Tools a contributor reaches for when working on
-            # this repo: nix to pin the flake CLI itself (so
-            # `nix flake check` / `nix build` run a known version
-            # rather than the ambient system one), nixfmt-tree for
-            # formatting (matches `nix fmt`), nftables for
-            # hand-running `nft --check` against rendered
-            # scenarios, statix + deadnix for on-demand Nix linting
-            # and dead-code detection (run by hand; not wired into
-            # the pre-commit hooks), and nix-output-monitor for the
-            # `nix build` UX.
-            packages = [
-              pkgs.nix
-              pkgs.nixfmt-tree
-              pkgs.nftables
-              pkgs.statix
-              pkgs.deadnix
-              pkgs.nix-output-monitor
-            ];
-
-            # Install/refresh `.git/hooks/{pre-commit,pre-push}`
-            # from the git-hooks.nix config above. Idempotent —
-            # safe to re-run on every shell entry.
-            shellHook = gitHooksBySystem.${system}.shellHook;
-          };
-        }
-      );
+      };
     };
 }

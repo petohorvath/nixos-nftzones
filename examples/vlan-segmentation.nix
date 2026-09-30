@@ -27,7 +27,7 @@
 
     networking.nftzones.tables.fw = import ./examples/vlan-segmentation.nix {
       nftypes = inputs.nftypes.lib;
-      nftzones = inputs.nftzones.lib.${pkgs.system};
+      nftzones = inputs.nftzones.lib;
     };
 */
 {

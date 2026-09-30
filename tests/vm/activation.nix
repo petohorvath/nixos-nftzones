@@ -34,7 +34,6 @@
 {
   pkgs,
   nftypes,
-  nftzones,
   nftzonesModule,
   ...
 }:
@@ -175,7 +174,7 @@ pkgs.testers.nixosTest {
       };
 
     server =
-      { lib, pkgs, ... }:
+      { lib, ... }:
       {
         virtualisation.vlans = [ 2 ];
 

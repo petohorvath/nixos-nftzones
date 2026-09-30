@@ -32,7 +32,7 @@
 
     networking.nftzones.tables.fw = import ./examples/dmz-hierarchy.nix {
       nftypes = inputs.nftypes.lib;
-      nftzones = inputs.nftzones.lib.${pkgs.system};
+      nftzones = inputs.nftzones.lib;
     };
 */
 {

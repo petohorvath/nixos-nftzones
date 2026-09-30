@@ -1,5 +1,5 @@
 /*
-  Examples aggregator — a `nix flake check` tier whose only job
+  Examples check — a `nix flake check` tier whose only job
   is keeping `examples/*.nix` from bit-rotting.
 
   Each `examples/*.nix` is a `{ nftypes, nftzones, ... }: body`
@@ -30,13 +30,12 @@
 let
   inherit (pkgs) lib;
 
-  # List `*.nix` regular files in this directory, minus `default.nix`
-  # itself. Stable alphabetical order from `builtins.attrNames`.
-  exampleNames = lib.pipe (builtins.readDir ./.) [
-    (lib.filterAttrs (
-      fileName: fileType:
-      fileType == "regular" && lib.hasSuffix ".nix" fileName && fileName != "default.nix"
-    ))
+  examplesDir = ../examples;
+
+  # List `*.nix` regular files in `examples/`. Stable alphabetical
+  # order from `builtins.attrNames`.
+  exampleNames = lib.pipe (builtins.readDir examplesDir) [
+    (lib.filterAttrs (fileName: fileType: fileType == "regular" && lib.hasSuffix ".nix" fileName))
     builtins.attrNames
     (map (lib.removeSuffix ".nix"))
   ];
@@ -51,7 +50,7 @@ let
   compileExample =
     name:
     let
-      body = import (./. + "/${name}.nix") { inherit nftypes nftzones; };
+      body = import (examplesDir + "/${name}.nix") { inherit nftypes nftzones; };
       ruleset = nftzones.mkRuleset name body;
     in
     builtins.deepSeq ruleset (pkgs.runCommand "nftzones-example-${name}" { } "touch $out");

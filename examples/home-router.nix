@@ -21,14 +21,14 @@
   Wire it into a NixOS host:
 
     # configuration.nix
-    { inputs, pkgs, ... }:
+    { inputs, ... }:
     {
       networking.nftables.enable = true;
       networking.nftzones = {
         enable = true;
         tables.fw = import ./examples/home-router.nix {
           nftypes = inputs.nftypes.lib;
-          nftzones = inputs.nftzones.lib.${pkgs.system};
+          nftzones = inputs.nftzones.lib;
         };
       };
     }
