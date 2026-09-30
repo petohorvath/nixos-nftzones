@@ -35,7 +35,7 @@ A zone is a named grouping of one or more:
 
 A zone may mix kinds. Membership of a packet is determined per packet by checking its ingress (or egress) interface and/or its source (or destination) address against the zone's members.
 
-Zones can also declare a **parent** zone, which builds a tree of zones. Traffic is dispatched into the most-specific child sub-chain; rules attached to the parent run as fallbacks if no child handles the packet first. See [`specs/zone-parent.md`](specs/zone-parent.md) for hierarchy semantics, dispatch model, and the `node` shorthand for single-host children.
+Zones can also declare a **parent** zone, which builds a tree of zones. Traffic is dispatched into the most-specific child sub-chain; rules attached to the parent run as fallbacks if no child handles the packet first. See [`zone-hierarchy.md`](zone-hierarchy.md) for hierarchy semantics, dispatch model, and the `node` shorthand for single-host children.
 
 | Member kind | Matched against (source side) | Matched against (destination side) |
 |---|---|---|

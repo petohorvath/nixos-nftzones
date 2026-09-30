@@ -169,7 +169,7 @@ Twelve leaf functions across `accept` / `drop` / `reject` × `tcp` / `udp` / `ic
 
 ### Hierarchical zones
 
-Zones can declare a `parent` (and a node's `zone` field becomes its lowered child's parent). Traffic dispatches into the most-specific child sub-chain via the parent's chain; rules attached to the parent run as fallbacks if no child handles the packet first. See [`docs/specs/zone-parent.md`](docs/specs/zone-parent.md) for semantics.
+Zones can declare a `parent` (and a node's `zone` field becomes its lowered child's parent). Traffic dispatches into the most-specific child sub-chain via the parent's chain; rules attached to the parent run as fallbacks if no child handles the packet first. See [`docs/zone-hierarchy.md`](docs/zone-hierarchy.md) for semantics.
 
 ```nix
 zones.dmz = { interfaces = [ "dmz0" ]; cidrs = [ "10.0.0.0/24" ]; };
@@ -206,7 +206,9 @@ stay valid against the current type surface.
 |---|---|
 | [`docs/zone-based-firewall.md`](docs/zone-based-firewall.md) | Newcomers to the zone-based firewall model. |
 | [`docs/compile-pipeline.md`](docs/compile-pipeline.md) | Integrators, debuggers, contributors. |
-| [`docs/specs/zone-parent.md`](docs/specs/zone-parent.md) | Zone hierarchy semantics, dispatch model, prior art. |
+| [`docs/zone-hierarchy.md`](docs/zone-hierarchy.md) | Zone hierarchy semantics and dispatch model. |
+| [`CONTEXT.md`](CONTEXT.md) | Glossary of domain terms. |
+| [`docs/adr/`](docs/adr/) | Architecture decision records, including rejected alternatives. |
 
 ## Requirements
 
@@ -222,7 +224,7 @@ Trust model: pin by `rev` + `narHash` via `flake.lock` (the lock file `nftzones`
 
 - **Supported table families: `inet`, `ip`, `ip6`, `bridge`.** `arp` and `netdev` are rejected at the type level. `netdev` in particular needs a per-chain `device` binding that the chain submodule doesn't model today; `arp` is too rare to justify the testing investment without a concrete use case.
 - **Bridge family supports `filter` chains only.** `nat` (not supported by the bridge family) and `route` (no `mangle` priority on bridge) placements are rejected at compile time by `checkChainPlacement` so users get a clear error rather than a kernel-level rejection.
-- See `Pending follow-ups` in [`docs/compile-pipeline.md`](docs/compile-pipeline.md) for tracked design gaps.
+- Tracked design gaps live in [GitHub issues](https://github.com/petohorvath/nixos-nftzones/issues).
 
 ## Testing
 

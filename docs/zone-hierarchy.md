@@ -1,4 +1,4 @@
-# Zone parent: hierarchical from-side dispatch
+# Zone hierarchy: hierarchical from-side dispatch
 
 ## Problem
 
@@ -23,18 +23,12 @@ today, with no hierarchy. Future work could extend hierarchy to
 both sides; this initial implementation keeps the model
 asymmetric.
 
-## Terminology
-
-- **Root zone**: a zone with `parent == null`. Roots get jumps from
-  the base chain. The `localZone` sentinel is always treated as a
-  root.
-- **Child zone**: a zone with `parent != null`. Children get jumps
-  only from inside their parent's sub-chain (child-dispatch jumps).
-- **Subtree**: a zone plus all its transitive descendants.
-- **Effective sub-chain**: the union of all `(from, to)` sub-chains
-  that need to exist in a base chain bucket — direct cell-bearing
-  sub-chains plus synthetic intermediate-parent dispatchers along
-  each cell-bearing sub-chain's parent chain.
+Terms such as root zone, child zone, subtree, slot and transparent
+dispatcher are defined in [`CONTEXT.md`](../CONTEXT.md). The rationale
+and rejected alternatives are recorded in
+[ADR-0006](adr/0006-hierarchical-from-side-dispatch.md),
+[ADR-0007](adr/0007-from-wildcard-expands-to-roots.md) and
+[ADR-0008](adr/0008-priority-cutoff-splits-slots.md).
 
 ## Semantics
 
@@ -143,50 +137,11 @@ Per-packet:
 | `10.0.0.5 → fw:22` (web, SSH)     | dmz jump → web-server chain (no match) → returns → SSH rate-limit → accept |
 | `10.0.0.99 → fw:80` (other DMZ)   | dmz jump → web-server jump misses → SSH rate-limit misses → policy drop |
 
-## Rejected alternatives
-
-Two prior-art models were considered:
-
-### thelegy/nixos-nftables-firewall (rejected)
-
-Composes parent matches into descendant rules: every rule on
-`web-server` re-states all of `dmz`'s match clauses ANDed in. Flat
-chain topology, no recursive dispatch. Rejected for two reasons:
-
-1. **Match-clause duplication scales poorly** — deep nesting
-   produces long composite rules.
-2. **Combinatorial chain emission** — their `traversalChains`
-   builds 4 chain variants per `(fromZone, toZone, ruleType)`
-   tuple; with N zones × M rule types, output is `O(N² × M × 4)`.
-
-### Hand-rolled per-zone rule duplication (rejected)
-
-Without parent at all, a "DMZ-wide" rule would have to be repeated
-on every node inside DMZ. Doesn't scale, breaks silently when a
-node is added without copying every parent-level rule.
-
-## Why "child first, parent fallback" wins
-
-- **No match duplication** — each rule states only its own zone's
-  conditions; the parent's match is implicit because traffic only
-  reached the parent sub-chain by satisfying it at the chain-jump
-  point.
-- **Natural fallback semantics** — the most-specific child claims
-  the packet; the parent runs only if the child returned without
-  verdict.
-- **Linear chain count** — one sub-chain per zone-with-content,
-  recursion handles nesting.
-- **Override-friendly** — pre-child slot for "before child
-  dispatch" rules (e.g., bogon drops on the entire subtree),
-  post-child slot for fallback rules.
-
 ## Out of scope
 
 - **`to`-side hierarchy** — to-zone stays flat. A future iteration
   could extend hierarchy to both sides at the cost of a 4-chain
   matrix per `(from, to, ruleType)` (the thelegy approach).
-- **thelegy-style match composition** — not adopted; see rejected
-  alternatives.
 - **Multi-table parent references** — parents are scoped to one
   table.
 - **Parent inheritance across rule groups** — each rule group
