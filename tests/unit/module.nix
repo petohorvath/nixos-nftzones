@@ -1,5 +1,5 @@
 /*
-  Unit tests for the NixOS module (`modules/nftzones.nix`, exposed
+  Unit tests for the NixOS module (`nixos/module.nix`, exposed
   as `nixosModules.default`). Same `testFoo = { expr; expected; }`
   shape as every other unit test; aggregated by
   `tests/unit/default.nix`.
@@ -524,7 +524,7 @@ in
   # the body is reached via the NixOS option machinery (the
   # module routes through `internal.compile.mkTable` directly,
   # bypassing the public `mkTable` wrapper — see
-  # `lib/default.nix` and `modules/nftzones.nix`).
+  # `lib/default.nix` and `nixos/module.nix`).
   #
   # Trigger: two zones declaring overlapping interfaces, which
   # `checkInterfaceOverlap` rejects.

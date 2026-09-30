@@ -6,7 +6,6 @@
 {
   pkgs,
   nftzones,
-  nftypes,
   ...
 }:
 let

@@ -15,7 +15,7 @@
   resolution is a separate concern and is delegated to
   `nftypes.resolvePriority` (family-aware).
 */
-{ inputs }:
+_:
 let
   entryPriorities = {
     first = 1;

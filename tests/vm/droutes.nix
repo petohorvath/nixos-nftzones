@@ -124,19 +124,15 @@ pkgs.testers.nixosTest {
           # ICMP destination-unreachable locally.
           routingPolicyRules = [
             {
-              routingPolicyRuleConfig = {
-                FirewallMark = 200;
-                Table = 200;
-              };
+              FirewallMark = 200;
+              Table = 200;
             }
           ];
           routes = [
             {
-              routeConfig = {
-                Type = "unreachable";
-                Destination = "0.0.0.0/0";
-                Table = 200;
-              };
+              Type = "unreachable";
+              Destination = "0.0.0.0/0";
+              Table = 200;
             }
           ];
         };

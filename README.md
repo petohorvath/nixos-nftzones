@@ -117,9 +117,9 @@ networking.nftzones.tables.zonefw = {
 ### Direct library (without the NixOS module)
 
 ```nix
-{ inputs, pkgs, ... }:
+{ inputs, ... }:
 let
-  nftzones = inputs.nftzones.lib.${pkgs.system};
+  nftzones = inputs.nftzones.lib;
   inherit (inputs.nftypes.lib) toJson toText dsl;
   inherit (dsl) eq accept;
   inherit (dsl.fields) tcp;
@@ -149,7 +149,7 @@ Constructing rule bodies by hand requires reaching into the `nftypes.dsl` surfac
 ```nix
 { inputs, ... }:
 let
-  inherit (inputs.nftzones.lib.${pkgs.system}.snippets) accept drop reject;
+  inherit (inputs.nftzones.lib.snippets) accept drop reject;
   inherit (inputs.libnet.lib.registry) wellKnownPorts;
 in
 {
@@ -191,24 +191,24 @@ Complete, commented configurations under [`examples/`](examples/), each a
 `{ nftypes, nftzones, ... }: body` function ready to drop into
 `networking.nftzones.tables.<name>`:
 
-| File | Scenario |
-|---|---|
-| [`examples/home-router.nix`](examples/home-router.nix) | SOHO router — LAN/WAN, masquerade, a port-forward, default-deny inbound. |
-| [`examples/vlan-segmentation.nix`](examples/vlan-segmentation.nix) | Four VLAN security zones with a rule-by-rule reachability matrix. |
-| [`examples/dmz-hierarchy.nix`](examples/dmz-hierarchy.nix) | A DMZ whose hosts are `nodes` — per-host child zones under a shared parent. |
+| File                                                               | Scenario                                                                    |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| [`examples/home-router.nix`](examples/home-router.nix)             | SOHO router — LAN/WAN, masquerade, a port-forward, default-deny inbound.    |
+| [`examples/vlan-segmentation.nix`](examples/vlan-segmentation.nix) | Four VLAN security zones with a rule-by-rule reachability matrix.           |
+| [`examples/dmz-hierarchy.nix`](examples/dmz-hierarchy.nix)         | A DMZ whose hosts are `nodes` — per-host child zones under a shared parent. |
 
-Each is compiled by the `examples` check tier on every CI run, so they
+Each is compiled by the `examples` check on every CI run, so they
 stay valid against the current type surface.
 
 ## Documentation
 
-| File | Audience |
-|---|---|
-| [`docs/zone-based-firewall.md`](docs/zone-based-firewall.md) | Newcomers to the zone-based firewall model. |
-| [`docs/compile-pipeline.md`](docs/compile-pipeline.md) | Integrators, debuggers, contributors. |
-| [`docs/zone-hierarchy.md`](docs/zone-hierarchy.md) | Zone hierarchy semantics and dispatch model. |
-| [`CONTEXT.md`](CONTEXT.md) | Glossary of domain terms. |
-| [`docs/adr/`](docs/adr/) | Architecture decision records, including rejected alternatives. |
+| File                                                         | Audience                                                        |
+| ------------------------------------------------------------ | --------------------------------------------------------------- |
+| [`docs/zone-based-firewall.md`](docs/zone-based-firewall.md) | Newcomers to the zone-based firewall model.                     |
+| [`docs/compile-pipeline.md`](docs/compile-pipeline.md)       | Integrators, debuggers, contributors.                           |
+| [`docs/zone-hierarchy.md`](docs/zone-hierarchy.md)           | Zone hierarchy semantics and dispatch model.                    |
+| [`CONTEXT.md`](CONTEXT.md)                                   | Glossary of domain terms.                                       |
+| [`docs/adr/`](docs/adr/)                                     | Architecture decision records, including rejected alternatives. |
 
 ## Requirements
 
@@ -218,7 +218,7 @@ stay valid against the current type surface.
 
 `nftzones` depends on two sibling flakes — [`nftypes`](https://github.com/petohorvath/nix-nftypes) (the libnftables-JSON schema + DSL) and [`libnet`](https://github.com/petohorvath/nix-libnet) (CIDR / port / interface-name primitives). All three are single-maintainer GitHub repos (`petohorvath`). Commits and release tags are **not** GPG-signed.
 
-Trust model: pin by `rev` + `narHash` via `flake.lock` (the lock file `nftzones` ships does this) so a fetch only succeeds if the content matches the recorded hash. Bumps are explicit (`nix flake update nftypes`) and surface in the lockfile diff for review. Users who require third-party auditability should pin their own fork.
+Trust model: pin by `rev` + `narHash` via `flake.lock` (the lock file `nftzones` ships does this; `flake.nix` also pins both sibling inputs to a commit until they publish release tags) so a fetch only succeeds if the content matches the recorded hash. Bumps are explicit (`nix flake update nftypes`) and surface in the lockfile diff for review. Users who require third-party auditability should pin their own fork.
 
 ## Known limitations
 
@@ -228,29 +228,38 @@ Trust model: pin by `rev` + `narHash` via `flake.lock` (the lock file `nftzones`
 
 ## Testing
 
-Four tiers, each runnable via `nix flake check`:
+`nix flake check` runs five checks:
 
-- **Unit** (`tests/unit/`): per-module tests of the compile pipeline's helpers and validators.
+- **Unit** (`tests/unit/`): per-module tests of the compile pipeline's helpers and validators, run by [nix-unit](https://github.com/nix-community/nix-unit). For a focused run inside `nix develop`, select one test file or case, for example `nix-unit tests/entrypoint.nix --attr internal.compile`.
 - **Integration** (`tests/integration/`): structured assertions on the rendered nftables JSON for representative scenarios, plus negative tests that confirm Phase 1 validators reject known-bad inputs in the live `mkRuleset` pipeline.
-- **Examples** (`examples/`): compile-checks every `examples/*.nix` through `mkRuleset` so the shipped example configs can't drift out of sync with the type surface.
+- **Examples** (`tests/examples.nix`): compile-checks every `examples/*.nix` through `mkRuleset` so the shipped example configs can't drift out of sync with the type surface.
+- **Formatting** and **lint**: `nix fmt` must leave the tree unchanged, and statix, deadnix, and actionlint must report nothing.
+
+The VM tests are not part of `nix flake check`; they are exposed as `legacyPackages.<system>.vmTests.<name>`:
+
 - **VM** (`tests/vm/`): real-kernel multi-VM scenarios via `pkgs.testers.nixosTest`. One topology per feature, each requiring `/dev/kvm` on the builder. Verification is conntrack-on-router for NAT and deny-path tests, packet-content for everything else:
 
-  | File | VMs | Coverage |
-  |---|---|---|
-  | [`forward.nix`](tests/vm/forward.nix) | client + router + server + external | L3 forwarding, ICMP, SSH, SNAT masquerade, DNAT port-forward, DNS redirect, default-deny wan→lan, non-DNAT'd port, stateful prelude `[ASSURED]` + INVALID drop, `reject` verdict, `log` statement |
-  | [`vlan.nix`](tests/vm/vlan.nix) | router + vlan-iot + vlan-admin (single 802.1Q trunk) | inter-VLAN allow, inter-VLAN default-deny |
-  | [`rpfilter.nix`](tests/vm/rpfilter.nix) | client + router + spoofer (wan-side host with a lan-range /32 alias) | `settings.rpfilter = true` accepts legit src, drops spoofed |
-  | [`marks.nix`](tests/vm/marks.nix) | client + router + server (with `ip rule fwmark X table Y`) | `sroutes` mark steers forwarded traffic to an alternate routing table |
-  | [`droutes.nix`](tests/vm/droutes.nix) | router + target | `droutes` mark steers router-originated traffic (OUTPUT hook) |
-  | [`dualstack.nix`](tests/vm/dualstack.nix) | client + router + server, IPv4 + IPv6 | dual-stack forwarding on an `inet` table, v6 conntrack tracking |
-  | [`bridge.nix`](tests/vm/bridge.nix) | vmA + bridge + vmB | `family = "bridge"` L2 filter across a Linux bridge |
-  | [`atomic-reload.nix`](tests/vm/atomic-reload.nix) | client + router + server | mid-flight `nft -f` ruleset swap preserves established connections |
-  | [`activation.nix`](tests/vm/activation.nix) | client + router + server | real NixOS activation removes the SSH allow rule while preserving an established connection |
+  | File                                              | VMs                                                                  | Coverage                                                                                                                                                                                          |
+  | ------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | [`forward.nix`](tests/vm/forward.nix)             | client + router + server + external                                  | L3 forwarding, ICMP, SSH, SNAT masquerade, DNAT port-forward, DNS redirect, default-deny wan→lan, non-DNAT'd port, stateful prelude `[ASSURED]` + INVALID drop, `reject` verdict, `log` statement |
+  | [`vlan.nix`](tests/vm/vlan.nix)                   | router + vlan-iot + vlan-admin (single 802.1Q trunk)                 | inter-VLAN allow, inter-VLAN default-deny                                                                                                                                                         |
+  | [`rpfilter.nix`](tests/vm/rpfilter.nix)           | client + router + spoofer (wan-side host with a lan-range /32 alias) | `settings.rpfilter = true` accepts legit src, drops spoofed                                                                                                                                       |
+  | [`marks.nix`](tests/vm/marks.nix)                 | client + router + server (with `ip rule fwmark X table Y`)           | `sroutes` mark steers forwarded traffic to an alternate routing table                                                                                                                             |
+  | [`droutes.nix`](tests/vm/droutes.nix)             | router + target                                                      | `droutes` mark steers router-originated traffic (OUTPUT hook)                                                                                                                                     |
+  | [`dualstack.nix`](tests/vm/dualstack.nix)         | client + router + server, IPv4 + IPv6                                | dual-stack forwarding on an `inet` table, v6 conntrack tracking                                                                                                                                   |
+  | [`bridge.nix`](tests/vm/bridge.nix)               | vmA + bridge + vmB                                                   | `family = "bridge"` L2 filter across a Linux bridge                                                                                                                                               |
+  | [`atomic-reload.nix`](tests/vm/atomic-reload.nix) | client + router + server                                             | mid-flight `nft -f` ruleset swap preserves established connections                                                                                                                                |
+  | [`activation.nix`](tests/vm/activation.nix)       | client + router + server                                             | real NixOS activation removes the SSH allow rule while preserving an established connection                                                                                                       |
 
-The two reload scenarios use [`reload-verification.py`](tests/vm/reload-verification.py) to establish SSH, run the scenario's reload, verify that the same session survives and fresh connections fail, and collect diagnostics on failure. Each scenario keeps its reload command and ruleset assertions inside the `verify_reload` context. Run them individually with `nix build .#checks.x86_64-linux.vm.entries.atomic-reload` and `nix build .#checks.x86_64-linux.vm.entries.activation` (use `vm-unstable` for the other pinned nixpkgs branch).
+The two reload scenarios use [`reload-verification.py`](tests/vm/reload-verification.py) to establish SSH, run the scenario's reload, verify that the same session survives and fresh connections fail, and collect diagnostics on failure. Each scenario keeps its reload command and ruleset assertions inside the `verify_reload` context. Run any VM test individually, for example `nix build .#vmTests.atomic-reload` or `nix build .#vmTests.activation`.
 
-CI runs the VM suite against both pinned nixpkgs inputs, `nixos-25.11` and `nixos-unstable`, so upstream regressions surface alongside changes here.
+CI calls the shared [project policy](https://github.com/petohorvath/nixos-project-policy) workflow. It runs `nix flake check` against the locked `nixpkgs` revision and the policy's stable and unstable revisions, so upstream regressions surface alongside changes here. The VM tests run once, against the locked revision, on a KVM-enabled x86_64 runner. To check another nixpkgs revision locally, override the input:
+
+```bash
+nix flake check --override-input nixpkgs "github:NixOS/nixpkgs/$NIXPKGS_REV" \
+  --no-write-lock-file --print-build-logs
+```
 
 ## Contributing
 
-Issues and PRs welcome on [github.com/petohorvath/nixos-nftzones](https://github.com/petohorvath/nixos-nftzones). Run tests with `nix flake check`.
+Issues and PRs welcome on [github.com/petohorvath/nixos-nftzones](https://github.com/petohorvath/nixos-nftzones). `nix develop` (or direnv with `.envrc`) provides the development tools. Format with `nix fmt` and run the checks with `nix flake check`.

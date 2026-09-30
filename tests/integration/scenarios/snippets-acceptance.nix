@@ -15,7 +15,7 @@
   pin every emitted shape, so this scenario only needs to prove
   the kernel accepts them.
 */
-{ nftypes, nftzones, ... }:
+{ nftzones, ... }:
 let
   inherit (nftzones.snippets)
     accept

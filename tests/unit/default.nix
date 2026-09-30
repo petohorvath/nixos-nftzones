@@ -1,13 +1,14 @@
 /*
-  Unit-test definitions. Each test file's attrset
-  (`testFoo = { expr; expected; }`) is merged into one big
-  `runTests`-shaped value consumed by `tests/unit/runner.nix`.
+  Unit-test definitions for nix-unit. Each test file returns an attrset
+  of `testFoo = { expr; expected; }` cases; the result nests them by
+  file, for example `internal.compile.testFoo` or `module.testFoo`.
+  `tests/unit-check.nix` runs each file as one nix-unit group.
 
   Discovery is automatic: every `*.nix` file under this directory
-  (top-level + `internal/` + `types/`) is imported and merged,
-  except the runner-internal files (`default.nix`, `runner.nix`,
-  `helpers.nix`). Adding a new unit-test file means dropping
-  `tests/unit/<group>/<name>.nix` — no edit here required.
+  (top-level + `internal/` + `types/`) is imported, except the
+  aggregator (`default.nix`) and the shared `helpers.nix`. Adding a
+  new unit-test file means dropping `tests/unit/<group>/<name>.nix`;
+  no edit here is required.
 */
 args@{
   pkgs,
@@ -19,25 +20,26 @@ let
 
   excludedFiles = [
     "default.nix"
-    "runner.nix"
     "helpers.nix"
   ];
 
-  listTestFiles =
+  importTestFiles =
     dir:
     lib.pipe (builtins.readDir dir) [
       (lib.filterAttrs (
         name: type: type == "regular" && lib.hasSuffix ".nix" name && !(builtins.elem name excludedFiles)
       ))
-      builtins.attrNames
+      (lib.mapAttrs' (
+        name: _: lib.nameValuePair (lib.removeSuffix ".nix" name) (import (dir + "/${name}") args)
+      ))
     ];
-
-  importTestFiles = dir: map (name: import (dir + "/${name}") args) (listTestFiles dir);
 in
-{
-  testVersion = {
+importTestFiles ./.
+// {
+  internal = importTestFiles ./internal;
+  types = importTestFiles ./types;
+  version.testVersion = {
     expr = nftzones.version;
     expected = "0.1.0";
   };
 }
-// lib.mergeAttrsList (importTestFiles ./. ++ importTestFiles ./internal ++ importTestFiles ./types)
