@@ -2,7 +2,7 @@
   Zone-set-ref scenario — a user rule body references a
   zone-derived auto-set (`@<zone>_v4`) directly via a raw match
   clause. Pins the option-(a) namespace resolution decided in
-  `docs/compile-pipeline.md` §Open questions item 6:
+  `docs/adr/0004-zone-sets-referenceable-from-rule-bodies.md`:
   `checkObjectRefs` resolves names against the union of
   `table.objects.sets.<name>` keys and the predictable
   `<zone>_{iifs,v4,v6}` names — a user can use an auto-set as an

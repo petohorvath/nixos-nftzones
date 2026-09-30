@@ -10,28 +10,17 @@ Without the pipeline, the type system catches structural errors but nothing prod
 
 ## Terminology
 
-The pipeline (and the surrounding code) names the data-model levels consistently:
+Domain terms (group, entry, direction, side, cell, slot, section,
+variant, base chain, sub-chain, chain placement, entry priority vs.
+chain priority) are defined in [`CONTEXT.md`](../CONTEXT.md). This
+section covers only how the pipeline names things internally.
 
-- **Group** — one of the rule-bearing collections on a table: `filters`, `policies`, `snats`, `dnats`, `sroutes`, `droutes`. Each group is `attrsOf <kind-submodule>`. *Not* used for `zones` and `nodes` — those are zone-level declarations and have their own terminology ("zone declaration", "node declaration").
-- **Entry** — one item inside a group, keyed by name. `table.filters.allow-ssh` is an entry; the body field on it (`entry.rule`, the list of nftypes statements) is unambiguous because the wrapper is an *entry*, not a *rule*.
-- **Direction** — `from` or `to`, the zone-name fields on an entry. Some groups are bidirectional (filters, policies, snats — both `from` and `to`); others are single-direction (`dnats`, `sroutes` have only `from`; `droutes` only `to`). Direction is the *entry's* perspective on the source/destination axis.
-- **Side** — `ingress` or `egress`, the per-axis match fields on a zone (`zone.matchOverride.<side>`). Side is the *zone's* perspective on the same axis: a packet entering the firewall matches a zone's `ingress` side; a packet leaving matches its `egress` side. Mapped from direction via `internal.zone.directionToSide`: `from → ingress`, `to → egress`. Two terms exist because each reads naturally only in its native frame ("entry's from-direction" / "zone's ingress side"); collapsing produces awkward constructs like "the to side" or "the egress direction".
-- **Cell** — a concrete `(from, to)` instance of an entry produced by Phase 2's cartesian product. Same shape as the entry but with the listed directions as scalars instead of lists. An entry with `from = [ "lan" "guest" ]; to = [ "wan" "vpn" ]` produces four cells. For single-direction groups, a cell has only the relevant scalar (e.g., a `dnat` cell has `from = "wan"` and no `to`).
-- **Slot** — one of two positions a cell occupies *within its sub-chain*, decided by the cell's resolved priority: `preChildCells` (emit *before* the child-dispatch jumps in that sub-chain) or `postChildCells` (emit *after*). The cutoff is at resolved priority `100` (`preDispatch` = 50 → preChildCells; default = 500 → postChildCells). Phase 3 buckets cells by `(chain, sub-chain, slot)`; Phase 4 emits each slot in order.
-- **Bucket** — Phase 3 container holding all cells destined for one `(hook, priority)` placement, organized by sub-chain. `ctx.chainBuckets.<baseChainName> = { hook; priority; subChains; }`. Each sub-chain inside carries its own `preChildCells` / `postChildCells` slots. Phase 4 emits one base chain per bucket; the base chain itself holds only the dispatch jumps.
-- **Section** — one of the four sub-keys of `zone.matchOverride.<side>`: `interfaces` / `ipv4` / `ipv6` / `extra`. A section either contributes a clause to a direction's match (when non-null and non-empty) or is inert. `zoneMembership.activeOverrides` filters out null / empty sections; `zoneMembership.directionVariants` reads the remaining "active" sections to build the variant cartesian.
-- **Variant** — one match-clause list within a `matchOverride.<side>` (or in a Phase 4 jump rule). Multiple variants → multiple emitted rules. `zoneMembership.directionVariants` documents the section-presence cartesian for jump-match construction.
-
-### nftables vocabulary
-
-These are nftables's own concepts; nftzones adopts the same terms verbatim:
-
-- **Hook** — netfilter attachment point. One of `prerouting` / `input` / `forward` / `output` / `postrouting` / `ingress` / `egress`. Field name in code: `hook`.
-- **Chain priority** — orders chains attached to the same hook. Symbol (`raw` / `mangle` / `dstnat` / `filter` / `security` / `srcnat`) or int. NOT to be confused with **entry priority**. Field name: `chainAttrs.priority`.
-- **Entry priority** — orders entries within their slot in a sub-chain (or pre/postDispatch in a base chain). Symbol (`first` / `preDispatch` / `postDispatch` / `default` / `last`) or int. Resolved by `internal.priority.resolvePriority`. Type: `primitives.entryPriority`.
-- **Chain type** — `filter` / `nat` / `route`. Phase 4 derives this from `(hook, priority)` via `chainTypeOf`.
-- **Base chain** — chain attached to a hook (carries `type` / `hook` / `priority` / `policy`).
-- **Sub-chain** — regular chain (only reachable via `jump`). One per `(from, to)` pair in nftzones' compile model.
+A **bucket** is the Phase 3 container holding all cells destined for
+one base chain: `ctx.chainBuckets.<baseChainName> = { hook; priority;
+subChains; }`, where each sub-chain carries its own `preChildCells` /
+`postChildCells` slots. The direction-to-side mapping lives in
+`internal.zone.directionToSide`; entry priorities resolve through
+`internal.priority.resolvePriority`.
 
 ### Naming convention for chain identifiers
 
@@ -473,37 +462,11 @@ Each internal module has a unit-test file under `tests/unit/internal/<module>.ni
 
 ## Design decisions
 
-Originally an "open questions" list. Each entry below records a
-decision point that came up during design plus the resolution that
-landed. Kept in this file (rather than archived) because new
-contributors hitting the same forks benefit from the prior thinking.
-
-1. **DSL helpers vs hand-rolled nftypes shapes.** Use `nftypes.dsl.*` builders (with marker validation) or construct nftypes-typed attrs directly? DSL is cleaner; hand-roll gives more control.
-
-   **Decision: DSL helpers only.** All rule-body / statement construction goes through `nftypes.dsl.*`; hand-rolled libnftables-json shapes like `{ match = …; }` / `{ accept = null; }` are forbidden. Tests enforce this via the shapes they generate.
-
-2. **Chain naming convention.** Sketched as `fwd-<from>-to-<to>`, `in-<from>` etc. in the original draft; bikeshed before implementation landed.
-
-   **Decision: `<hook>-at-<priority>` for base chains, `<base>__<key>` for sub-chains.** See "Naming convention for chain identifiers" in the Terminology section above. The original sketch (`fwd-…`) was abandoned — the `<hook>-at-<priority>` form generalizes across hooks (filter / nat / route / mangle / raw / security) and matches the bucket key in `chainBuckets`.
-3. **Cross-reference walking.** Named-object reference validation requires walking statement trees (counter / limit / quota / ct-helper / ct-timeout / ct-expectation / secmark / synproxy / tunnel references inside `entry.rule` bodies, plus set / map lookups inside `match` expressions). Two paths:
-
-   - **Special-case extractor** — pattern-match on the ~12 statement variants that can carry named-object refs, plus the expression-level set/map lookups inside matches. Smaller surface; brittle to nftypes adding variants.
-   - **Generic walker** — recurse over any statement / expression tree, parameterized by a per-node visitor. Schema knowledge (which sub-fields of each variant are sub-statements / sub-expressions) lives naturally in nftypes alongside the schemas, so the walker would be upstreamed there (`nftypes.lib.walk.statements` / `walk.expressions` / `walk.rule`) rather than living in `internal/statements.nix`.
-
-   `nftypes` currently doesn't expose a walker. Its `lib/dsl/structure/render.nix` walks the *table* tree (table → chains → rules) with stock `lib.concatMap` iteration but never recurses into statement bodies; `lib/dsl/internal/validate.nix` runs bodies through `lib.evalModules` for shape checking, which doesn't traverse content. What `nftypes` *does* expose are the inputs both approaches need: `nftypes.lib.types.statements` enumerates the variant tags, the `attrTag` shape (single-key attrset where the key is the tag) makes dispatch a one-liner, and `<variant>Body` schemas locate where references live in each body.
-
-   **Decision:** implement the special-case extractor in nftzones first. One consumer, small surface, no speculative API design. If a second use case appears (Phase 4 emit doing structural transforms, a future linter, etc.), upstream the generalized walker to nftypes then — designing the walker API with a single consumer risks the wrong abstraction.
-4. **Error aggregation strategy.** Phase 1 validators return error lists. Should Phase 4 emission also return errors, or is "if execution reached Phase 4, emission can't fail" reasonable? The latter assumes Phases 1-3 fully validate.
-5. **Single-table vs multi-table compile.** `mkTable` takes one table; multi-table consumers compose externally. Reconsider only if a real consumer wants a single function call.
-6. **Zone-derived auto-sets in user rule bodies.** Phase 1's `computeZoneMembership` materializes `<zone>_iifs` / `<zone>_v4` / `<zone>_v6` into `ctx.zoneMembership.sets`, which Phase 4 emits into `table.objects.sets` at output time. A user could in principle reference one of those names from a `match` clause inside their own rule body (e.g. `right = "@lan_v4"`). At Phase 1 validation time those names are not yet in `table.objects.sets` — they're synthesized later — so a naive `checkObjectRefs` would falsely flag them as unknown.
-
-    Three options:
-
-    - **(a) Parallel namespace** — `checkObjectRefs` resolves names against both `objects.sets.<name>` keys and the predictable `<zone>_{iifs,v4,v6}` names derived from `mergedZones`. No schema change; gives users an escape hatch when raw `match` against zone membership is more natural than `from` / `to`.
-    - **(b) Pre-seed synthetic sets** — add a Phase 1 sub-phase that materializes zone-derived sets into a virtual `objects.sets` view before validation. Cleaner separation but more pipeline machinery.
-    - **(c) Disallow user refs to zone-derived names** — document `from` / `to` as the only sanctioned way to express zone membership in match clauses; explicitly reject `@<zone>_{iifs,v4,v6}` shapes inside rule bodies.
-
-    **Decision: (a)** — same cost as (c), but preserves the escape hatch for users who need raw `match` against zone membership. `checkObjectRefs` will resolve names against the union of `objects.sets.<name>` keys and the predictable `<zone>_{iifs,v4,v6}` names derived from `mergedZones`.
+Recorded as ADRs in [`docs/adr/`](adr/): DSL-only rule construction
+(0001), chain naming (0002), the object-reference extractor (0003),
+zone-derived sets in rule bodies (0004), single-table compile (0005),
+and Phase 1 validation (0009). Whether Phase 4 should report errors
+is open as [#10](https://github.com/petohorvath/nixos-nftzones/issues/10).
 
 ## Status
 
@@ -568,10 +531,6 @@ nftzones.mkTable   name body  →  nftypes-table-value     (composable)
 nftzones.mkRuleset name body  →  { nftables = [ ... ]; } (ready for `nft -f -j`)
 ```
 
-Pending follow-ups:
-
-1. Validate chain references in rule bodies. `checkObjectRefs` covers named-object refs (counter / set / map / etc.) but does NOT validate `dsl.jump <name>` / `dsl.goto <name>` targets. Two reasons today: (i) the chain-name surface in nftzones is internal (`<hook>-at-<priority>__<key>`) and not part of the public API, so users writing raw jumps to those names are working off-script; (ii) chains are synthesized in Phase 4, so Phase 1 doesn't yet know which names exist. Options if/when this matters: (a) add a Phase 4 post-emit validator that walks emitted rules and checks every `jump` / `goto` against the synthesized chain set, or (b) provide a public chain-name builder helper and validate at Phase 1 against that. Defer until a real consumer needs raw chain jumps.
-
-2. ~~`sroute` emits an invalid chain type~~ **Resolved.** Upstream nftypes added `hooksByChainType` and the family-aware `chainTypeFor`; `internal.emit.chainTypeOf` is gone, replaced by a direct call to `nftypes.chainTypeFor`. Sroute now compiles to `type filter` at `prerouting + mangle` (mark-set then `ip rule` policy routing). Covered end-to-end by `tests/integration/scenarios/sroute-mark.nix`.
-
-3. ~~`bridge` family rulesets silently misbehave~~ **Resolved.** Upstream nftypes added `priorityNameOf` and `chainTypeFor` with family-aware dispatch via `priorityIntsByFamily`; `internal.dispatch.canonicalPriority` is gone, replaced by `nftypes.priorityNameOf`. Bridge's priority constants (`filter = -200`, `srcnat = 300`, …) now canonicalize correctly. The Phase 1 family-allowlist (`checkSupportedFamily`) was replaced by the more general `checkChainPlacement`, which uses `nftypes.validChainPlacement` to reject any `(family, chainType, hook)` triple the kernel would refuse — catches bridge nat (no nat support), bridge sroute/droute (no mangle priority), and route at non-output hooks. Bridge filter+policy is covered by `tests/integration/scenarios/bridge-filter.nix`.
+Open design gaps are tracked as GitHub issues, for example
+[#6](https://github.com/petohorvath/nixos-nftzones/issues/6)
+(validating jump/goto targets).
