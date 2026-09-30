@@ -39,9 +39,9 @@
   ...
 }:
 let
-  inherit (nftypes.dsl) eq accept;
+  inherit (nftypes.dsl) accept eq;
   inherit (nftypes.dsl.fields) tcp;
-  snip = nftzones.snippets;
+  inherit (nftzones) snippets;
 in
 {
   zones = {
@@ -75,7 +75,7 @@ in
     lan-admin-ssh = {
       from = [ "lan" ];
       to = [ "local" ];
-      rule = snip.accept.tcp 22;
+      rule = snippets.accept.tcp 22;
     };
 
     # WAN may ping the router (ICMP echo-request, type 8) — a
@@ -84,7 +84,7 @@ in
     wan-ping = {
       from = [ "wan" ];
       to = [ "local" ];
-      rule = snip.accept.icmp.v4 8;
+      rule = snippets.accept.icmp.v4 8;
     };
 
     # The post-DNAT half of the port-forward below. `dnats`

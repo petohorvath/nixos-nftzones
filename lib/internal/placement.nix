@@ -117,23 +117,24 @@ let
     in
     selectChainAttrs group entry filterHooks;
 
-  # Base chain name — `"<hook>-at-<priority>"` (e.g.
-  # `"input-at-filter"`). Used as the bucket key in
-  # `dispatch.chainBuckets` and as the chain name Phase 4 emits in
-  # the nftables output. The format is a naming convention; bucket
-  # carries the structured `{ hook; priority; }` separately so
-  # Phase 4 reads fields, not parsed strings.
-  #
-  # Priority is canonicalized via `nftypes.priorityNameOf` so int
-  # and symbol forms of the same value share one bucket
-  # (`chain.priority = 0` and the default `"filter"` collapse into
-  # `"input-at-filter"`). The lookup is family-aware — bridge's
-  # `filter = -200` canonicalizes correctly, unlike the prior
-  # inet-only inline implementation.
-  #
-  # Single source of truth for the bucket-key format; consumers
-  # that synthesize a chain placement (e.g. Phase 4's rpfilter
-  # collision check) must build the same key by calling this.
+  /*
+    Base chain name — `"<hook>-at-<priority>"` (e.g.
+    `"input-at-filter"`). Used as the bucket key in
+    `dispatch.chainBuckets` and as the chain name Phase 4 emits in
+    the nftables output. The format is a naming convention; bucket
+    carries the structured `{ hook; priority; }` separately so
+    Phase 4 reads fields, not parsed strings.
+
+    Priority is canonicalized via `nftypes.priorityNameOf` so int
+    and symbol forms of the same value share one bucket
+    (`chain.priority = 0` and the default `"filter"` collapse into
+    `"input-at-filter"`). The lookup is family-aware — bridge's
+    `filter = -200` canonicalizes correctly.
+
+    Single source of truth for the bucket-key format; consumers
+    that synthesize a chain placement (e.g. Phase 4's rpfilter
+    collision check) must build the same key by calling this.
+  */
   baseChainNameOf =
     family: chainAttrs: "${chainAttrs.hook}-at-${toString (priorityNameOf family chainAttrs.priority)}";
 
@@ -162,13 +163,12 @@ let
       to
     else
       throw "internal.placement.subChainKeyOf: at least one of `from` / `to` must be non-null";
-
 in
 {
   inherit
+    baseChainNameOf
     chainAttrsForCell
     chainAttrsForEntry
-    baseChainNameOf
     subChainKeyOf
     ;
 }

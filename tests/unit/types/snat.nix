@@ -11,9 +11,9 @@
   ...
 }:
 let
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable evalFails;
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalFails evalTable;
 
-  masqBody = {
+  masqueradeBody = {
     from = [ "lan" ];
     to = [ "wan" ];
     rule.masquerade = { };
@@ -29,19 +29,19 @@ in
   # ===== snat.name — derives from attrset key =====
 
   testSnatNameDerivedFromKey = {
-    expr = (snatIn masqBody).name;
+    expr = (snatIn masqueradeBody).name;
     expected = "outbound";
   };
 
   # ===== from / to — required, non-empty =====
 
   testSnatFromEmptyRejected = {
-    expr = evalFails (snatIn (masqBody // { from = [ ]; })).from;
+    expr = evalFails (snatIn (masqueradeBody // { from = [ ]; })).from;
     expected = true;
   };
 
   testSnatToEmptyRejected = {
-    expr = evalFails (snatIn (masqBody // { to = [ ]; })).to;
+    expr = evalFails (snatIn (masqueradeBody // { to = [ ]; })).to;
     expected = true;
   };
 
@@ -50,7 +50,7 @@ in
   testSnatRuleMasqueradeEmpty = {
     # nftypes' masqueradeBody fills its optional fields with
     # null defaults at submodule-eval time.
-    expr = (snatIn masqBody).rule;
+    expr = (snatIn masqueradeBody).rule;
     expected = {
       masquerade = {
         flags = null;
@@ -64,7 +64,7 @@ in
     # defaults alongside the user-supplied `addr`/`port`.
     expr =
       (snatIn (
-        masqBody
+        masqueradeBody
         // {
           rule.snat = {
             addr = "203.0.113.5";
@@ -88,7 +88,7 @@ in
     expr =
       evalFails
         (snatIn (
-          masqBody
+          masqueradeBody
           // {
             rule = {
               snat.addr = "203.0.113.5";
@@ -100,33 +100,33 @@ in
   };
 
   testSnatRuleRejectsUnknownTag = {
-    expr = evalFails (snatIn (masqBody // { rule.redirect = { }; })).rule;
+    expr = evalFails (snatIn (masqueradeBody // { rule.redirect = { }; })).rule;
     expected = true;
   };
 
   # ===== snat.priority — entryPriority, default "default" =====
 
   testSnatPriorityDefault = {
-    expr = (snatIn masqBody).priority;
+    expr = (snatIn masqueradeBody).priority;
     expected = "default";
   };
 
   testSnatPriorityRejectsUnknown = {
-    expr = evalFails (snatIn (masqBody // { priority = "wat"; })).priority;
+    expr = evalFails (snatIn (masqueradeBody // { priority = "wat"; })).priority;
     expected = true;
   };
 
   # ===== snat.chain — null default =====
 
   testSnatChainDefaultNull = {
-    expr = (snatIn masqBody).chain;
+    expr = (snatIn masqueradeBody).chain;
     expected = null;
   };
 
   testSnatChainAccepted = {
     expr =
       (snatIn (
-        masqBody
+        masqueradeBody
         // {
           chain = {
             hook = "output";
@@ -143,7 +143,7 @@ in
   # ===== snat.comment — optional =====
 
   testSnatCommentDefault = {
-    expr = (snatIn masqBody).comment;
+    expr = (snatIn masqueradeBody).comment;
     expected = null;
   };
 }

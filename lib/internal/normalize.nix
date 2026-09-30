@@ -71,492 +71,12 @@
   submodule's defaults. Declared zones already have this shape
   from submodule evaluation, so `ctx.mergedZones` is uniformly
   shaped — downstream phases can consume it without re-evaluation.
-
-  Per-function docstring convention used throughout this file
-  (and `internal/expand.nix`, `internal/dispatch.nix`,
-  `internal/emit.nix`): each `===== fnName =====` section uses
-  `Reads:` / `Writes:` lines naming the ctx and table fields the
-  function consumes and produces. Pure leaf helpers (e.g. in
-  `internal/zone.nix`, `internal/placement.nix`) use `Inputs:` /
-  `Output:` instead, since they don't touch the pipeline ctx.
-  The two-form split is intentional: phase orchestrators thread
-  `{ table; ctx }`, so listing `Reads:` / `Writes:` clarifies
-  which ctx fields the orchestrator touches; leaves take and
-  return ordinary values.
-
-  ===== computeZoneMembership =====
-
-  Reads:  ctx.mergedZones, table.settings.localZone
-  Writes: ctx.zoneMembership
-
-  Resolves membership once through `internal.zone.resolveMembership`.
-  The value owns transitive sets and their source zones, hierarchy,
-  override sections, own matchability, hook visibility and direction
-  variants. Validators and Phase 4 ask it distinct questions without
-  reconstructing section provenance. Hierarchy walks are cycle-safe
-  so the validators below can aggregate malformed-parent errors.
-
-  ===== convertNodesToZones =====
-
-  Reads:  table.zones, table.nodes
-  Writes: ctx.mergedZones
-
-  Lowers each node via `node.toZone`, completes it to the full
-  `nftzones.types.zone` submodule shape (filling in `name`,
-  `matchOverride` defaults), then merges into the declared zones.
-  Result is a uniformly-shaped attrset.
-
-  ===== checkParentRefs =====
-
-  Reads:  ctx.mergedZones, table.settings.localZone
-  Writes: ctx.errors (appends)
-
-  Verifies every non-null `zone.parent` resolves to a key in
-  `ctx.mergedZones`. The `localZone` sentinel is forbidden as a
-  parent — it isn't a real zone, has no ingress match, and can't
-  participate in chain dispatch. Each error is
-  `lib.nameValuePair "zoneParentUnknown" <message>` for unresolved
-  parents, or `"zoneParentLocalZone" <message>` for the localZone
-  case.
-
-  ===== checkParentCycles =====
-
-  Reads:  ctx.mergedZones
-  Writes: ctx.errors (appends)
-
-  Walks each zone's parent chain; if a name is revisited within
-  the same walk, emits a cycle error. Each cycle is canonicalized
-  by rotating its node list so the lex-smallest member leads,
-  then formatted — so the same cycle discovered from different
-  starting points produces one error per cycle rather than one
-  per starting point.
-
-  Each error is `lib.nameValuePair "zoneParentCycle" <message>`
-  with the cycle path joined by `" → "`.
-
-  ===== checkNameCollisions =====
-
-  Reads:  table.zones, table.nodes
-  Writes: ctx.errors (appends)
-
-  Detects names declared as both a zone and a node — node-to-zone
-  lowering would silently overwrite the zone otherwise. Each error
-  is `lib.nameValuePair "zoneNameCollision" <message>`.
-
-  ===== checkNameKeyMismatch =====
-
-  Reads:  table.{zones,nodes,filters,policies,snats,dnats,sroutes,
-          droutes} (per `keyedNameGroups`)
-  Writes: ctx.errors (appends)
-
-  Guards the `name == <attribute key>` invariant for every object
-  that lives in a keyed attrset. The `name` sub-option on these
-  types dropped `readOnly` so evaluated submodules stay copy-safe
-  (copying one into another `attrsOf <type>` option no longer
-  re-defines a read-only field — see the type modules under
-  `lib/types/`). `name` still defaults to the enclosing key, but a
-  user can now set it explicitly, which would desync it from the
-  key the pipeline keys everything off: dispatch sort and reference
-  resolution, generated set names, and the paths in these very
-  error messages all derive from the attr key, while external
-  introspection (nix-topology, `deepSeq`) reads `.name`. Flagging
-  the divergence makes the misuse fail loudly here instead of
-  silently splitting the two.
-
-  The table type is not covered — it has no enclosing key by the
-  time the pipeline sees it (`compile` receives an already-
-  evaluated value). Its `name == key` invariant is instead kept by
-  the module / `mkTable` boundary, which overrides the table's
-  `name` with the real `networking.nftzones.tables` attr key. An
-  `apply` on `types.table`'s `name` couldn't stand in: it sees the
-  lexical submodule key, which for a standalone / facade table is
-  the option path, not the tables key it compiles under.
-
-  Each error is `lib.nameValuePair "nameKeyMismatch" <message>`.
-
-  ===== collectAllZoneNames =====
-
-  Reads:  ctx.mergedZones, table.settings.localZone
-  Writes: ctx.allZoneNames
-
-  Computes the in-scope zone-name list — declared zones, lowered
-  nodes, and `settings.localZone`. Consumed by both
-  `expandWildcardZones` and `checkZoneRefs`.
-
-  ===== expandWildcardZones =====
-
-  Reads:  ctx.allZoneNames, ctx.zoneMembership.rootZoneNames,
-          table.{filters,...,droutes},
-          table.settings.wildcardZone
-  Writes: ctx.expandedGroups
-
-  Produces the wildcard-expanded `from` / `to` per
-  (group, entry, direction). Substitution + dedup is inlined as a
-  local helper since this is the only consumer.
-
-  Output shape:
-    expandedGroups = {
-      filters  = { <entry-name> = { from = [...]; to = [...]; }; ... };
-      policies = { ... };
-      snats    = { ... };
-      dnats    = { <entry-name> = { from = [...]; }; ... };
-      sroutes  = { <entry-name> = { from = [...]; }; ... };
-      droutes  = { <entry-name> = { to   = [...]; }; ... };
-    };
-
-  ===== resolvePriorities =====
-
-  Reads:  table.{filters, snats, dnats, sroutes, droutes}
-  Writes: ctx.resolvedPriorities
-
-  Resolves each entry's `priority` (which is `either int symbol`)
-  to a plain int via `internal.priority.resolvePriority`.
-  Stored per-group, per-entry. Consumed by Phase 3 (dispatch + sort)
-  so sorting compares ints, not mixed values. Policies skip this
-  phase because they don't carry a `priority` field — they are
-  always tail rules.
-
-  Output shape:
-    resolvedPriorities = {
-      filters = { <entry-name> = <int>; … };
-      snats   = { <entry-name> = <int>; … };
-      dnats   = { <entry-name> = <int>; … };
-      sroutes = { <entry-name> = <int>; … };
-      droutes = { <entry-name> = <int>; … };
-    };
-
-  ===== collectZoneRefs =====
-
-  Reads:  table.{filters,...,droutes,nodes,settings.wildcardZone}
-  Writes: ctx.zoneRefs
-
-  Walks the *original* table and emits one record per zone-name
-  reference, skipping wildcard placeholders (those are not
-  unresolved references — they're a directive). Paths use
-  user-input slot indices.
-
-  Record shapes:
-    - Group-side ref:  `{ zone; path; direction; }`
-                       (`direction` ∈ `{ "from" "to" }`)
-    - Node parent ref: `{ zone; path; }` (no `direction`)
-
-  `direction` lets `checkZoneMatchable` know which side of the
-  zone's `matchOverride` (and raw `interfaces` / `cidrs`) to
-  validate against.
-
-  ===== checkSettings =====
-
-  Reads:  table.settings.{wildcardZone, localZone}, ctx.mergedZones
-  Writes: ctx.errors (appends)
-
-  Sanity checks on the settings-driven zone names:
-    - `settings.wildcardZone` and `settings.localZone` must differ
-      (otherwise dispatch and wildcard expansion conflict).
-    - Neither may shadow a declared zone or node name (the declared
-      name would be unreachable by user rules).
-  Each error is `lib.nameValuePair "settingsConflict" <message>`.
-
-  ===== checkZoneRefs =====
-
-  Reads:  ctx.zoneRefs, ctx.allZoneNames
-  Writes: ctx.errors (appends)
-
-  Verifies every collected zone reference resolves to a known
-  zone (declared zone, lowered node, or `settings.localZone`).
-  Each error is `lib.nameValuePair "invalidZoneRef" <message>`.
-
-  ===== checkZoneMatchable =====
-
-  Reads:  ctx.zoneRefs, ctx.mergedZones, ctx.zoneMembership,
-          table.settings.localZone
-  Writes: ctx.errors (appends)
-
-  Verifies that every group-side zone reference (`from` / `to` on
-  filter / policy / snat / dnat / sroute / droute entries) hits a
-  zone whose match is non-empty *on the side actually used*:
-  `from` → ingress, `to` → egress.
-
-  Asks `ctx.zoneMembership.hasOwnMatch` about the zone's own
-  declarations and active overrides, excluding descendants. Empty
-  grouping zones may act as synthetic dispatchers, but cannot be
-  directly referenced without their own match.
-
-  Without this check, a zone declared as `zones.foo = { };` (empty
-  interfaces, empty CIDRs, no `matchOverride`) — or one with an
-  asymmetric `matchOverride` that populates only one side — would
-  silently produce unconditional jumps in Phase 4, almost certainly
-  not what the user wanted.
-
-  Skipped:
-    - Refs without `direction` (node parent refs — naming, not
-      matching).
-    - Refs to `settings.localZone` (sentinel, no `mergedZones`
-      entry by design — Phase 4 skips that side's match too).
-    - Refs to unknown zones (already flagged by `checkZoneRefs`,
-      no need to double-error).
-
-  Each error is `lib.nameValuePair "zoneNotMatchable" <message>`.
-
-  ===== checkChainOverridePlacement =====
-
-  Reads:  ctx.expandedGroups, ctx.mergedZones, ctx.zoneMembership,
-          table.{filters, snats, dnats, settings.localZone}
-  Writes: ctx.errors (appends)
-
-  Verifies that filter / snat / dnat entries with a `chain`
-  override land at a hook where their `from` / `to` zones can
-  actually be matched. Without this check, an entry overridden to
-  e.g. `(prerouting, raw)` with a `to` zone that's interface-only
-  would silently emit a jump *without* any to-direction constraint
-  (oifname is unavailable in prerouting), broadening the entry's
-  scope far beyond what the user wrote.
-
-  A zone direction is reachable at hook H if any of:
-    - the zone is `localZone` (always wildcard);
-    - `zone.cidrs` is non-empty (addr matching always works);
-    - `zone.matchOverride.<side>.{ipv4,ipv6,extra}` has a
-      contributing section (always reachable — these sections are
-      hook-agnostic by construction);
-    - `zone.matchOverride.<side>.interfaces` is contributing
-      AND the relevant interface field is valid at H (the
-      interfaces section is treated as iif/oif content by
-      convention);
-    - `zone.interfaces` is non-empty AND the relevant interface
-      field (`iifname` for `from`, `oifname` for `to`) is valid
-      at H. `oifname` validity uses
-      `nftypes.compatibility.hooksWithOifname`; `iifname` is
-      valid at every hook except `output`.
-
-  "Contributing" means the section is non-null AND non-empty.
-
-  Operates on `ctx.expandedGroups` so wildcard expansions like
-  `from = [ "all" ]` are checked per resolved zone.
-
-  Each error is `lib.nameValuePair "chainOverrideUnreachable"
-  <message>`.
-
-  ===== checkPolicyUniqueness =====
-
-  Reads:  ctx.expandedGroups.policies
-  Writes: ctx.errors (appends)
-
-  At most one policy may apply per `(from, to)` cell after
-  expansion. A policy entry like `from = [ "all" ]; to = [ "wan" ]`
-  fans out to a cell per in-scope source zone; if a second, more
-  specific policy targets one of those same `(from, to)` pairs,
-  the resulting nftables ruleset's tail rule for that pair would
-  have an undefined winner. This validator catches the conflict
-  at compile time by enumerating `(entryName, from, to)` triples
-  from `ctx.expandedGroups.policies` and flagging any `(from, to)`
-  pair claimed by more than one entry.
-
-  Each error is `lib.nameValuePair "policyConflict" <message>`,
-  with the message naming the `(from, to)` pair and every entry
-  whose expansion produced a cell for it.
-
-  ===== checkSetNameCollisions =====
-
-  Reads:  table.objects.sets, ctx.zoneMembership
-  Writes: ctx.errors (appends)
-
-  Catches collisions between user-declared `objects.sets.<name>`
-  and auto-generated zone-derived set names (`<zone>_iifs` /
-  `<zone>_v4` / `<zone>_v6` from `zoneMembership.sets`). Phase 4
-  emit merges the two namespaces under `body.sets` and the user's
-  body wins on collision — silently overwriting the zone-derived
-  set, breaking every jump rule that referenced it.
-
-  Runs before `checkObjectRefs` so that validator can resolve
-  refs against the union of both namespaces without ambiguity:
-  by the time `checkObjectRefs` runs, no collision exists.
-
-  Each error is `lib.nameValuePair "setNameCollision" <message>`.
-
-  ===== checkInterfaceOverlap =====
-
-  Reads:  ctx.mergedZones, ctx.zoneMembership.related
-  Writes: ctx.errors (appends)
-
-  Two distinct zones declaring the same interface produce
-  ambiguous dispatch — packets matching `@<zoneA>_iifs` also
-  match `@<zoneB>_iifs`, and whichever zone's jump fires first
-  wins. The losing zone's rules never apply, silently breaking
-  the intended policy.
-
-  Pair-wise comparison over every (zoneName, iface) pair from
-  `ctx.mergedZones`. Skips pairs whose zones are in an
-  ancestor/descendant relation (parent/child sharing an
-  interface is intentional — child traffic is dispatched into
-  the parent's chain first, then the parent's chain dispatches
-  to the child). Same-zone duplicates in the `interfaces` list
-  are also flagged as a separate misconfiguration class.
-
-  Each error is `lib.nameValuePair "interfaceOverlap" <message>`.
-
-  ===== checkCidrOverlap =====
-
-  Reads:  ctx.mergedZones, ctx.zoneMembership.related
-  Writes: ctx.errors (appends)
-
-  Same ambiguous-dispatch failure mode as `checkInterfaceOverlap`,
-  for CIDR prefixes. Pair-wise comparison over every
-  (zoneName, cidr) entry from `ctx.mergedZones`. Skips zone pairs
-  in an ancestor/descendant relation — a child zone's CIDR is
-  intentionally inside its parent's (the canonical case is a
-  node lowered into its parent zone, e.g. `web-server` with
-  address `10.0.0.5` inside `dmz` with `10.0.0.0/24`).
-
-  Family-aware via `libnet.cidr.overlaps`: v4 vs v6 prefixes
-  always return false. Intra-zone overlaps (e.g.
-  `cidrs = [ "10.0.0.0/24" "10.0.0.0/28" ]`) are also flagged
-  as a separate misconfiguration class.
-
-  Each error is `lib.nameValuePair "cidrOverlap" <message>`.
-
-  ===== checkCrossAxisOverlap =====
-
-  Reads:  ctx.zoneMembership.crossAxisPairs
-  Writes: ctx.warnings (appends)
-
-  Warns when two distinct zones may match the same packet across
-  *different* matching axes — one zone bound by interface, the
-  other by CIDR. `checkInterfaceOverlap` and `checkCidrOverlap`
-  only compare same-axis pairs (iface↔iface, cidr↔cidr); a packet
-  from `10.0.0.5` arriving on `eth0` matches both
-  `zone-iface = { interfaces = [ "eth0" ]; }` and
-  `zone-cidr = { cidrs = [ "10.0.0.0/24" ]; }`, but neither
-  same-axis validator flags it.
-
-  When both zones appear in dispatch rules in the same chain, the
-  jump rules fire in alphabetical sub-chain-key order (a
-  side-effect of `lib.mapAttrs` enumeration). The losing zone's
-  rules are silently shadowed. Renaming `zone-iface` to
-  `aaa-iface` flips the behavior. Verified PoC: an SSH-allow on
-  the iface-zone is shadowed by a drop on the cidr-zone because
-  the cidr-zone sorts first.
-
-  Pair-wise comparison. Classifies each zone by its effective
-  dispatch axes: its own raw fields plus every strict ancestor's.
-  Two grounds, one structural and one declarative:
-
-  Structural — from-side dispatch is hierarchical. Phase 4's
-  `mkRootJumpRules` emits base-chain jumps only for root *from*
-  zones, and `mkChildDispatchJumpRules` reaches from-side
-  descendants through their ancestors' sub-chains, so every
-  ancestor's own match ANDs into the path before the descendant's
-  own match applies. A CIDR-only node lowered into an
-  interface-bound parent is effectively interface-and-CIDR bound
-  on that side. To-side dispatch is flat: a descendant referenced
-  as `to` is gated at the base chain by its own sections alone
-  (ancestor content never flows down into the `@<zone>_*` sets),
-  so a cross-axis packet can still shadow there — e.g. a packet
-  egressing the unrelated zone's interface toward the node's
-  address matches both jump gates.
-
-  Declarative — parenting states intent. A zone declared (or
-  lowered) under an ancestor is a deliberate refinement of that
-  ancestor's network, so it cannot be the *accidental* split of an
-  unrelated zone this audit hunts; the same reading is why
-  `checkInterfaceOverlap` / `checkCidrOverlap` skip related pairs.
-  The residual to-side shadowing above is accepted: warning on it
-  would re-flag every node against every unrelated interface-only
-  zone — the false positive effective-axis classification exists
-  to remove.
-
-  Flags any pair where one effective path is *strictly*
-  interface-only and the other is *strictly* CIDR-only (vice
-  versa), excluding pairs in an ancestor/descendant relation as a
-  belt-and-braces guard. Roots reduce to their own raw fields, so
-  the original split-root PoC remains flagged. Multi-axis zones
-  are not flagged: they're the typical real-world pattern ("lan =
-  eth1 plus 10.0.0.0/24") rather than the audit's
-  accidentally-split-zone failure mode. A consequence: siblings
-  under one parent go unflagged even when their own axes are
-  split — the CIDR child inherits the shared ancestor's interface
-  axis. Key-order shadowing can still occur among the
-  child-dispatch jumps inside the ancestor's sub-chain; a finer
-  model would compare axes accumulated below the deepest common
-  ancestor (it degenerates to this one for unrelated roots).
-  Accepted for now as a rare pattern in a warning-only audit.
-
-  A zone must contribute at least one own raw axis to participate.
-  Empty grouping zones stay unclassified: their dispatch variants
-  come from descendant-inherited sections, while any overlap from
-  an ancestor's own gate is already reported against that ancestor.
-  Treating the grouping zone as single-axis would duplicate that
-  warning under a misleading zone name.
-
-  matchOverride sections are not inspected — users who replace the
-  auto match path have opted out of the auto axis and are
-  responsible for their own overlap audit. The flag fires on the
-  bare `zone.interfaces` / `zone.cidrs` content only.
-
-  Each warning lists the two zone names, the axes involved, and
-  the recommended action (restructure into a single axis, or use
-  hierarchy if one zone is a refinement of the other).
-
-  ===== checkObjectRefs =====
-
-  Reads:  table.{filters,snats,dnats,sroutes,droutes}.<entry>.rule,
-          ctx.mergedZones (zone names),
-          ctx.zoneMembership.{activeOverrides,sets},
-          table.objects.<kind>.<name> (full bodies, recursively),
-          table.objects.<kind> (key list, for resolution)
-  Writes: ctx.errors (appends)
-
-  Walks every place where a user can supply nftables-DSL content
-  with named refs:
-    - entry rule bodies (all five rule groups)
-    - non-null zone matchOverride content (ingress + egress)
-    - object bodies (sets / maps may carry refs in element-
-      attached stateful statements via `dsl.expr.elem { val;
-      stmt; }`; other object kinds are config-only leaves and
-      contribute no refs)
-
-  Each ref is resolved against `table.objects.<kind>` (plus
-  zone-derived set names for `kind == "sets"`). Unknowns become
-  `objectRefUnknown` errors with the source path; users see
-  typos at compile time instead of at `nft load` time.
-
-  Not covered: chain refs from raw `dsl.jump <name>` /
-  `dsl.goto <name>` inside rule bodies. nftzones generates chain
-  names internally (`<hook>-at-<priority>__<key>`) and does not
-  document them as a stable surface, so manually-written jumps
-  to those names are not validated. See follow-up #1 in
-  `docs/compile-pipeline.md` for the design discussion.
-
-  Resolves names against the union of two namespaces:
-    - `table.objects.<kind>` keys (user-declared named objects)
-    - For `kind == "sets"` only: predictable zone-derived set
-      names (`<zone>_iifs` / `<zone>_v4` / `<zone>_v6`) emitted
-      by Phase 4. This lets users write raw `match` clauses
-      against zone membership when `from` / `to` mechanics
-      aren't expressive enough — see open question 6 (decision
-      (a)) in `docs/compile-pipeline.md`.
-
-  Each error is `lib.nameValuePair "objectRefUnknown" <message>`.
-
-  ===== normalizeTable =====
-
-  Input:  A `nftzones.types.table` value.
-
-  Output: `{ table; ctx }` — the pipeline context. `table` is
-          the original input; `ctx` carries every artifact
-          Phase 1 computed (`mergedZones`, `allZoneNames`,
-          `expandedGroups`, `zoneRefs`, `errors`). Consumed by
-          downstream phases.
-
-  Errors: `ctx.errors` is a list of `{ name; value; }` records
-          where `name` is the error tag (e.g. `"zoneNameCollision"`,
-          `"invalidZoneRef"`) and `value` is the human-readable
-          message. If non-empty after the pipeline, throws a single
-          aggregated message listing every error.
 */
 { inputs, internal }:
 let
   inherit (inputs) lib libnet nftypes;
   inherit (internal.node) toZone;
-  inherit (internal.zone) resolveMembership directionToSide;
+  inherit (internal.zone) directionToSide resolveMembership;
 
   /*
     Build the pipeline's initial `{ table; ctx }` from a fresh
@@ -577,10 +97,9 @@ let
   # Rule-bearing groups paired with the direction fields each one
   # carries (`from` and/or `to`). Single source of truth for the
   # per-group direction config — `expandWildcardZones`,
-  # `resolvePriorities`, `checkChainOverridePlacement`, and
-  # `collectZoneRefs` all consume it. Adding a new group means
-  # updating this one constant; previously the same per-group
-  # mapping was open-coded across three call sites.
+  # `resolvePriorities`, `checkChainOverridePlacement`,
+  # `checkWildcardZoneMix`, and `keyedNameGroups` consume it, so a new
+  # group means updating this one constant.
   groupDirections = {
     filters = [
       "from"
@@ -659,19 +178,19 @@ let
       newErrors = lib.foldlAttrs (
         acc: zoneName: zone:
         let
-          p = parentOf zone;
+          parent = parentOf zone;
         in
-        if p == null then
+        if parent == null then
           acc
-        else if p == localZone then
+        else if parent == localZone then
           acc
           ++ [
-            (lib.nameValuePair "zoneParentLocalZone" "zones.${zoneName}.parent is '${p}' (the localZone sentinel) — localZone cannot be a parent")
+            (lib.nameValuePair "zoneParentLocalZone" "zones.${zoneName}.parent is '${parent}' (the localZone sentinel) — localZone cannot be a parent")
           ]
-        else if !(mergedZones ? ${p}) then
+        else if !(mergedZones ? ${parent}) then
           acc
           ++ [
-            (lib.nameValuePair "zoneParentUnknown" "zones.${zoneName}.parent references unknown zone '${p}'")
+            (lib.nameValuePair "zoneParentUnknown" "zones.${zoneName}.parent references unknown zone '${parent}'")
           ]
         else
           acc
@@ -692,9 +211,11 @@ let
       indexOf =
         needle: list:
         let
-          matches = builtins.filter (e: e.v == needle) (lib.imap0 (i: v: { inherit i v; }) list);
+          matches = builtins.filter (item: item.value == needle) (
+            lib.imap0 (index: value: { inherit index value; }) list
+          );
         in
-        (builtins.head matches).i;
+        (builtins.head matches).index;
 
       /*
         Walk the parent chain starting at `start`. Returns the
@@ -734,9 +255,9 @@ let
         nodes:
         let
           minNode = lib.foldl' lib.min (builtins.head nodes) nodes;
-          minIdx = indexOf minNode nodes;
+          minIndex = indexOf minNode nodes;
         in
-        (lib.drop minIdx nodes) ++ (lib.take minIdx nodes);
+        (lib.drop minIndex nodes) ++ (lib.take minIndex nodes);
 
       formatCycle = nodes: lib.concatStringsSep " → " (nodes ++ [ (builtins.head nodes) ]);
 
@@ -748,7 +269,7 @@ let
         lib.unique
       ];
 
-      newErrors = map (msg: lib.nameValuePair "zoneParentCycle" "zone parent cycle: ${msg}") cycles;
+      newErrors = map (cycle: lib.nameValuePair "zoneParentCycle" "zone parent cycle: ${cycle}") cycles;
     in
     {
       inherit table;
@@ -776,9 +297,11 @@ let
         own sub-chain.
       */
       expandFrom =
-        zones: lib.unique (lib.concatMap (z: if z == wildcardZone then rootZoneNames else [ z ]) zones);
+        zones:
+        lib.unique (lib.concatMap (zone: if zone == wildcardZone then rootZoneNames else [ zone ]) zones);
       expandTo =
-        zones: lib.unique (lib.concatMap (z: if z == wildcardZone then allZoneNames else [ z ]) zones);
+        zones:
+        lib.unique (lib.concatMap (zone: if zone == wildcardZone then allZoneNames else [ zone ]) zones);
 
       expandDirection =
         direction: entry: if direction == "from" then expandFrom entry.from else expandTo entry.to;
@@ -788,7 +311,9 @@ let
 
       expandGroup = directions: lib.mapAttrs (_: expandEntry directions);
 
-      expandedGroups = lib.mapAttrs (group: dirs: expandGroup dirs table.${group}) groupDirections;
+      expandedGroups = lib.mapAttrs (
+        group: directions: expandGroup directions table.${group}
+      ) groupDirections;
     in
     {
       inherit table;
@@ -835,7 +360,7 @@ let
             else
               [
                 {
-                  inherit zone direction;
+                  inherit direction zone;
                   path = "${prefix}[${toString i}]";
                 }
               ]
@@ -881,8 +406,8 @@ let
     let
       collisions = lib.intersectLists (builtins.attrNames table.zones) (builtins.attrNames table.nodes);
       newErrors = map (
-        n:
-        lib.nameValuePair "zoneNameCollision" "name collision: '${n}' is declared as both a zone and a node"
+        name:
+        lib.nameValuePair "zoneNameCollision" "name collision: '${name}' is declared as both a zone and a node"
       ) collisions;
     in
     {
@@ -913,20 +438,15 @@ let
         group:
         lib.concatLists (
           lib.mapAttrsToList (
-            key: obj:
-            # `obj.name or key` mirrors the defensive reads elsewhere
+            key: object:
+            # `object.name or key` mirrors the defensive reads elsewhere
             # in this file (`parentOf`): raw fixtures that bypass the
             # type system may omit `name`, and an absent name can't
-            # diverge from its key. `obj.name` in the message is only
+            # diverge from its key. `object.name` in the message is only
             # forced when the guard already proved it present and
             # divergent, so this never trips the missing-attr path.
-            lib.optional ((obj.name or key) != key) (
-              lib.nameValuePair "nameKeyMismatch" (
-                "${group}.${key}.name is '${obj.name}' but must equal its "
-                + "attribute key '${key}' — the compile pipeline references "
-                + "this object by '${key}'. Drop the explicit `name` (it "
-                + "defaults to the key) or rename the attribute to '${obj.name}'."
-              )
+            lib.optional ((object.name or key) != key) (
+              lib.nameValuePair "nameKeyMismatch" "${group}.${key}.name is '${object.name}' but must equal its attribute key '${key}' — the compile pipeline references this object by '${key}'. Drop the explicit `name` (it defaults to the key) or rename the attribute to '${object.name}'."
             )
           ) (table.${group} or { })
         );
@@ -971,7 +491,7 @@ let
 
       placementsForEntry =
         group: entryName: entry:
-        map (attrs: attrs // { inherit entryName; }) (
+        map (placement: placement // { inherit entryName; }) (
           chainAttrsForEntry group localZone (entry // ctx.expandedGroups.${group}.${entryName})
         );
 
@@ -979,26 +499,24 @@ let
         group: lib.concatLists (lib.mapAttrsToList (placementsForEntry group) (table.${group} or { }));
 
       mkError =
-        group: p: reason:
-        lib.nameValuePair "invalidChainPlacement" (
-          "${group}.${p.entryName} would emit a base chain at "
-          + "(family=${family}, hook=${p.hook}, priority=${toString p.priority}) "
-          + "— ${reason}"
-        );
+        group: placement: reason:
+        lib.nameValuePair "invalidChainPlacement" "${group}.${placement.entryName} would emit a base chain at (family=${family}, hook=${placement.hook}, priority=${toString placement.priority}) — ${reason}";
 
       classify =
-        group: p:
+        group: placement:
         let
-          chainType = chainTypeFor family p.hook p.priority;
+          chainType = chainTypeFor family placement.hook placement.priority;
         in
         if chainType == null then
           [
-            (mkError group p "priority symbol '${toString p.priority}' has no value in family '${family}'")
+            (mkError group placement
+              "priority symbol '${toString placement.priority}' has no value in family '${family}'"
+            )
           ]
-        else if !(validChainPlacement family chainType p.hook) then
+        else if !(validChainPlacement family chainType placement.hook) then
           [
-            (mkError group p
-              "kernel rejects chain type '${chainType}' on hook '${p.hook}' for family '${family}'"
+            (mkError group placement
+              "kernel rejects chain type '${chainType}' on hook '${placement.hook}' for family '${family}'"
             )
           ]
         else
@@ -1038,13 +556,9 @@ let
 
       groupClaims = group: lib.any claimsRawPrerouting (lib.attrValues table.${group});
 
-      newWarnings = lib.optional (table.settings.rpfilter && lib.any groupClaims chainOverrideGroups) (
-        "settings.rpfilter is enabled but a user chain override "
-        + "already claims (prerouting, raw); the synthesized rpfilter "
-        + "chain is suppressed and the user-authored chain is used "
-        + "as-is. Add `fib saddr . iif oif eq 0 drop` to the override "
-        + "manually if you want rpfilter behavior in that chain."
-      );
+      newWarnings =
+        lib.optional (table.settings.rpfilter && lib.any groupClaims chainOverrideGroups)
+          "settings.rpfilter is enabled but a user chain override already claims (prerouting, raw); the synthesized rpfilter chain is suppressed and the user-authored chain is used as-is. Add `fib saddr . iif oif eq 0 drop` to the override manually if you want rpfilter behavior in that chain.";
     in
     {
       inherit table;
@@ -1089,8 +603,8 @@ let
       entryHasChain = entry: (entry.chain or null) != null;
 
       mkWarning =
-        kind: entryName: msg:
-        "${kind}.${entryName}.chain: ${msg}";
+        kind: entryName: message:
+        "${kind}.${entryName}.chain: ${message}";
 
       # Filter at postrouting — iifname semantics differ from
       # pre-routing dispatch.
@@ -1099,13 +613,9 @@ let
           entryName: entry:
           if entryHasChain entry && entry.chain.hook == "postrouting" then
             [
-              (mkWarning "filters" entryName (
-                "hook=postrouting is kernel-valid but `iifname` here reflects the "
-                + "input device pre-routing, which may not match what `from` zones "
-                + "mean (especially for locally-originated traffic where iifname is "
-                + "'lo' or empty). Confirm this is intentional, or place the filter "
-                + "at the default `(forward|input|output, filter)` instead."
-              ))
+              (mkWarning "filters" entryName
+                "hook=postrouting is kernel-valid but `iifname` here reflects the input device pre-routing, which may not match what `from` zones mean (especially for locally-originated traffic where iifname is 'lo' or empty). Confirm this is intentional, or place the filter at the default `(forward|input|output, filter)` instead."
+              )
             ]
           else
             [ ]
@@ -1118,14 +628,9 @@ let
           entryName: entry:
           if entryHasChain entry && entry.chain.hook == "output" then
             [
-              (mkWarning "dnats" entryName (
-                "hook=output rewrites locally-originated traffic. The `from` side "
-                + "dispatches on saddr, which at output is the local interface "
-                + "address — a from-zone with a wide CIDR (e.g. 0.0.0.0/0) would "
-                + "silently rewrite every locally-originated packet. Confirm this "
-                + "is what you want, or keep the default `(prerouting, dstnat)` "
-                + "for external-traffic DNAT."
-              ))
+              (mkWarning "dnats" entryName
+                "hook=output rewrites locally-originated traffic. The `from` side dispatches on saddr, which at output is the local interface address — a from-zone with a wide CIDR (e.g. 0.0.0.0/0) would silently rewrite every locally-originated packet. Confirm this is what you want, or keep the default `(prerouting, dstnat)` for external-traffic DNAT."
+              )
             ]
           else
             [ ]
@@ -1138,13 +643,9 @@ let
           entryName: entry:
           if entryHasChain entry && priorityNameOf family entry.chain.priority != "srcnat" then
             [
-              (mkWarning "snats" entryName (
-                "priority='${toString entry.chain.priority}' is not srcnat (100). "
-                + "Stateful SNAT must run at the srcnat priority so conntrack records "
-                + "the translation; at any other priority the rewrite happens but "
-                + "conntrack misses it and return traffic breaks. Either use "
-                + "priority='srcnat' (or 100), or accept that this NAT is one-way."
-              ))
+              (mkWarning "snats" entryName
+                "priority='${toString entry.chain.priority}' is not srcnat (100). Stateful SNAT must run at the srcnat priority so conntrack records the translation; at any other priority the rewrite happens but conntrack misses it and return traffic breaks. Either use priority='srcnat' (or 100), or accept that this NAT is one-way."
+              )
             ]
           else
             [ ]
@@ -1160,15 +661,6 @@ let
       };
     };
 
-  /*
-    Reject `snats.<x>.rule.snat = { }` and
-    `dnats.<x>.rule.action.dnat = { }` where `addr` is null. nftypes'
-    `natBody` lets every field default to `null` (so the user-shape
-    validates), but the rendered `snat to` / `dnat to` statement with
-    no target is invalid nftables syntax and `nft -f` rejects it at
-    activation. Catches the empty-body case here with a clear error
-    pointing to `masquerade` / `redirect` as the no-target alternative.
-  */
   /*
     Warn when a `matchOverride.<side>.extra` section references
     an interface-typed `meta` field (`iif`, `iifname`, `iifgroup`,
@@ -1232,13 +724,7 @@ let
             in
             if key != null && builtins.elem key interfaceMetaKeys then
               [
-                (
-                  "zones.${zoneName}.matchOverride.${side}.extra[${toString i}] matches on `meta.${key}` — "
-                  + "interface fields belong in `matchOverride.${side}.interfaces` instead. The `extra` "
-                  + "section is inlined hook-agnostically and would silently become a no-op at hooks "
-                  + "where ${key} is unavailable (e.g. iif* at output). The `interfaces` section is "
-                  + "hook-gated correctly by `checkChainOverridePlacement` and `mkDirectionVariants`."
-                )
+                "zones.${zoneName}.matchOverride.${side}.extra[${toString i}] matches on `meta.${key}` — interface fields belong in `matchOverride.${side}.interfaces` instead. The `extra` section is inlined hook-agnostically and would silently become a no-op at hooks where ${key} is unavailable (e.g. iif* at output). The `interfaces` section is hook-gated correctly by `checkChainOverridePlacement` and `mkDirectionVariants`."
               ]
             else
               [ ]
@@ -1288,33 +774,28 @@ let
     let
       inherit (table.settings) wildcardZone;
 
-      checkEntryDir =
-        groupName: entryName: dir: zones:
+      checkEntryDirection =
+        groupName: entryName: direction: zones:
         if builtins.elem wildcardZone zones && builtins.length zones > 1 then
           let
-            others = builtins.filter (z: z != wildcardZone) zones;
+            explicitZones = builtins.filter (zone: zone != wildcardZone) zones;
+            quotedZones = lib.concatStringsSep ", " (map (zone: "'${zone}'") explicitZones);
           in
           [
-            (
-              "${groupName}.${entryName}.${dir}: list contains the wildcard zone "
-              + "'${wildcardZone}' alongside explicit zone(s) ${
-                lib.concatStringsSep ", " (map (z: "'${z}'") others)
-              }. "
-              + "The wildcard alone already expands to every in-scope zone — the explicit "
-              + "names are either redundant or a leftover. Use `[ \"${wildcardZone}\" ]` "
-              + "or list the explicit zones without the wildcard."
-            )
+            "${groupName}.${entryName}.${direction}: list contains the wildcard zone '${wildcardZone}' alongside explicit zone(s) ${quotedZones}. The wildcard alone already expands to every in-scope zone — the explicit names are either redundant or a leftover. Use `[ \"${wildcardZone}\" ]` or list the explicit zones without the wildcard."
           ]
         else
           [ ];
 
       checkEntry =
-        groupName: dirs: entryName: entry:
-        lib.concatMap (dir: checkEntryDir groupName entryName dir (entry.${dir} or [ ])) dirs;
+        groupName: directions: entryName: entry:
+        lib.concatMap (
+          direction: checkEntryDirection groupName entryName direction (entry.${direction} or [ ])
+        ) directions;
 
       checkGroup =
-        groupName: dirs:
-        lib.concatLists (lib.mapAttrsToList (checkEntry groupName dirs) (table.${groupName} or { }));
+        groupName: directions:
+        lib.concatLists (lib.mapAttrsToList (checkEntry groupName directions) (table.${groupName} or { }));
 
       newWarnings = lib.concatLists (lib.mapAttrsToList checkGroup groupDirections);
     in
@@ -1344,10 +825,7 @@ let
         lib.mapAttrsToList (
           name: node:
           lib.optional (node.address.ipv4 == null && node.address.ipv6 == null) (
-            lib.nameValuePair "nodeAddressMissing" (
-              "nodes.${name}: address must set at least one of `ipv4` / `ipv6` — "
-              + "a node with no address contributes no CIDR to its lowered zone."
-            )
+            lib.nameValuePair "nodeAddressMissing" "nodes.${name}: address must set at least one of `ipv4` / `ipv6` — a node with no address contributes no CIDR to its lowered zone."
           )
         ) (table.nodes or { })
       );
@@ -1359,6 +837,15 @@ let
       };
     };
 
+  /*
+    Reject `snats.<x>.rule.snat = { }` and
+    `dnats.<x>.rule.action.dnat = { }` where `addr` is null. nftypes'
+    `natBody` lets every field default to `null` (so the user-shape
+    validates), but the rendered `snat to` / `dnat to` statement with
+    no target is invalid nftables syntax and `nft -f` rejects it at
+    activation. Catches the empty-body case here with a clear error
+    pointing to `masquerade` / `redirect` as the no-target alternative.
+  */
   checkNatBodies =
     { table, ctx }:
     let
@@ -1366,11 +853,7 @@ let
         lib.mapAttrsToList (
           name: entry:
           lib.optional ((entry.rule ? snat) && entry.rule.snat.addr == null) (
-            lib.nameValuePair "natBodyMissingAddr" (
-              "snats.${name}: rule.snat.addr is null — `snat` requires a target "
-              + "address. Use `rule.masquerade = { }` for auto-target via the "
-              + "outgoing interface, or set `rule.snat.addr` explicitly."
-            )
+            lib.nameValuePair "natBodyMissingAddr" "snats.${name}: rule.snat.addr is null — `snat` requires a target address. Use `rule.masquerade = { }` for auto-target via the outgoing interface, or set `rule.snat.addr` explicitly."
           )
         ) (table.snats or { })
       );
@@ -1379,11 +862,7 @@ let
         lib.mapAttrsToList (
           name: entry:
           lib.optional ((entry.rule.action ? dnat) && entry.rule.action.dnat.addr == null) (
-            lib.nameValuePair "natBodyMissingAddr" (
-              "dnats.${name}: rule.action.dnat.addr is null — `dnat` requires a "
-              + "target address. Use `rule.action.redirect = { port = N; }` for "
-              + "redirect-to-localhost, or set `rule.action.dnat.addr` explicitly."
-            )
+            lib.nameValuePair "natBodyMissingAddr" "dnats.${name}: rule.action.dnat.addr is null — `dnat` requires a target address. Use `rule.action.redirect = { port = N; }` for redirect-to-localhost, or set `rule.action.dnat.addr` explicitly."
           )
         ) (table.dnats or { })
       );
@@ -1400,10 +879,10 @@ let
   checkSettings =
     { table, ctx }:
     let
-      inherit (table.settings) wildcardZone localZone;
+      inherit (table.settings) localZone wildcardZone;
       zoneNames = builtins.attrNames ctx.mergedZones;
 
-      conflict = msg: lib.nameValuePair "settingsConflict" msg;
+      conflict = message: lib.nameValuePair "settingsConflict" message;
 
       pairConflict = lib.optional (wildcardZone == localZone) (
         conflict "settings.wildcardZone and settings.localZone are both '${wildcardZone}' — they must differ"
@@ -1437,18 +916,19 @@ let
       */
       triples = lib.concatLists (
         lib.mapAttrsToList (
-          entryName: dirs: lib.concatMap (from: map (to: { inherit entryName from to; }) dirs.to) dirs.from
+          entryName: directions:
+          lib.concatMap (from: map (to: { inherit entryName from to; }) directions.to) directions.from
         ) ctx.expandedGroups.policies
       );
 
-      keyOf = t: "(${t.from} → ${t.to})";
+      keyOf = triple: "(${triple.from} → ${triple.to})";
       grouped = lib.groupBy keyOf triples;
-      duplicates = lib.filterAttrs (_: ts: builtins.length ts > 1) grouped;
+      duplicates = lib.filterAttrs (_: cellTriples: builtins.length cellTriples > 1) grouped;
 
       newErrors = lib.mapAttrsToList (
-        key: ts:
+        key: cellTriples:
         lib.nameValuePair "policyConflict" "duplicate policy for ${key}: ${
-          lib.concatStringsSep ", " (map (t: t.entryName) ts)
+          lib.concatStringsSep ", " (map (triple: triple.entryName) cellTriples)
         }"
       ) duplicates;
     in
@@ -1462,12 +942,12 @@ let
   checkZoneRefs =
     { table, ctx }:
     let
-      inherit (ctx) zoneRefs allZoneNames;
-      invalidZoneRefs = builtins.filter (r: !(builtins.elem r.zone allZoneNames)) zoneRefs;
-      allZoneNamesStr = lib.concatStringsSep ", " (lib.sort (a: b: a < b) allZoneNames);
+      inherit (ctx) allZoneNames zoneRefs;
+      invalidZoneRefs = builtins.filter (ref: !(builtins.elem ref.zone allZoneNames)) zoneRefs;
+      knownZoneNames = lib.concatStringsSep ", " (lib.sort (a: b: a < b) allZoneNames);
       newErrors = map (
-        r:
-        lib.nameValuePair "invalidZoneRef" "${r.path} references unknown zone '${r.zone}' (known: ${allZoneNamesStr})"
+        ref:
+        lib.nameValuePair "invalidZoneRef" "${ref.path} references unknown zone '${ref.zone}' (known: ${knownZoneNames})"
       ) invalidZoneRefs;
     in
     {
@@ -1481,10 +961,10 @@ let
     { table, ctx }:
     let
       inherit (table.settings) localZone;
-      inherit (ctx) mergedZones expandedGroups;
+      inherit (ctx) expandedGroups mergedZones;
 
-      ifFieldName = direction: if direction == "from" then "iifname" else "oifname";
-      addrFieldName = direction: if direction == "from" then "saddr" else "daddr";
+      interfaceFieldName = direction: if direction == "from" then "iifname" else "oifname";
+      addressFieldName = direction: if direction == "from" then "saddr" else "daddr";
 
       # Unknown refs are reported by checkZoneRefs; the sentinel
       # contributes no match. Membership owns hook visibility.
@@ -1501,7 +981,7 @@ let
         droute / policy (no override path) are skipped.
       */
       chainOverrideDirections = lib.filterAttrs (
-        g: _: builtins.elem g chainOverrideGroups
+        groupName: _: builtins.elem groupName chainOverrideGroups
       ) groupDirections;
 
       /*
@@ -1516,20 +996,20 @@ let
         else
           let
             inherit (entry.chain) hook priority;
-            expandedDirs = expandedGroups.${groupName}.${entryName};
+            expandedDirections = expandedGroups.${groupName}.${entryName};
           in
           lib.concatMap (
             direction:
             map (zoneName: {
               inherit
-                groupName
+                direction
                 entryName
+                groupName
                 hook
                 priority
-                direction
                 zoneName
                 ;
-            }) expandedDirs.${direction}
+            }) expandedDirections.${direction}
           ) directions;
 
       enumerateGroup =
@@ -1539,24 +1019,18 @@ let
         );
 
       mkError =
-        r:
+        record:
         let
-          side = directionToSide.${r.direction};
-          addrField = addrFieldName r.direction;
-          ifField = ifFieldName r.direction;
-          msg =
-            "${r.groupName}.${r.entryName}.${r.direction} references zone '${r.zoneName}'"
-            + " which has no ${side} match expressible at chain"
-            + " (hook=${r.hook}, priority=${toString r.priority})"
-            + " — zone has no ${addrField} CIDRs and no hook-agnostic matchOverride.${side} sections"
-            + " (ipv4 / ipv6 / extra) set, and ${ifField} is unavailable in ${r.hook}";
+          side = directionToSide.${record.direction};
+          addressField = addressFieldName record.direction;
+          interfaceField = interfaceFieldName record.direction;
         in
-        lib.nameValuePair "chainOverrideUnreachable" msg;
+        lib.nameValuePair "chainOverrideUnreachable" "${record.groupName}.${record.entryName}.${record.direction} references zone '${record.zoneName}' which has no ${side} match expressible at chain (hook=${record.hook}, priority=${toString record.priority}) — zone has no ${addressField} CIDRs and no hook-agnostic matchOverride.${side} sections (ipv4 / ipv6 / extra) set, and ${interfaceField} is unavailable in ${record.hook}";
 
       newErrors = lib.pipe chainOverrideDirections [
         (lib.mapAttrsToList enumerateGroup)
         lib.concatLists
-        (builtins.filter (r: !(reachable r.zoneName r.hook r.direction)))
+        (builtins.filter (record: !(reachable record.zoneName record.hook record.direction)))
         (map mkError)
       ];
     in
@@ -1571,32 +1045,25 @@ let
     { table, ctx }:
     let
       inherit (table.settings) localZone;
-      inherit (ctx) zoneRefs mergedZones;
+      inherit (ctx) mergedZones zoneRefs;
 
       # Skip refs without a `direction` (node parent refs), refs to
       # the localZone sentinel (no `mergedZones` entry by design),
       # and refs to unknown zones (already flagged by checkZoneRefs).
       directionBoundRefs = builtins.filter (
-        r: r ? direction && r.zone != localZone && mergedZones ? ${r.zone}
+        ref: ref ? direction && ref.zone != localZone && mergedZones ? ${ref.zone}
       ) zoneRefs;
 
       unmatchableRefs = builtins.filter (
-        r:
-        let
-          side = directionToSide.${r.direction};
-        in
-        !(ctx.zoneMembership.hasOwnMatch r.zone side)
+        ref: !(ctx.zoneMembership.hasOwnMatch ref.zone directionToSide.${ref.direction})
       ) directionBoundRefs;
 
       newErrors = map (
-        r:
+        ref:
         let
-          side = directionToSide.${r.direction};
-          msg =
-            "${r.path} references zone '${r.zone}' which has no ${side} match"
-            + " (no interfaces, no CIDRs, and no matchOverride sections set on the ${side} side)";
+          side = directionToSide.${ref.direction};
         in
-        lib.nameValuePair "zoneNotMatchable" msg
+        lib.nameValuePair "zoneNotMatchable" "${ref.path} references zone '${ref.zone}' which has no ${side} match (no interfaces, no CIDRs, and no matchOverride sections set on the ${side} side)"
       ) unmatchableRefs;
     in
     {
@@ -1615,15 +1082,12 @@ let
       collisions = lib.intersectLists userSetNames zoneSetNames;
 
       newErrors = map (
-        n:
+        setName:
         let
-          sourceZone = ctx.zoneMembership.setOwners.${n};
-          suffix = lib.removePrefix "${sourceZone}_" n;
+          sourceZone = ctx.zoneMembership.setOwners.${setName};
+          suffix = lib.removePrefix "${sourceZone}_" setName;
         in
-        lib.nameValuePair "setNameCollision" (
-          "objects.sets.${n} collides with the auto-generated set name "
-          + "from zone '${sourceZone}' (suffix '${suffix}'); rename one"
-        )
+        lib.nameValuePair "setNameCollision" "objects.sets.${setName} collides with the auto-generated set name from zone '${sourceZone}' (suffix '${suffix}'); rename one"
       ) collisions;
     in
     {
@@ -1638,16 +1102,13 @@ let
     let
       inherit (ctx) mergedZones;
 
-      /*
-        All (zoneName, iface) pairs across every merged zone, in
-        zone-then-list order. Pair-wise comparison below flags
-        same-iface conflicts.
-      */
+      # All (zoneName, iface) pairs across every merged zone, in
+      # zone-then-list order.
       allEntries = lib.concatMap (
-        zoneName: map (iface: { inherit zoneName iface; }) mergedZones.${zoneName}.interfaces
+        zoneName: map (iface: { inherit iface zoneName; }) mergedZones.${zoneName}.interfaces
       ) (builtins.attrNames mergedZones);
 
-      n = builtins.length allEntries;
+      entryCount = builtins.length allEntries;
 
       /*
         Compare unordered pairs (i, j) with i < j. Flag same
@@ -1678,8 +1139,8 @@ let
             ]
           else
             [ ]
-        ) (lib.range (i + 1) (n - 1))
-      ) (lib.range 0 (n - 1));
+        ) (lib.range (i + 1) (entryCount - 1))
+      ) (lib.range 0 (entryCount - 1));
     in
     {
       inherit table;
@@ -1693,20 +1154,18 @@ let
     let
       inherit (ctx) mergedZones;
 
-      /*
-        All (zoneName, cidr-as-string, cidr-parsed) triples across
-        every merged zone. Parse is lazy per entry — only forced
-        on overlap check below.
-      */
+      # All (zoneName, cidr string, parsed cidr) triples across every
+      # merged zone. Parsing is lazy per entry, forced only by the
+      # overlap check below.
       allEntries = lib.concatMap (
         zoneName:
-        map (cidrStr: {
-          inherit zoneName cidrStr;
-          parsed = libnet.cidr.parse cidrStr;
+        map (cidr: {
+          inherit cidr zoneName;
+          parsed = libnet.cidr.parse cidr;
         }) mergedZones.${zoneName}.cidrs
       ) (builtins.attrNames mergedZones);
 
-      n = builtins.length allEntries;
+      entryCount = builtins.length allEntries;
 
       /*
         Same pair-wise pattern as `checkInterfaceOverlap`. Flag
@@ -1731,15 +1190,15 @@ let
             [
               (lib.nameValuePair "cidrOverlap" (
                 if sameZone then
-                  "zone '${a.zoneName}' has overlapping CIDRs '${a.cidrStr}' and '${b.cidrStr}'"
+                  "zone '${a.zoneName}' has overlapping CIDRs '${a.cidr}' and '${b.cidr}'"
                 else
-                  "zone '${a.zoneName}' CIDR '${a.cidrStr}' overlaps zone '${b.zoneName}' CIDR '${b.cidrStr}' (no ancestor/descendant relationship)"
+                  "zone '${a.zoneName}' CIDR '${a.cidr}' overlaps zone '${b.zoneName}' CIDR '${b.cidr}' (no ancestor/descendant relationship)"
               ))
             ]
           else
             [ ]
-        ) (lib.range (i + 1) (n - 1))
-      ) (lib.range 0 (n - 1));
+        ) (lib.range (i + 1) (entryCount - 1))
+      ) (lib.range 0 (entryCount - 1));
     in
     {
       inherit table;
@@ -1753,11 +1212,7 @@ let
     let
       pairWarnings = map (
         { a, b }:
-        "zones '${a}' and '${b}' may match the same packet across different axes "
-        + "(one is interface-bound, the other is CIDR-bound). If both appear in the same "
-        + "chain, dispatch order is alphabetical attribute-key order — the losing zone's "
-        + "rules are silently shadowed. Restructure both zones onto the same axis, or "
-        + "make one a child of the other if it's a refinement."
+        "zones '${a}' and '${b}' may match the same packet across different axes (one is interface-bound, the other is CIDR-bound). If both appear in the same chain, dispatch order is alphabetical attribute-key order — the losing zone's rules are silently shadowed. Restructure both zones onto the same axis, or make one a child of the other if it's a refinement."
       ) ctx.zoneMembership.crossAxisPairs;
     in
     {
@@ -1828,7 +1283,7 @@ let
           zoneName: _zone:
           lib.concatMap
             (
-              dir:
+              side:
               lib.concatLists (
                 lib.mapAttrsToList (
                   section: body:
@@ -1836,10 +1291,10 @@ let
                     ref:
                     ref
                     // {
-                      path = "zones.${zoneName}.matchOverride.${dir}.${section}";
+                      path = "zones.${zoneName}.matchOverride.${side}.${section}";
                     }
                   ) (extractRefs body)
-                ) (ctx.zoneMembership.activeOverrides zoneName dir)
+                ) (ctx.zoneMembership.activeOverrides zoneName side)
               )
             )
             [
@@ -1888,10 +1343,13 @@ let
         refsFromObjects
       ];
 
-      unresolvedRefs = builtins.filter (r: !(builtins.elem r.name (knownNames.${r.kind} or [ ]))) allRefs;
+      unresolvedRefs = builtins.filter (
+        ref: !(builtins.elem ref.name (knownNames.${ref.kind} or [ ]))
+      ) allRefs;
 
       newErrors = map (
-        r: lib.nameValuePair "objectRefUnknown" "${r.path} references unknown ${r.kind} object '${r.name}'"
+        ref:
+        lib.nameValuePair "objectRefUnknown" "${ref.path} references unknown ${ref.kind} object '${ref.name}'"
       ) unresolvedRefs;
     in
     {
@@ -1940,45 +1398,47 @@ let
 
       withWarnings =
         result:
-        builtins.foldl' (acc: msg: lib.warn "nftzones.normalize: ${msg}" acc) result final.ctx.warnings;
+        builtins.foldl' (
+          acc: warning: lib.warn "nftzones.normalize: ${warning}" acc
+        ) result final.ctx.warnings;
     in
     if final.ctx.errors == [ ] then
       withWarnings final
     else
       throw (
         "nftzones.normalize: validation failed:\n"
-        + lib.concatMapStringsSep "\n" (e: "  - [${e.name}] ${e.value}") final.ctx.errors
+        + lib.concatMapStringsSep "\n" (error: "  - [${error.name}] ${error.value}") final.ctx.errors
       );
 in
 {
   inherit
-    convertNodesToZones
-    computeZoneMembership
-    checkParentRefs
-    checkParentCycles
-    checkNameCollisions
-    checkNameKeyMismatch
-    checkPolicyUniqueness
-    checkSettings
-    collectAllZoneNames
-    expandWildcardZones
-    resolvePriorities
-    collectZoneRefs
-    checkZoneRefs
-    checkZoneMatchable
     checkChainOverridePlacement
-    checkChainPlacement
-    checkRpfilterOverride
     checkChainOverrideSemantics
-    checkExtraSectionFields
-    checkWildcardZoneMix
-    checkNodeAddresses
-    checkNatBodies
-    checkSetNameCollisions
-    checkInterfaceOverlap
+    checkChainPlacement
     checkCidrOverlap
     checkCrossAxisOverlap
+    checkExtraSectionFields
+    checkInterfaceOverlap
+    checkNameCollisions
+    checkNameKeyMismatch
+    checkNatBodies
+    checkNodeAddresses
     checkObjectRefs
+    checkParentCycles
+    checkParentRefs
+    checkPolicyUniqueness
+    checkRpfilterOverride
+    checkSetNameCollisions
+    checkSettings
+    checkWildcardZoneMix
+    checkZoneMatchable
+    checkZoneRefs
+    collectAllZoneNames
+    collectZoneRefs
+    computeZoneMembership
+    convertNodesToZones
+    expandWildcardZones
     normalizeTable
+    resolvePriorities
     ;
 }

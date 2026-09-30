@@ -58,7 +58,7 @@
     let
       parentRules = compiled.table.chains."forward-at-filter__lan-to-wan".rules;
       childRules = compiled.table.chains."forward-at-filter__lan-guest-to-wan".rules;
-      lastOf = xs: builtins.elemAt xs (builtins.length xs - 1);
+      lastOf = list: builtins.elemAt list (builtins.length list - 1);
     in
     [
       {
@@ -75,11 +75,11 @@
         description = "parent's sub-chain emits the child-dispatch jump ahead of its tail policy (cascade ordering)";
         expr =
           let
-            r = builtins.elemAt parentRules 0;
+            firstRule = builtins.elemAt parentRules 0;
           in
           {
-            childMatch = (builtins.elemAt r 0).match.left.meta.key or null;
-            jumpTarget = (builtins.elemAt r 1).jump.target or null;
+            childMatch = (builtins.elemAt firstRule 0).match.left.meta.key or null;
+            jumpTarget = (builtins.elemAt firstRule 1).jump.target or null;
           };
         expected = {
           childMatch = "iifname";

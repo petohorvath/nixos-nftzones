@@ -1,26 +1,21 @@
 /*
-  tests/unit/helpers — shared test helpers for the per-module unit
-  test files. Imported by each `tests/unit/internal/<module>.nix`
-  and `tests/unit/types/<module>.nix` to avoid copy-pasted
-  boilerplate.
+  Shared helpers for the per-module unit-test files. Each
+  `tests/unit/internal/<module>.nix` and `tests/unit/types/<module>.nix`
+  imports this file instead of repeating evaluation boilerplate.
 
-  Exports:
-    - `evalTable` — runs a raw user body through `evalModules`
-                    against `nftzones.types.table`, returning the
-                    evaluated submodule value.
-    - `membershipFor` — resolves zone/node declarations for membership tests.
-    - `evalType`  — runs a single value through `evalModules`
-                    against an arbitrary option type, returning the
-                    evaluated value (throws if rejected).
-    - `evalFails` — true iff evaluating its argument throws. Used
-                    to assert type-level rejections.
+  Exports `evalTable`, `membershipFor`, `evalType`, and `evalFails`.
 */
 { pkgs, nftzones }:
 let
   inherit (pkgs) lib;
 
-  # Evaluate declarations with table defaults; the option name pins the
-  # table name to "fw" for the unit fixtures.
+  /*
+    Evaluate a raw user table body against `nftzones.types.table`, so
+    fixtures get the table defaults. The option name pins the table name
+    to "fw".
+
+    Takes the table body and returns the evaluated submodule value.
+  */
   evalTable =
     body:
     (lib.evalModules {
@@ -29,14 +24,17 @@ let
         { config.fw = body; }
       ];
     }).config.fw;
-
 in
 {
   inherit evalTable;
 
-  # Resolve real declarations through node lowering and the same zone
-  # interface used by normalization. Deliberately stop before validation
-  # so grouping zones and malformed hierarchy can be exercised too.
+  /*
+    Resolve real declarations through node lowering and the same zone
+    interface used by normalization. Deliberately stop before validation
+    so grouping zones and malformed hierarchy can be exercised too.
+
+    Takes a table body and returns the zone membership interface.
+  */
   membershipFor =
     body:
     let
@@ -51,10 +49,12 @@ in
     };
 
   /*
-    Run `value` through evalModules against `type`. Useful for
-    asserting acceptance / shape of leaf option types
-    (`zoneName`, `zoneCidrs`, …) without wrapping them in a full
-    table body.
+    Check leaf option types (`zoneName`, `zoneCidrs`, …) without
+    wrapping them in a full table body.
+
+    Takes an option `type` and a `value`, runs them through
+    `evalModules`, and returns the evaluated value. Throws if the type
+    rejects the value.
   */
   evalType =
     type: value:
@@ -66,12 +66,13 @@ in
     }).config.x;
 
   /*
-    Type-rejection probe. `builtins.tryEval` eats `throw`s but
-    not `abort`s; nftzones type errors and submodule `apply`
-    throws are all `throw`s, so this catches them. `deepSeq`
-    forces the whole result tree — without it, lazy thunks
-    (e.g. element-level checks inside `listOf`) silently slip
-    past `tryEval`.
+    Probe type-level rejections. `builtins.tryEval` catches `throw` but
+    not `abort`; nftzones type errors and submodule `apply` failures are
+    all `throw`s, so this catches them. `deepSeq` forces the whole result
+    tree; without it, lazy thunks (for example element-level checks
+    inside `listOf`) silently slip past `tryEval`.
+
+    Takes any value and returns true if evaluating it throws.
   */
   evalFails = result: !(builtins.tryEval (builtins.deepSeq result result)).success;
 }

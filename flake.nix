@@ -2,17 +2,18 @@
   description = "nixos-nftzones — library for zone-based nftables firewall configuration";
 
   inputs = {
-    # `nixpkgs` is the default channel for everything this flake
-    # exposes to consumers — `lib`, the NixOS module, the
-    # devShell, the formatter — pinned to the current stable
-    # release. libnet / nftypes / git-hooks all follow it.
+    # `nixpkgs` is the default package set for everything this flake
+    # exposes to consumers — `lib`, the NixOS module, the devShell, the
+    # formatter — pinned to the current stable release branch. libnet /
+    # nftypes / git-hooks all follow it.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
 
-    # `nixpkgs-unstable` is consumed *only* by the `*-unstable`
-    # check tiers (see `checks` below): the unit / integration /
-    # examples / vm suites run a second time against it so
-    # upstream breakage surfaces in this repo's CI rather than
-    # downstream. Nothing user-facing depends on it.
+    # The `nixpkgs-unstable` flake input is consumed *only* by the
+    # `*-unstable` check tiers (see `checks` below): the unit /
+    # integration / examples / vm suites run a second time against the
+    # `nixos-unstable` branch so upstream breakage surfaces in this
+    # repo's CI rather than downstream. Nothing user-facing depends on
+    # it.
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     libnet.url = "github:petohorvath/nix-libnet";
@@ -73,12 +74,12 @@
         system: mkLib nixpkgs-unstable.legacyPackages.${system}
       );
 
-      # `./modules/nftzones.nix` is a function `{ nftzones, nftypes
-      # }: { ... } NixOS module`. Partial-applying both libs here
-      # keeps them private compile-time deps of the module rather
-      # than something leaking onto `_module.args` and surfacing in
-      # every sibling module's argument list. User code reaches
-      # nftzones / nftypes via their own flake inputs, not via
+      # `./modules/nftzones.nix` is a function
+      # `{ nftzones, nftypes }: { ... } NixOS module`. Partial-applying
+      # both libs here keeps them private compile-time deps of the
+      # module rather than something leaking onto `_module.args` and
+      # surfacing in every sibling module's argument list. User code
+      # reaches nftzones / nftypes via their own flake inputs, not via
       # module args.
       #
       # Parameterized over the per-system library set so the
@@ -100,10 +101,10 @@
       nftzonesModuleUnstable = mkNftzonesModule libBySystemUnstable;
 
       # The unit / integration / examples / vm tiers, parameterized
-      # over a pkgs set and its matching `nftzones` lib + module so
-      # the same suite can run against either nixpkgs channel. The
-      # `pre-commit` check is added once, channel-independent, in
-      # `checks` below.
+      # over a package set and its matching `nftzones` lib + module so
+      # the same suite can run against either nixpkgs flake input. The
+      # `pre-commit` check is added once, independent of the nixpkgs
+      # branch, in `checks` below.
       mkTestTiers =
         {
           pkgs,

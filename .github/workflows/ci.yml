@@ -53,7 +53,7 @@ jobs:
         run: git diff --exit-code
 
   # Unit and integration jobs run across both Linux systems the
-  # flake exposes, and against both nixpkgs channels: `nixos-25.11`
+  # flake exposes, and against both nixpkgs branches: `nixos-25.11`
   # (the pinned stable `nixpkgs` input) and `nixos-unstable` (the
   # `nixpkgs-unstable` input, via the `*-unstable` check tiers).
   # Nix can't cross-build between architectures without a remote
@@ -61,23 +61,23 @@ jobs:
   # runner: x86_64-linux on `ubuntu-latest`, aarch64-linux on
   # `ubuntu-24.04-arm` (free for public repos). Darwin is not
   # built — the integration scenarios depend on `lklWithFirewall`,
-  # which is Linux-only. The cache key includes the channel so the
-  # two channels' stores don't collide.
+  # which is Linux-only. The cache key includes the branch so the
+  # two branches' stores don't collide.
   unit:
-    name: unit tests (${{ matrix.system }}, ${{ matrix.channel }})
+    name: unit tests (${{ matrix.system }}, ${{ matrix.branch }})
     strategy:
       fail-fast: false
       matrix:
         system: [x86_64-linux, aarch64-linux]
-        channel: [nixos-25.11, nixos-unstable]
+        branch: [nixos-25.11, nixos-unstable]
         include:
           - system: x86_64-linux
             runner: ubuntu-latest
           - system: aarch64-linux
             runner: ubuntu-24.04-arm
-          - channel: nixos-25.11
+          - branch: nixos-25.11
             suffix: ""
-          - channel: nixos-unstable
+          - branch: nixos-unstable
             suffix: "-unstable"
     runs-on: ${{ matrix.runner }}
     steps:
@@ -85,31 +85,31 @@ jobs:
       - uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72 # v30
       - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
         with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.channel }}-${{ hashFiles('flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.channel }}-
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.branch }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.branch }}-
           gc-max-store-size-linux: 5G
           purge: true
-          purge-prefixes: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.channel }}-
+          purge-prefixes: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.branch }}-
           purge-created: 0
           purge-primary-key: never
       - name: Build unit checks
         run: nix build --print-build-logs .#checks.${{ matrix.system }}.unit${{ matrix.suffix }}
 
   integration:
-    name: integration tests (${{ matrix.system }}, ${{ matrix.channel }})
+    name: integration tests (${{ matrix.system }}, ${{ matrix.branch }})
     strategy:
       fail-fast: false
       matrix:
         system: [x86_64-linux, aarch64-linux]
-        channel: [nixos-25.11, nixos-unstable]
+        branch: [nixos-25.11, nixos-unstable]
         include:
           - system: x86_64-linux
             runner: ubuntu-latest
           - system: aarch64-linux
             runner: ubuntu-24.04-arm
-          - channel: nixos-25.11
+          - branch: nixos-25.11
             suffix: ""
-          - channel: nixos-unstable
+          - branch: nixos-unstable
             suffix: "-unstable"
     runs-on: ${{ matrix.runner }}
     steps:
@@ -117,11 +117,11 @@ jobs:
       - uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72 # v30
       - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
         with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.channel }}-${{ hashFiles('flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.channel }}-
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.branch }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.branch }}-
           gc-max-store-size-linux: 5G
           purge: true
-          purge-prefixes: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.channel }}-
+          purge-prefixes: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.branch }}-
           purge-created: 0
           purge-primary-key: never
       - name: Build integration checks
@@ -138,23 +138,23 @@ jobs:
   # `ubuntu-24.04-arm` is not guaranteed and pkgs.testers.nixosTest
   # would refuse to start without `/dev/kvm`.
   #
-  # Runs the suite against both channels in parallel via the
+  # Runs the suite against both branches in parallel via the
   # built-in `vm` (pinned nixos-25.11) and `vm-unstable`
   # (nixos-unstable) tiers — the two nixpkgs inputs the flake
   # declares, so no `--override-input` is needed. Unstable catches
   # upstream regressions early (option deprecations, test-driver
   # internals, default flips like services.resolved auto-enable).
-  # Cache key includes the channel so the two stores don't collide.
+  # Cache key includes the branch so the two stores don't collide.
   vm:
-    name: vm tests (${{ matrix.channel }})
+    name: vm tests (${{ matrix.branch }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - channel: nixos-25.11
+          - branch: nixos-25.11
             suffix: ""
-          - channel: nixos-unstable
+          - branch: nixos-unstable
             suffix: "-unstable"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -179,11 +179,11 @@ jobs:
       # save their stores.
       - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
         with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.channel }}-${{ hashFiles('flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.channel }}-
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.branch }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.branch }}-
           gc-max-store-size-linux: 8G
           purge: true
-          purge-prefixes: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.channel }}-
+          purge-prefixes: nix-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ matrix.branch }}-
           purge-created: 0
           purge-primary-key: never
       - name: Build VM checks

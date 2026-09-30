@@ -29,7 +29,7 @@ in
       elem = [
         (expr.elem {
           val = expr.prefix "10.0.0.0" 24;
-          comment = ''X"; chain bypass { type filter hook input priority -10; policy accept; }; #'';
+          comment = "X\"; chain bypass { type filter hook input priority -10; policy accept; }; #";
         })
       ];
     };

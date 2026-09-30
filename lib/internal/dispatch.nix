@@ -17,107 +17,14 @@
         ↓ groupCellsByChain    ctx.groupedByChain
         ↓ buildChainBuckets    ctx.chainBuckets
       { table; ctx }
-
-  ===== groupCellsByChain =====
-
-  Reads:  ctx.cells, table.settings.localZone
-  Writes: ctx.groupedByChain
-
-  Determines each cell's destination chain (`{ hook; priority; }`)
-  and groups cells by chain name. The chain attrs are preserved
-  per group so `buildChainBuckets` doesn't recompute them.
-
-  `internal.placement.chainAttrsForCell` owns the choice of
-  override, local-zone hook, or group default. Phase 1 validates
-  entry placements through the same placement module.
-
-  Output shape:
-    groupedByChain = {
-      "<hook>-at-<priority>" = {
-        attrs = { hook; priority; };
-        cells = [ <cell> … ];
-      };
-      …
-    };
-
-  ===== buildChainBuckets =====
-
-  Reads:  ctx.groupedByChain
-  Writes: ctx.chainBuckets
-
-  Builds the final bucket per chain group: partitions cells per
-  `(from, to)` sub-chain, then within each sub-chain splits cells
-  into pre-child-dispatch and post-child-dispatch by priority
-  cutoff at 100. Each slot pre-sorted by `(priority asc, name asc)`;
-  policies (no priority) appended last to `postChildCells`.
-
-  Slot semantics within a sub-chain:
-    - Cells with priority < 100 (`first` = 1, `preDispatch` = 50,
-      or any int < 100) → `preChildCells`. Phase 4 emits these
-      before the sub-chain's child-dispatch jumps fire.
-    - Cells with priority >= 100 (`postDispatch` = 100,
-      `default` = 500, `last` = 999, or any int >= 100), and
-      policies (no priority) → `postChildCells`. Phase 4 emits
-      these after child-dispatch jumps return without verdict —
-      i.e., as parent-fallback rules.
-    - The base chain itself no longer carries pre/post slots;
-      every cell lives in its sub-chain. Rules that conceptually
-      need to fire "before any zone dispatch" land in each root
-      sub-chain's pre-child slot — equivalent for any traffic
-      that matched a root.
-
-  Output shape:
-    chainBuckets = {
-      "<hook>-at-<priority>" = {
-        hook      = <string>;
-        priority  = <symbol or int>;
-        subChains = {
-          "<from>-to-<to>" = {
-            from           = <zone-name>;
-            to             = <zone-name>;
-            preChildCells  = [ <sorted cells, priority < 100> ];
-            postChildCells = [ <sorted cells, priority >= 100,
-                                policies appended last> ];
-          };
-          # Single-direction chains carry only the present
-          # direction:
-          "<from>" = { from = <zone-name>;  preChildCells = […];
-                       postChildCells = […]; };
-          "<to>"   = { to   = <zone-name>;  preChildCells = […];
-                       postChildCells = […]; };
-        };
-      };
-      …
-    };
-
-  Bucket keys are *base chain names* (`"input-at-filter"`,
-  `"prerouting-at-raw"`, etc.) computed by `baseChainNameOf` from
-  `(hook, priority)`; Phase 4 emits them as the actual nftables
-  base chain names. The `<hook>-at-<priority>` form is a naming
-  convention — every bucket also carries `hook` and `priority` as
-  fields so Phase 4 reads structured data, not parsed strings.
-  Sub-chain keys (`"lan-to-wan"`, `"wan"`, etc.) are likewise
-  decorative within Phase 3; Phase 4 uses them to build the full
-  sub-chain name as `<baseChainName>__<subChainKey>`.
-
-  Override + default-chain collision (e.g., user override hits
-  `(input, filter)` which is also the default input filter chain)
-  is fine — both produce the same key, cells merge naturally into
-  one bucket.
-
-  ===== dispatchAndSort =====
-
-  Orchestrator: pipes `groupCellsByChain` then
-  `buildChainBuckets`. Returns `{ table; ctx }` with
-  `ctx.chainBuckets` set.
 */
 { inputs, internal }:
 let
   inherit (inputs) lib;
   inherit (internal.priority) entryPriorities;
   inherit (internal.placement)
-    chainAttrsForCell
     baseChainNameOf
+    chainAttrsForCell
     subChainKeyOf
     ;
 
@@ -165,7 +72,7 @@ let
     lib.optionalAttrs (firstCell ? from) { inherit (firstCell) from; }
     // lib.optionalAttrs (firstCell ? to) { inherit (firstCell) to; }
     // {
-      inherit preChildCells postChildCells;
+      inherit postChildCells preChildCells;
     };
 
   /*
@@ -247,8 +154,8 @@ let
 in
 {
   inherit
-    groupCellsByChain
     buildChainBuckets
     dispatchAndSort
+    groupCellsByChain
     ;
 }

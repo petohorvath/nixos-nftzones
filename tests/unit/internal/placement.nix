@@ -10,9 +10,9 @@
 }:
 let
   inherit (nftzones.internal.placement)
+    baseChainNameOf
     chainAttrsForCell
     chainAttrsForEntry
-    baseChainNameOf
     subChainKeyOf
     ;
 in
@@ -417,5 +417,4 @@ in
     };
     expected = "lan-to-wan";
   };
-
 }

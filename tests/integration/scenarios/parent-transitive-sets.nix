@@ -17,8 +17,8 @@
 */
 { nftypes, ... }:
 let
-  inherit (nftypes.dsl) inSet jump expr;
-  inherit (nftypes.dsl.fields) meta ip;
+  inherit (nftypes.dsl) expr inSet jump;
+  inherit (nftypes.dsl.fields) ip meta;
 in
 {
   body = {

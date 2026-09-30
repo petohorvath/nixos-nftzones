@@ -8,54 +8,6 @@
                  evaluated form. The compile pipeline merges these
                  into the effective zones namespace before chain
                  dispatch.
-
-  ===== toZone =====
-
-  Input:
-    A node value matching `nftzones.types.node` — has `name`,
-    `zone` (parent), and `address.ipv4` / `address.ipv6` (at
-    least one address must be set, enforced by the type's
-    `apply`).
-
-  Output:
-    A zone value with every field of the `nftzones.types.zone`
-    submodule's evaluated form filled in:
-      {
-        name          = <node.name>;
-        parent        = <node.zone>;     # establishes hierarchy
-        interfaces    = [ ];
-        cidrs         = optional ipv4 "${ipv4}/32"
-                     ++ optional ipv6 "${ipv6}/128";
-        matchOverride = { ingress = { }; egress = { }; };
-      }
-
-    `parent` is load-bearing — it places the lowered zone inside
-    the parent's sub-chain via Phase 4 emit's child-dispatch
-    jumps. See `docs/specs/zone-parent.md` for the dispatch model.
-    The empty per-side attrsets are valid `zoneMatchOverrideSide`
-    values: every section defaults to `null`, and downstream
-    consumers go through `zoneMembership.activeOverrides`,
-    which filters null/empty sections out — so the all-null shape
-    is indistinguishable from `{ }` for any read.
-
-    The output mirrors the zone submodule's defaults so lowered
-    nodes can be merged with declared zones (also submodule-
-    evaluated) under one uniform shape — no re-evaluation needed
-    downstream.
-
-  Example:
-    toZone {
-      name = "web-server";
-      zone = "dmz";
-      address = { ipv4 = "10.0.0.5"; ipv6 = "fe80::1"; };
-    }
-    => {
-      name = "web-server";
-      parent = "dmz";
-      interfaces = [ ];
-      cidrs = [ "10.0.0.5/32" "fe80::1/128" ];
-      matchOverride = { ingress = { }; egress = { }; };
-    }
 */
 { inputs }:
 let
@@ -77,10 +29,10 @@ let
     in
     {
       inherit
+        cidrs
+        interfaces
         name
         parent
-        interfaces
-        cidrs
         ;
       matchOverride = {
         ingress = { };

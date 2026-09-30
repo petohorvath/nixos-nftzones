@@ -10,7 +10,7 @@
   ...
 }:
 let
-  inherit (nftzones.internal.priority) resolvePriority entryPriorities;
+  inherit (nftzones.internal.priority) entryPriorities resolvePriority;
 in
 {
   # ===== resolvePriority — every symbol resolves to its int =====
@@ -59,7 +59,7 @@ in
     expected = -300;
   };
 
-  # ===== entryPriorities — canonical symbol → int table consumed by Phase 3 =====
+  # ===== entryPriorities — canonical symbol → int table for Phase 3 =====
 
   testEntryPrioritiesShape = {
     # Phase 3's `bucketOf` reads `entryPriorities.postDispatch` as
@@ -76,7 +76,7 @@ in
     };
   };
 
-  # ===== pre-dispatch cutoff — symbols below 100 emit before per-zone jumps =====
+  # ===== pre-dispatch — symbols below 100 emit before per-zone jumps =====
 
   testFirstIsPreDispatch = {
     expr = resolvePriority "first" < 100;
@@ -88,7 +88,7 @@ in
     expected = true;
   };
 
-  # ===== post-dispatch cutoff — symbols >= 100 emit after per-zone jumps =====
+  # ===== post-dispatch — symbols >= 100 emit after per-zone jumps =====
 
   testPostDispatchIsPostDispatch = {
     expr = resolvePriority "postDispatch" >= 100;

@@ -10,9 +10,11 @@
   ...
 }:
 let
-  inherit (nftzones.internal.normalize) normalizeTable;
-  inherit (nftzones.internal.expand) expandTable;
+  inherit (pkgs) lib;
+
   inherit (nftzones.internal.dispatch) dispatchAndSort;
+  inherit (nftzones.internal.expand) expandTable;
+  inherit (nftzones.internal.normalize) normalizeTable;
 
   inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
 
@@ -23,16 +25,13 @@ let
   */
   runDispatch =
     body:
-    (pkgs.lib.pipe (evalTable body) [
+    (lib.pipe (evalTable body) [
       normalizeTable
       expandTable
       dispatchAndSort
     ]).ctx;
 
-  inherit (pkgs) lib;
-
-  # Helpers for inspecting the new sub-chain shape.
-  cellNames = cells: map (c: c.name) cells;
+  cellNames = map (cell: cell.name);
 in
 {
   # ===== dispatchAndSort — empty cells =====
@@ -190,17 +189,17 @@ in
               };
             };
           }).chainBuckets."prerouting-at-dstnat";
-        sub = bucket.subChains.wan;
+        subChain = bucket.subChains.wan;
       in
       {
         inherit (bucket) hook priority;
         subChainKeys = lib.attrNames bucket.subChains;
         subFields = {
-          inherit (sub) from;
-          hasTo = sub ? to;
+          inherit (subChain) from;
+          hasTo = subChain ? to;
           # Default priority (500) → postChildCells.
-          preChildCount = builtins.length sub.preChildCells;
-          postChildCount = builtins.length sub.postChildCells;
+          preChildCount = builtins.length subChain.preChildCells;
+          postChildCount = builtins.length subChain.postChildCells;
         };
       };
     expected = {
@@ -232,13 +231,13 @@ in
               rule = [ ];
             };
           }).chainBuckets."output-at-mangle";
-        sub = bucket.subChains.vpn;
+        subChain = bucket.subChains.vpn;
       in
       {
         inherit (bucket) hook priority;
         subFields = {
-          inherit (sub) to;
-          hasFrom = sub ? from;
+          inherit (subChain) to;
+          hasFrom = subChain ? from;
         };
       };
     expected = {
@@ -295,7 +294,7 @@ in
     # different names.
     expr =
       let
-        out =
+        buckets =
           (runDispatch {
             name = "fw";
             zones.wan = {
@@ -320,8 +319,8 @@ in
           }).chainBuckets;
       in
       {
-        bucketKeys = lib.attrNames out;
-        subKeys = lib.attrNames out."input-at-filter".subChains;
+        bucketKeys = lib.attrNames buckets;
+        subKeys = lib.attrNames buckets."input-at-filter".subChains;
       };
     expected = {
       bucketKeys = [ "input-at-filter" ];
@@ -335,7 +334,7 @@ in
     # priority `"first"` resolves to 1 < 100 → preChildCells.
     expr =
       let
-        sub =
+        subChain =
           (runDispatch {
             name = "fw";
             zones = {
@@ -355,8 +354,8 @@ in
           }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
       in
       {
-        preChildNames = cellNames sub.preChildCells;
-        postChildNames = cellNames sub.postChildCells;
+        preChildNames = cellNames subChain.preChildCells;
+        postChildNames = cellNames subChain.postChildCells;
       };
     expected = {
       preChildNames = [ "early" ];
@@ -370,7 +369,7 @@ in
     # priority `"last"` resolves to 999 >= 100 → postChildCells.
     expr =
       let
-        sub =
+        subChain =
           (runDispatch {
             name = "fw";
             zones = {
@@ -390,8 +389,8 @@ in
           }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
       in
       {
-        preChildNames = cellNames sub.preChildCells;
-        postChildNames = cellNames sub.postChildCells;
+        preChildNames = cellNames subChain.preChildCells;
+        postChildNames = cellNames subChain.postChildCells;
       };
     expected = {
       preChildNames = [ ];
@@ -406,7 +405,7 @@ in
     # parent-fallback slot.
     expr =
       let
-        sub =
+        subChain =
           (runDispatch {
             name = "fw";
             zones = {
@@ -425,8 +424,8 @@ in
           }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
       in
       {
-        preChildNames = cellNames sub.preChildCells;
-        postChildNames = cellNames sub.postChildCells;
+        preChildNames = cellNames subChain.preChildCells;
+        postChildNames = cellNames subChain.postChildCells;
       };
     expected = {
       preChildNames = [ ];
@@ -480,7 +479,7 @@ in
     ];
   };
 
-  # ===== dispatchAndSort — filter + policy: policies sort to end of postChildCells =====
+  # ===== dispatchAndSort — filter + policy: the policy sorts last =====
 
   testDispatchPolicyAtEnd = {
     expr =
@@ -513,14 +512,14 @@ in
     ];
   };
 
-  # ===== dispatchAndSort — same (from, to) different groups land in different chains =====
+  # ===== dispatchAndSort — same (from, to) in two groups → two chains =====
 
   testDispatchGroupSeparation = {
     # snat lan→wan and filter lan→wan share a sub-chain key but
     # belong to different chains; they must not merge.
     expr =
       let
-        out = runDispatch {
+        ctx = runDispatch {
           name = "fw";
           zones = {
             lan = {
@@ -543,12 +542,12 @@ in
         };
       in
       {
-        filterChainSubs = lib.attrNames out.chainBuckets."forward-at-filter".subChains;
-        snatChainSubs = lib.attrNames out.chainBuckets."postrouting-at-srcnat".subChains;
+        filterChainSubs = lib.attrNames ctx.chainBuckets."forward-at-filter".subChains;
+        snatChainSubs = lib.attrNames ctx.chainBuckets."postrouting-at-srcnat".subChains;
         filterCellName =
-          (builtins.head out.chainBuckets."forward-at-filter".subChains."lan-to-wan".postChildCells).name;
+          (builtins.head ctx.chainBuckets."forward-at-filter".subChains."lan-to-wan".postChildCells).name;
         snatCellName =
-          (builtins.head out.chainBuckets."postrouting-at-srcnat".subChains."lan-to-wan".postChildCells).name;
+          (builtins.head ctx.chainBuckets."postrouting-at-srcnat".subChains."lan-to-wan".postChildCells).name;
       };
     expected = {
       filterChainSubs = [ "lan-to-wan" ];
@@ -566,7 +565,7 @@ in
   testDispatchOverrideMergesWithDefault = {
     expr =
       let
-        sub =
+        subChain =
           (runDispatch {
             name = "fw";
             zones = {
@@ -593,7 +592,7 @@ in
             };
           }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
       in
-      lib.sort (a: b: a < b) (cellNames sub.postChildCells);
+      lib.sort (a: b: a < b) (cellNames subChain.postChildCells);
     expected = [
       "override"
       "regular"
@@ -607,7 +606,7 @@ in
   testDispatchPreAndPostChildSplit = {
     expr =
       let
-        sub =
+        subChain =
           (runDispatch {
             name = "fw";
             zones = {
@@ -636,8 +635,8 @@ in
           }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
       in
       {
-        preChildNames = cellNames sub.preChildCells;
-        postChildNames = cellNames sub.postChildCells;
+        preChildNames = cellNames subChain.preChildCells;
+        postChildNames = cellNames subChain.postChildCells;
       };
     expected = {
       # priority preDispatch (50) < 100 → preChildCells.

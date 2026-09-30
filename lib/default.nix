@@ -1,3 +1,18 @@
+/*
+  nftzones library entry point. Assembles the public surface: the
+  `mkTable` / `mkRuleset` compilers, the `types` option types, the
+  `snippets` rule-body shorthand, and the unstable `internal` namespace.
+
+  Example:
+    nftzones.mkRuleset "zonefw" {
+      zones.lan.interfaces = [ "eth1" ];
+      filters.allow-ssh = {
+        from = [ "lan" ];
+        to = [ "local" ];
+        rule = [ (eq tcp.dport 22) accept ];
+      };
+    }
+*/
 { inputs }:
 let
   inherit (inputs) lib;
@@ -63,15 +78,43 @@ let
     name: body:
     (lib.evalModules {
       modules = [
-        { options.${name} = lib.mkOption { type = types.table; }; }
+        {
+          options.${name} = lib.mkOption {
+            type = types.table;
+            description = "Table body under validation.";
+          };
+        }
         { config.${name} = body; }
       ];
     }).config.${name}
     // {
-      name = name;
+      inherit name;
     };
 
+  /*
+    Compile a raw table body into one nftables table, for callers
+    outside the NixOS module or composing several tables.
+
+    Inputs:
+      name — on-wire table name; overrides any `name` in `body`.
+      body — attrset validated against `nftzones.types.table`.
+
+    Returns an `nftypes.dsl.table` value, ready to embed in a ruleset
+    or render to JSON.
+  */
   mkTable = name: body: internal.compile.mkTable (evalTableBody name body);
+
+  /*
+    Compile a raw table body into a complete single-table ruleset, for
+    callers outside the NixOS module.
+
+    Inputs:
+      name — on-wire table name; overrides any `name` in `body`.
+      body — attrset validated against `nftzones.types.table`.
+
+    Returns an `nftypes.dsl.ruleset` value containing the compiled
+    table, ready for `nft -f -j`.
+  */
   mkRuleset = name: body: internal.compile.mkRuleset (evalTableBody name body);
 in
 {
@@ -80,9 +123,9 @@ in
 
   inherit
     internal
-    types
-    snippets
-    mkTable
     mkRuleset
+    mkTable
+    snippets
+    types
     ;
 }

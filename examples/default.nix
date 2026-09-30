@@ -30,13 +30,13 @@
 let
   inherit (pkgs) lib;
 
-  /*
-    List `*.nix` regular files in this directory, minus
-    `default.nix` itself. Stable alphabetical order from
-    `builtins.attrNames`.
-  */
+  # List `*.nix` regular files in this directory, minus `default.nix`
+  # itself. Stable alphabetical order from `builtins.attrNames`.
   exampleNames = lib.pipe (builtins.readDir ./.) [
-    (lib.filterAttrs (n: t: t == "regular" && lib.hasSuffix ".nix" n && n != "default.nix"))
+    (lib.filterAttrs (
+      fileName: fileType:
+      fileType == "regular" && lib.hasSuffix ".nix" fileName && fileName != "default.nix"
+    ))
     builtins.attrNames
     (map (lib.removeSuffix ".nix"))
   ];

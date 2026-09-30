@@ -6,10 +6,10 @@
 { nftypes, ... }:
 let
   inherit (nftypes.dsl)
-    inSet
-    counter
     accept
+    counter
     expr
+    inSet
     ;
   inherit (nftypes.dsl.fields) ip;
 in

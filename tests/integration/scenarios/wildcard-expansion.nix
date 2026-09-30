@@ -5,7 +5,7 @@
 */
 { nftypes, ... }:
 let
-  inherit (nftypes.dsl) eq accept;
+  inherit (nftypes.dsl) accept eq;
   inherit (nftypes.dsl.fields) tcp;
 in
 {
@@ -16,7 +16,8 @@ in
       wan.interfaces = [ "wan0" ];
     };
 
-    # `all` resolves to lan, guest, wan, local — four cells against `to = local`.
+    # `all` resolves to lan, guest, wan, local — four cells against
+    # `to = local`.
     filters.allow-ssh = {
       from = [ "all" ];
       to = [ "local" ];

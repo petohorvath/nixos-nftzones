@@ -34,15 +34,15 @@ let
   inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalFails;
 
   inherit (nftzones.types)
-    zone
-    node
+    dnat
+    droute
     filter
+    node
     policy
     snat
-    dnat
     sroute
-    droute
     table
+    zone
     ;
 
   /*

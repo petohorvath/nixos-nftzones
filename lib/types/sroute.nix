@@ -131,10 +131,10 @@ let
 in
 {
   inherit
-    srouteName
-    srouteRule
-    sroutePriority
-    srouteComment
     sroute
+    srouteComment
+    srouteName
+    sroutePriority
+    srouteRule
     ;
 }

@@ -12,8 +12,8 @@
 let
   inherit (nftzones.internal.compile)
     compile
-    mkTable
     mkRuleset
+    mkTable
     ;
 
   inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
@@ -110,7 +110,7 @@ in
     # input table.
     expr =
       let
-        out = mkTable (evalTable {
+        table = mkTable (evalTable {
           family = "ip";
           zones.lan = {
             interfaces = [ "lan0" ];
@@ -118,8 +118,8 @@ in
         });
       in
       {
-        inherit (out) family name;
-        hasMarker = out ? __nftTable;
+        inherit (table) family name;
+        hasMarker = table ? __nftTable;
       };
     expected = {
       family = "ip";
@@ -136,17 +136,17 @@ in
     # in our case is the `add table` for our compiled table.
     expr =
       let
-        rs = mkRuleset (evalTable {
+        ruleset = mkRuleset (evalTable {
           zones.lan = {
             interfaces = [ "lan0" ];
           };
         });
-        firstCmd = builtins.head rs.nftables;
+        firstCommand = builtins.head ruleset.nftables;
       in
       {
-        hasNftables = rs ? nftables;
-        nftablesIsList = builtins.isList rs.nftables;
-        firstIsAddTable = firstCmd ? add && firstCmd.add ? table;
+        hasNftables = ruleset ? nftables;
+        nftablesIsList = builtins.isList ruleset.nftables;
+        firstIsAddTable = firstCommand ? add && firstCommand.add ? table;
       };
     expected = {
       hasNftables = true;
@@ -172,13 +172,13 @@ in
             })
           )
         );
-        firstCmd = builtins.head json.nftables;
+        firstCommand = builtins.head json.nftables;
       in
       {
         hasNftables = json ? nftables;
-        firstIsAddTable = firstCmd ? add && firstCmd.add ? table;
-        firstTableName = firstCmd.add.table.name;
-        firstTableFamily = firstCmd.add.table.family;
+        firstIsAddTable = firstCommand ? add && firstCommand.add ? table;
+        firstTableName = firstCommand.add.table.name;
+        firstTableFamily = firstCommand.add.table.family;
       };
     expected = {
       hasNftables = true;
@@ -196,14 +196,14 @@ in
     # separate positional arg (mirrors `nftypes.dsl.table`).
     expr =
       let
-        out = nftzones.mkTable "fw" {
+        table = nftzones.mkTable "fw" {
           zones.lan = {
             interfaces = [ "lan0" ];
           };
         };
       in
       {
-        inherit (out) family name;
+        inherit (table) family name;
       };
     expected = {
       family = "inet";
@@ -228,15 +228,15 @@ in
   testPublicMkRulesetAcceptsRawBody = {
     expr =
       let
-        rs = nftzones.mkRuleset "fw" {
+        ruleset = nftzones.mkRuleset "fw" {
           zones.lan = {
             interfaces = [ "lan0" ];
           };
         };
       in
       {
-        hasNftables = rs ? nftables;
-        commandCount = builtins.length rs.nftables;
+        hasNftables = ruleset ? nftables;
+        commandCount = builtins.length ruleset.nftables;
       };
     # 2 commands: 1 table declaration + 1 set declaration for lan_iifs.
     expected = {
@@ -261,14 +261,14 @@ in
           family = "ip6";
           zones.lan.interfaces = [ "lan0" ];
         };
-        rs = nftypes.dsl.ruleset [
+        ruleset = nftypes.dsl.ruleset [
           v4
           v6
         ];
-        json = builtins.fromJSON (nftypes.toJson rs);
-        tableCommands = builtins.filter (c: c ? add && c.add ? table) json.nftables;
-        tableTuples = map (c: {
-          inherit (c.add.table) name family;
+        json = builtins.fromJSON (nftypes.toJson ruleset);
+        tableCommands = builtins.filter (command: command ? add && command.add ? table) json.nftables;
+        tableTuples = map (command: {
+          inherit (command.add.table) family name;
         }) tableCommands;
       in
       pkgs.lib.sort (a: b: a.name < b.name) tableTuples;
@@ -308,11 +308,12 @@ in
             }
           )
         );
-        chainNames = pkgs.lib.sort (a: b: a < b) (
-          map (c: c.add.chain.name) (builtins.filter (c: c ? add && c.add ? chain) json.nftables)
-        );
       in
-      chainNames;
+      pkgs.lib.sort (a: b: a < b) (
+        map (command: command.add.chain.name) (
+          builtins.filter (command: command ? add && command.add ? chain) json.nftables
+        )
+      );
     expected = [
       "forward-at-filter"
       "forward-at-filter__lan-to-wan"

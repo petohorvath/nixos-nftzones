@@ -3,8 +3,8 @@ let
   /*
     Three-layer module hierarchy:
 
-      base       — leaf helpers (zone, entry, priority, node);
-                   no inter-module dependencies.
+      base       — leaf helpers (zone, entry, priority, node, refs,
+                   placement); no inter-module dependencies.
       withPhases — leaves + per-phase orchestrators (normalize,
                    expand, dispatch, emit); each phase consumes
                    `base` as its `internal` arg.
@@ -24,12 +24,12 @@ let
 
   base = {
     inherit
-      zone
       entry
-      priority
       node
-      refs
       placement
+      priority
+      refs
+      zone
       ;
   };
 
@@ -55,10 +55,10 @@ let
 
   withPhases = base // {
     inherit
-      normalize
-      expand
       dispatch
       emit
+      expand
+      normalize
       ;
   };
 

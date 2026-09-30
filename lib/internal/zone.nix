@@ -32,7 +32,7 @@
 let
   inherit (inputs) lib libnet nftypes;
   inherit (nftypes.dsl) expr inSet;
-  inherit (nftypes.dsl.fields) meta ip ip6;
+  inherit (nftypes.dsl.fields) ip ip6 meta;
 
   directionToSide = {
     from = "ingress";
@@ -58,9 +58,10 @@ let
   cidrToPrefix =
     isV4: parsed:
     let
-      addrStr = if isV4 then libnet.ipv4.toString parsed.address else libnet.ipv6.toString parsed.address;
+      addressString =
+        if isV4 then libnet.ipv4.toString parsed.address else libnet.ipv6.toString parsed.address;
     in
-    expr.prefix addrStr parsed.prefix;
+    expr.prefix addressString parsed.prefix;
 
   /*
     Transitive descendants of `name`. DFS over `childrenOf`, not
@@ -78,9 +79,9 @@ let
     childrenOf: name:
     let
       step =
-        visited: cur:
+        visited: current:
         let
-          direct = builtins.filter (c: !(builtins.elem c visited)) (childrenOf.${cur} or [ ]);
+          direct = builtins.filter (c: !(builtins.elem c visited)) (childrenOf.${current} or [ ]);
           visited' = visited ++ direct;
         in
         direct ++ lib.concatMap (step visited') direct;
@@ -98,7 +99,7 @@ let
       # come before descendants' (matching the contribution
       # order). nft's ifname set has no notion of overlap; exact
       # duplicates are the only thing to remove.
-      allIfaces = lib.unique (lib.concatMap (z: z.interfaces or [ ]) contributing);
+      allInterfaces = lib.unique (lib.concatMap (z: z.interfaces or [ ]) contributing);
 
       # CIDRs: `libnet.cidr.summarize` handles family separation,
       # canonicalisation (network bits masked), and the full
@@ -114,10 +115,10 @@ let
       parsedV4 = builtins.filter libnet.cidr.isIpv4 summarised;
       parsedV6 = builtins.filter libnet.cidr.isIpv6 summarised;
     in
-    lib.optionalAttrs (allIfaces != [ ]) {
+    lib.optionalAttrs (allInterfaces != [ ]) {
       "${name}_iifs" = {
         type = "ifname";
-        elements = allIfaces;
+        elements = allInterfaces;
       };
     }
     // lib.optionalAttrs (parsedV4 != [ ]) {
@@ -173,12 +174,12 @@ let
     mergedZones: name:
     let
       step =
-        visited: cur:
-        if cur == null then
+        visited: current:
+        if current == null then
           [ ]
         else
           let
-            zone = mergedZones.${cur} or null;
+            zone = mergedZones.${current} or null;
             parent = if zone == null then null else zone.parent or null;
           in
           if parent == null || builtins.elem parent visited || !(mergedZones ? ${parent}) then
@@ -205,40 +206,43 @@ let
     else
       let
         isFromDirection = direction == "from";
-        ifAvailable = interfaceAvailable hook direction;
+        interfaceIsAvailable = interfaceAvailable hook direction;
 
-        ifField = if isFromDirection then meta.iifname else meta.oifname;
-        addrFieldV4 = if isFromDirection then ip.saddr else ip.daddr;
-        addrFieldV6 = if isFromDirection then ip6.saddr else ip6.daddr;
+        interfaceField = if isFromDirection then meta.iifname else meta.oifname;
+        addressFieldV4 = if isFromDirection then ip.saddr else ip.daddr;
+        addressFieldV6 = if isFromDirection then ip6.saddr else ip6.daddr;
 
-        iifsName = "${zoneName}_iifs";
-        v4Name = "${zoneName}_v4";
-        v6Name = "${zoneName}_v6";
+        interfaceSetName = "${zoneName}_iifs";
+        v4SetName = "${zoneName}_v4";
+        v6SetName = "${zoneName}_v6";
 
-        autoIfs = lib.optional (zoneSets ? ${iifsName}) (inSet ifField (expr.setRef iifsName));
-        autoV4 = lib.optional (zoneSets ? ${v4Name}) (inSet addrFieldV4 (expr.setRef v4Name));
-        autoV6 = lib.optional (zoneSets ? ${v6Name}) (inSet addrFieldV6 (expr.setRef v6Name));
+        autoInterfaces = lib.optional (zoneSets ? ${interfaceSetName}) (
+          inSet interfaceField (expr.setRef interfaceSetName)
+        );
+        autoV4 = lib.optional (zoneSets ? ${v4SetName}) (inSet addressFieldV4 (expr.setRef v4SetName));
+        autoV6 = lib.optional (zoneSets ? ${v6SetName}) (inSet addressFieldV6 (expr.setRef v6SetName));
 
         # Active section wins if present; else fall back to auto.
-        ifsSection = active.interfaces or autoIfs;
+        interfacesSection = active.interfaces or autoInterfaces;
         v4Section = active.ipv4 or autoV4;
         v6Section = active.ipv6 or autoV6;
         extraSection = active.extra or [ ];
 
         # Interfaces section is hook-gated: drop it when the relevant
-        # iif/oif field isn't valid at the hook. checkChainOverride‑
-        # Placement should have flagged this case, so this is defensive.
-        ifsAtHook = if ifAvailable then ifsSection else [ ];
+        # iif/oif field isn't valid at the hook.
+        # checkChainOverridePlacement should have flagged this case, so
+        # this is defensive.
+        interfacesAtHook = if interfaceIsAvailable then interfacesSection else [ ];
 
         # An active override is always own, including on grouping zones.
-        ifsOwn = active ? interfaces || own.interfaces;
+        interfacesOwn = active ? interfaces || own.interfaces;
         v4Own = active ? ipv4 || own.v4;
         v6Own = active ? ipv6 || own.v6;
 
         # Own-anchored prefix, ANDed into every family variant.
         # `extra` is override-only and therefore always own;
-        # inherited interfaces never join (see inheritedIfsVariant).
-        prefix = (if ifsOwn then ifsAtHook else [ ]) ++ extraSection;
+        # inherited interfaces never join (see inheritedInterfacesVariant).
+        prefix = (if interfacesOwn then interfacesAtHook else [ ]) ++ extraSection;
 
         ownFamilyVariants =
           lib.optional (v4Own && v4Section != [ ]) (prefix ++ v4Section)
@@ -256,12 +260,14 @@ let
         # family-agnostic variant — ANDing them into the prefix
         # would narrow the zone's own variants to descendant
         # traffic.
-        inheritedIfsVariant = lib.optional (!ifsOwn && ifsAtHook != [ ]) ifsAtHook;
+        inheritedInterfacesVariant = lib.optional (
+          !interfacesOwn && interfacesAtHook != [ ]
+        ) interfacesAtHook;
       in
       if ownFamilyVariants != [ ] then
         # Family-anchored own gate, widened by whatever the
         # descendants contribute on top.
-        ownFamilyVariants ++ inheritedFamilyVariants ++ inheritedIfsVariant
+        ownFamilyVariants ++ inheritedFamilyVariants ++ inheritedInterfacesVariant
       else if prefix != [ ] then
         # Interface/extra-only own gate — family-agnostic, so the
         # whole subtree (including inherited families) already
@@ -270,7 +276,7 @@ let
       else
         # Nothing own (grouping zone): every present section is
         # descendant-contributed and stands alone.
-        inheritedFamilyVariants ++ inheritedIfsVariant;
+        inheritedFamilyVariants ++ inheritedInterfacesVariant;
 
   resolveMembership =
     { zones, localZone }:
@@ -338,10 +344,10 @@ let
         }:
         mkDirectionVariants {
           inherit
-            zoneName
-            hook
             direction
+            hook
             localZone
+            zoneName
             ;
           zoneSets = sets;
           active = activeOverrides zoneName directionToSide.${direction};
@@ -359,17 +365,17 @@ let
         let
           anchored = (zone.interfaces or [ ]) != [ ] || (zone.cidrs or [ ]) != [ ];
           path = map (n: zones.${n}) ([ name ] ++ ancestorsOf name);
-          iface = lib.any (z: (z.interfaces or [ ]) != [ ]) path;
-          cidr = lib.any (z: (z.cidrs or [ ]) != [ ]) path;
+          hasInterfaces = lib.any (z: (z.interfaces or [ ]) != [ ]) path;
+          hasCidrs = lib.any (z: (z.cidrs or [ ]) != [ ]) path;
         in
-        if !anchored || iface == cidr then
+        if !anchored || hasInterfaces == hasCidrs then
           null
-        else if iface then
+        else if hasInterfaces then
           "interface"
         else
           "cidr"
       ) zones;
-      names = builtins.attrNames zones;
+      zoneNames = builtins.attrNames zones;
       crossAxisPairs = lib.concatLists (
         lib.imap0 (
           i: a:
@@ -381,26 +387,26 @@ let
               && axisClass.${a} != axisClass.${b}
               && !(related a b)
             ) { inherit a b; }
-          ) (lib.drop (i + 1) names)
-        ) names
+          ) (lib.drop (i + 1) zoneNames)
+        ) zoneNames
       );
     in
     {
       inherit
-        sets
-        setOwners
-        childrenOf
-        rootZoneNames
-        ancestorsOf
-        related
         activeOverrides
+        ancestorsOf
+        childrenOf
+        crossAxisPairs
+        directionVariants
         hasOwnMatch
         reachableAt
-        directionVariants
-        crossAxisPairs
+        related
+        rootZoneNames
+        setOwners
+        sets
         ;
     };
 in
 {
-  inherit resolveMembership directionToSide;
+  inherit directionToSide resolveMembership;
 }

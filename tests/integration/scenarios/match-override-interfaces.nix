@@ -15,7 +15,7 @@
 */
 { nftypes, ... }:
 let
-  inherit (nftypes.dsl) eq accept;
+  inherit (nftypes.dsl) accept eq;
   inherit (nftypes.dsl.fields) meta;
 in
 {

@@ -67,7 +67,7 @@
                 `handle`) stripped — those are filled in by the
                 compile pipeline from context.
 
-  14 top-level fields (the four knobs nest under `settings`).
+  14 top-level fields (the compile knobs nest under `settings`).
 
   Example:
     options.fw = lib.mkOption {
@@ -108,11 +108,13 @@ let
 
   tableName = primitives.identifier;
 
-  # `nftypes.enums.family` is the upstream list; we subtract the
-  # families we don't support end-to-end. `arp` and `netdev` would
-  # need extra plumbing (e.g. per-chain `device` binding for
-  # netdev) before the pipeline could emit valid tables for them.
-  # See README "Known limitations".
+  /*
+    `nftypes.enums.family` is the upstream list; we subtract the
+    families we don't support end-to-end. `arp` and `netdev` would
+    need extra plumbing (e.g. per-chain `device` binding for
+    netdev) before the pipeline could emit valid tables for them.
+    See README "Known limitations".
+  */
   tableFamily = lib.types.enum (lib.subtractLists [ "arp" "netdev" ] nftypes.enums.family);
 
   tableFlags = lib.types.listOf nftypes.types.tableFlag;
@@ -311,10 +313,10 @@ let
         example = "host";
         description = ''
           Name used for "the firewall machine itself" in `from`
-          and `to` fields. Default `"local"`. The compile-time
-          chain dispatch (`chainOf`) treats this name as the
-          host-position trigger: `to == localZone` → input
-          chain, `from == localZone` → output chain.
+          and `to` fields. Default `"local"`. Compile-time chain
+          dispatch treats this name as the host-position trigger:
+          `to == localZone` → input chain, `from == localZone` →
+          output chain.
         '';
       };
 
@@ -341,30 +343,32 @@ let
 
         # ── Metadata ──────────────────────────────────────────────────────
 
+        /*
+          `name` defaults to the enclosing key but carries no
+          per-submodule `apply` guard. The on-wire name is a
+          projection of the real `networking.nftzones.tables` attr
+          key, established at the compile boundary: the module's
+          `tables` option `apply` overrides each entry's `name`
+          with its key, and the library `mkTable` / `evalTableBody`
+          does the same with its `name` arg. An `apply` here
+          couldn't stand in — it sees the *lexical* submodule key,
+          which for a standalone / facade table
+          (`options.myfw = mkOption { type = table; }`) is the
+          option path, not the tables key it compiles under — so it
+          would spuriously reject a table re-exposed as its own
+          option and forwarded into `tables.<key>`. Leaving `name`
+          a plain, readable field keeps the table copy-safe and
+          facade-safe, matching the grouped object types (whose
+          `name == key` is likewise a boundary concern, checked by
+          `internal.normalize.checkNameKeyMismatch`). Phase 4 emit
+          (`assembleOutput`) reads `.name` for the on-wire table
+          name, and external introspection (nix-topology,
+          `deepSeq`) reads it too; the boundary keeps it equal to
+          the key.
+        */
         name = lib.mkOption {
           type = tableName;
           default = name;
-          # `name` defaults to the enclosing key but carries no
-          # per-submodule `apply` guard. The on-wire name is a
-          # projection of the real `networking.nftzones.tables` attr
-          # key, established at the compile boundary: the module's
-          # `tables` option `apply` overrides each entry's `name`
-          # with its key, and the library `mkTable` / `evalTableBody`
-          # does the same with its `name` arg. An `apply` here
-          # couldn't stand in — it sees the *lexical* submodule key,
-          # which for a standalone / facade table
-          # (`options.myfw = mkOption { type = table; }`) is the
-          # option path, not the tables key it compiles under — so it
-          # would spuriously reject a table re-exposed as its own
-          # option and forwarded into `tables.<key>`. Leaving `name`
-          # a plain, readable field keeps the table copy-safe and
-          # facade-safe, matching the grouped object types (whose
-          # `name == key` is likewise a boundary concern, checked by
-          # `internal.normalize.checkNameKeyMismatch`). Phase 4 emit
-          # (`assembleOutput`) reads `.name` for the on-wire table
-          # name, and external introspection (nix-topology,
-          # `deepSeq`) reads it too; the boundary keeps it equal to
-          # the key.
           example = "zonefw";
           description = ''
             The nftables table name. A projection of the enclosing
@@ -531,21 +535,21 @@ let
 in
 {
   inherit
-    tableName
-    tableFamily
-    tableFlags
-    tableComment
-    tableSettings
-    tableChainPolicy
-    tableZones
-    tableNodes
-    tableFilters
-    tablePolicies
-    tableSnats
-    tableDnats
-    tableSroutes
-    tableDroutes
-    tableObjects
     table
+    tableChainPolicy
+    tableComment
+    tableDnats
+    tableDroutes
+    tableFamily
+    tableFilters
+    tableFlags
+    tableName
+    tableNodes
+    tableObjects
+    tablePolicies
+    tableSettings
+    tableSnats
+    tableSroutes
+    tableZones
     ;
 }

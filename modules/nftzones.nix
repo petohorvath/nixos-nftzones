@@ -43,7 +43,7 @@ let
     table:
     let
       flagsLine = lib.optional (table.flags != [ ]) "flags ${lib.concatStringsSep ", " table.flags};";
-      commentLine = lib.optional (table.comment != null) ''comment "${table.comment}";'';
+      commentLine = lib.optional (table.comment != null) "comment \"${table.comment}\";";
       lines = flagsLine ++ commentLine;
     in
     lib.optionalString (lines != [ ]) (lib.concatStringsSep "\n" lines + "\n");
@@ -128,11 +128,12 @@ in
         # than by omission.
         assertion = cfg.tables != { };
         message = ''
-          networking.nftzones.enable is true but networking.nftzones.tables is empty.
-          This compiles to no nftables chains, which — combined with
-          networking.firewall.enable = false — leaves the host with no
-          firewall at all. Either declare at least one table under
-          networking.nftzones.tables, or set networking.nftzones.enable = false.
+          networking.nftzones.enable is true but
+          networking.nftzones.tables is empty. This compiles to no nftables
+          chains, which — combined with networking.firewall.enable = false —
+          leaves the host with no firewall at all. Either declare at least
+          one table under networking.nftzones.tables, or set
+          networking.nftzones.enable = false.
         '';
       }
     ]
@@ -144,21 +145,22 @@ in
     # error) — there are edge cases where a user genuinely wants
     # the stock firewall alongside zone-managed rules.
     ++ lib.mapAttrsToList (name: _: {
-      # The nftzones module's own contribution (assigned a few
-      # lines below) shows up in `options.networking.nftables.
-      # tables.definitions` alongside any user-supplied ones, so
-      # the naive "is the key present?" check on the merged
-      # config always fires for every table this module owns.
-      # Counting contributors of this specific key against the
-      # pre-merge definitions list lets us flag the *real*
-      # collision: more than one source supplying the same name.
+      # The nftzones module's own contribution (assigned a few lines
+      # below) shows up in
+      # `options.networking.nftables.tables.definitions` alongside any
+      # user-supplied ones, so the naive "is the key present?" check on
+      # the merged config always fires for every table this module
+      # owns. Counting contributors of this specific key against the
+      # pre-merge definitions list flags the *real* collision: more
+      # than one source supplying the same name.
       assertion =
         (builtins.length (
           builtins.filter (def: def ? ${name}) options.networking.nftables.tables.definitions
         )) <= 1;
       message = ''
-        networking.nftzones.tables.${name} collides with networking.nftables.tables.${name}.
-        Declare each table in exactly one module.
+        networking.nftzones.tables.${name} collides with
+        networking.nftables.tables.${name}. Declare each table in exactly
+        one module.
       '';
     }) cfg.tables;
 

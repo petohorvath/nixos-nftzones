@@ -89,9 +89,11 @@ let
   snatRule = lib.types.attrTag {
     snat = lib.mkOption {
       type = nftypes.types.statements.natBody;
+      description = "Full source address translation.";
     };
     masquerade = lib.mkOption {
       type = nftypes.types.statements.masqueradeBody;
+      description = "Source address taken from the outgoing interface.";
     };
   };
 
@@ -188,10 +190,10 @@ let
 in
 {
   inherit
-    snatName
-    snatRule
-    snatPriority
-    snatComment
     snat
+    snatComment
+    snatName
+    snatPriority
+    snatRule
     ;
 }

@@ -18,12 +18,12 @@ let
     remaining `matchOverride` field carries submodule defaults
     whose shape is exercised separately.
   */
-  inputFields = z: {
-    inherit (z)
+  inputFields = zone: {
+    inherit (zone)
+      cidrs
+      interfaces
       name
       parent
-      interfaces
-      cidrs
       ;
   };
 in
@@ -146,7 +146,7 @@ in
   testToZoneSubmoduleDefaults = {
     expr =
       let
-        z = toZone {
+        zone = toZone {
           name = "x";
           zone = "z";
           address = {
@@ -156,7 +156,7 @@ in
         };
       in
       {
-        inherit (z) matchOverride;
+        inherit (zone) matchOverride;
       };
     expected = {
       matchOverride = {

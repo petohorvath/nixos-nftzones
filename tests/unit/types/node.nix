@@ -10,7 +10,7 @@
   ...
 }:
 let
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable evalType evalFails;
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalFails evalTable evalType;
 
   nodeIn =
     body:

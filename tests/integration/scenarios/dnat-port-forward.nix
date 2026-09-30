@@ -6,7 +6,7 @@
 */
 { nftypes, ... }:
 let
-  inherit (nftypes.dsl) eq dnat;
+  inherit (nftypes.dsl) dnat eq;
   inherit (nftypes.dsl.fields) tcp;
 in
 {

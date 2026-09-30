@@ -39,10 +39,7 @@
   ...
 }:
 let
-  inherit (nftypes.dsl)
-    eq
-    accept
-    ;
+  inherit (nftypes.dsl) accept eq;
   inherit (nftypes.dsl.fields) tcp;
 
   lanNet = "192.168.1";
@@ -222,7 +219,8 @@ pkgs.testers.nixosTest {
         # Exercise the same activation script nixos-rebuild invokes. A
         # rendering bug rejected by the nftables reload must fail here.
         router.succeed(
-            "/run/current-system/specialisation/v2/bin/switch-to-configuration test"
+            "/run/current-system/specialisation/v2/bin/"
+            "switch-to-configuration test"
         )
 
         v2_ruleset = router.succeed("nft list table inet fw")

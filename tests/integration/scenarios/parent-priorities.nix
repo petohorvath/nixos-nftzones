@@ -7,8 +7,8 @@
 */
 { nftypes, ... }:
 let
-  inherit (nftypes.dsl) eq accept drop;
-  inherit (nftypes.dsl.fields) tcp ip;
+  inherit (nftypes.dsl) accept drop eq;
+  inherit (nftypes.dsl.fields) ip tcp;
 in
 {
   body = {

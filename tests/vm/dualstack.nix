@@ -9,11 +9,11 @@
   entries for each.
 
   Topology:
-                          lan vlan 1                     wan vlan 2
-                  192.168.1.0/24                       203.0.113.0/24
-                  fd00:dead::/64                       2001:db8::/64
-    [client] ── eth1 (.10 / ::10) ─── eth1 [router] eth2 ── (.10 / ::10) eth1 [server]
-                                          (.1 / ::1)    (.1 / ::1)
+                   lan vlan 1                  wan vlan 2
+                 192.168.1.0/24              203.0.113.0/24
+                 fd00:dead::/64              2001:db8::/64
+    [client] eth1 ──────── eth1 [router] eth2 ──────── eth1 [server]
+           .10 / ::10    .1 / ::1        .1 / ::1    .10 / ::10
 
   Why the explicit ICMPv6 input-allow:
 
@@ -38,7 +38,7 @@
   ...
 }:
 let
-  inherit (nftypes.dsl) eq accept;
+  inherit (nftypes.dsl) accept eq;
   inherit (nftypes.dsl.fields) meta;
 
   lanNet4 = "192.168.1";
@@ -257,7 +257,9 @@ pkgs.testers.nixosTest {
                 try:
                     ruleset = router.succeed("nft list ruleset")
                     ct = router.succeed("conntrack -L 2>/dev/null || true")
-                    routes = router.succeed("ip -4 route; echo ---; ip -6 route")
+                    routes = router.succeed(
+                        "ip -4 route; echo ---; ip -6 route"
+                    )
                 except Exception:
                     ruleset = ct = routes = "(failed to capture)"
                 print(

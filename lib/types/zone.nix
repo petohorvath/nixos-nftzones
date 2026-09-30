@@ -66,10 +66,8 @@ let
 
   zoneParent = lib.types.nullOr zoneName;
 
-  /*
-    libnet.types.interfaceName is strict (kernel dev_valid_name
-    parity). Wildcard patterns like `wlan*` are not yet supported.
-  */
+  # libnet.types.interfaceName is strict (kernel dev_valid_name
+  # parity). Wildcard patterns like `wlan*` are not yet supported.
   zoneInterfaces = lib.types.listOf libnet.types.interfaceName;
 
   zoneCidrs = lib.types.listOf libnet.types.cidr;
@@ -235,9 +233,7 @@ let
             "10.0.0.0/24"
             "2001:db8::/32"
           ];
-          description = ''
-            CIDR prefixes (mixed v4/v6) that belong to this zone.
-          '';
+          description = "CIDR prefixes (mixed v4/v6) that belong to this zone.";
         };
 
         matchOverride = lib.mkOption {
@@ -265,12 +261,12 @@ let
 in
 {
   inherit
+    zone
+    zoneCidrs
+    zoneInterfaces
+    zoneMatchOverride
     zoneName
     zoneNames
     zoneParent
-    zoneInterfaces
-    zoneCidrs
-    zoneMatchOverride
-    zone
     ;
 }

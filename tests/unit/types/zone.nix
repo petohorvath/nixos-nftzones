@@ -11,7 +11,7 @@
   ...
 }:
 let
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable evalType evalFails;
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalFails evalTable evalType;
 
   zoneIn =
     body:
@@ -92,23 +92,23 @@ in
   testZoneMatchOverrideDefaultsAllNull = {
     expr =
       let
-        z = zoneIn { };
+        zone = zoneIn { };
       in
       {
         ingress = {
-          inherit (z.matchOverride.ingress)
+          inherit (zone.matchOverride.ingress)
+            extra
             interfaces
             ipv4
             ipv6
-            extra
             ;
         };
         egress = {
-          inherit (z.matchOverride.egress)
+          inherit (zone.matchOverride.egress)
+            extra
             interfaces
             ipv4
             ipv6
-            extra
             ;
         };
       };
@@ -189,11 +189,11 @@ in
 
   testZoneMatchOverrideExtraAccepted =
     let
-      stmt = nftypes.dsl.eq nftypes.dsl.fields.meta.mark 100;
-      z = zoneIn { matchOverride.ingress.extra = [ stmt ]; };
+      statement = nftypes.dsl.eq nftypes.dsl.fields.meta.mark 100;
+      zone = zoneIn { matchOverride.ingress.extra = [ statement ]; };
     in
     {
-      expr = z.matchOverride.ingress.extra;
-      expected = [ stmt ];
+      expr = zone.matchOverride.ingress.extra;
+      expected = [ statement ];
     };
 }

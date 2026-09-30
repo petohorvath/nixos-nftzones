@@ -102,17 +102,13 @@ let
         type = lib.types.nullOr libnet.types.ipv4;
         default = null;
         example = "10.0.0.5";
-        description = ''
-          IPv4 address (bare IP, no CIDR — node is one host).
-        '';
+        description = "IPv4 address (bare IP, no CIDR — node is one host).";
       };
       ipv6 = lib.mkOption {
         type = lib.types.nullOr libnet.types.ipv6;
         default = null;
         example = "fe80::1";
-        description = ''
-          IPv6 address (bare IP, no CIDR).
-        '';
+        description = "IPv6 address (bare IP, no CIDR).";
       };
     };
   };
@@ -161,8 +157,8 @@ let
 in
 {
   inherit
-    nodeName
-    nodeAddress
     node
+    nodeAddress
+    nodeName
     ;
 }

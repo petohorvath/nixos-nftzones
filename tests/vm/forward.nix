@@ -37,10 +37,10 @@
 }:
 let
   inherit (nftypes.dsl)
-    eq
     accept
-    log
     counter
+    eq
+    log
     reject
     ;
   inherit (nftypes.dsl.fields) tcp udp;
@@ -89,11 +89,11 @@ pkgs.testers.nixosTest {
           networkConfig.Gateway = routerLanIp;
         };
 
-        environment.systemPackages = with pkgs; [
-          curl
-          dnsutils
-          netcat-openbsd
-          hping # crafts out-of-state TCP for the INVALID-drop test
+        environment.systemPackages = [
+          pkgs.curl
+          pkgs.dnsutils
+          pkgs.netcat-openbsd
+          pkgs.hping # crafts out-of-state TCP for the INVALID-drop test
         ];
       };
 
@@ -467,7 +467,9 @@ pkgs.testers.nixosTest {
                 try:
                     ruleset = router.succeed("nft list ruleset")
                     ct = router.succeed("conntrack -L 2>/dev/null || true")
-                    routes = router.succeed("ip -4 route; echo ---; ip -6 route")
+                    routes = router.succeed(
+                        "ip -4 route; echo ---; ip -6 route"
+                    )
                 except Exception:
                     ruleset = ct = routes = "(failed to capture)"
                 print(
@@ -493,7 +495,10 @@ pkgs.testers.nixosTest {
         # caps the command at 30s (exit 124) so the subtest fails
         # fast instead of pinning the whole VM run on the global
         # timeout.
-        out = client.succeed(f"timeout 30 ssh {ssh_opts} root@${serverWanIp} 'echo hello-from-ssh'")
+        out = client.succeed(
+            f"timeout 30 ssh {ssh_opts} root@${serverWanIp} "
+            "'echo hello-from-ssh'"
+        )
         assert "hello-from-ssh" in out, f"unexpected ssh output: {out!r}"
 
     with diag_subtest("stateful prelude: ssh flow reaches [ASSURED] on router"):
@@ -509,7 +514,9 @@ pkgs.testers.nixosTest {
             f"expected [ASSURED] on completed ssh flow:\n{ct}"
         )
 
-    with diag_subtest("stateful prelude: drops out-of-state TCP (ACK without SYN)"):
+    with diag_subtest(
+        "stateful prelude: drops out-of-state TCP (ACK without SYN)"
+    ):
         # `hping3 --ack` emits a single bare ACK with no prior
         # SYN — netfilter conntrack tags it INVALID and the
         # stateful prelude's `ct state invalid drop` should fire.
@@ -527,7 +534,9 @@ pkgs.testers.nixosTest {
             f"firewall let out-of-state TCP ACK reach [ASSURED]:\n{ct}"
         )
 
-    with diag_subtest("SNAT masquerade: server sees router-wan-IP, not client-IP"):
+    with diag_subtest(
+        "SNAT masquerade: server sees router-wan-IP, not client-IP"
+    ):
         # Userspace assertion (peer-echo's recv) plus a conntrack
         # check on the router. With SNAT applied, the entry's
         # reply tuple has dst=routerWanIp (return traffic is
@@ -575,18 +584,23 @@ pkgs.testers.nixosTest {
             f"expected DNAT'd reply-tuple sport=80 in router conntrack:\n{ct}"
         )
         assert "src=${serverWanIp}" in ct, (
-            f"expected DNAT'd reply-tuple src=${serverWanIp} in router conntrack:\n{ct}"
+            f"expected DNAT'd reply-tuple src=${serverWanIp} "
+            f"in router conntrack:\n{ct}"
         )
 
-    with diag_subtest("DNS redirect: lan-side DNS query bends to router dnsmasq"):
-        # Client queries an unreachable resolver (8.8.8.8 isn't routable
-        # in the sandbox); redirect forwards it to the router's local
-        # dnsmasq which serves a fixed answer for test.example.
+    with diag_subtest(
+        "DNS redirect: lan-side DNS query bends to router dnsmasq"
+    ):
+        # Client queries an unreachable resolver (8.8.8.8 isn't
+        # routable in the sandbox); redirect forwards it to the
+        # router's local dnsmasq which serves a fixed answer for
+        # test.example.
         out = client.succeed(
             "dig +time=2 +tries=1 @8.8.8.8 test.example. +short"
         ).strip()
         assert out == "198.51.100.99", (
-            f"expected redirect to local resolver answering 198.51.100.99, got {out!r}"
+            "expected redirect to local resolver answering 198.51.100.99, "
+            f"got {out!r}"
         )
 
     with diag_subtest("default policy drops uninitiated wan → lan"):

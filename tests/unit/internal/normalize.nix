@@ -11,46 +11,43 @@
 }:
 let
   inherit (nftzones.internal.normalize)
-    convertNodesToZones
-    computeZoneMembership
-    checkChainPlacement
-    checkRpfilterOverride
-    checkChainOverrideSemantics
-    checkExtraSectionFields
-    checkWildcardZoneMix
-    checkNodeAddresses
-    checkNatBodies
-    checkParentRefs
-    checkParentCycles
-    checkNameCollisions
-    checkPolicyUniqueness
-    checkSettings
-    collectAllZoneNames
-    expandWildcardZones
-    resolvePriorities
-    collectZoneRefs
-    checkZoneRefs
-    checkZoneMatchable
     checkChainOverridePlacement
-    checkSetNameCollisions
-    checkInterfaceOverlap
+    checkChainOverrideSemantics
+    checkChainPlacement
     checkCidrOverlap
     checkCrossAxisOverlap
+    checkExtraSectionFields
+    checkInterfaceOverlap
+    checkNameCollisions
+    checkNatBodies
+    checkNodeAddresses
     checkObjectRefs
+    checkParentCycles
+    checkParentRefs
+    checkPolicyUniqueness
+    checkRpfilterOverride
+    checkSetNameCollisions
+    checkSettings
+    checkWildcardZoneMix
+    checkZoneMatchable
+    checkZoneRefs
+    collectAllZoneNames
+    collectZoneRefs
+    computeZoneMembership
+    convertNodesToZones
+    expandWildcardZones
     normalizeTable
+    resolvePriorities
     ;
 
+  inherit (nftypes) dsl;
   inherit (pkgs) lib;
-
-  dsl = nftypes.dsl;
 
   inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
 
-  /*
-    Minimal table fixture for direct (non-`evalTable`) phase tests.
-    Carries every field the phases destructure; tests overlay what
-    they need.
-  */
+  # Minimal table fixture for direct (non-`evalTable`) phase tests.
+  # Carries every field the phases destructure; tests overlay what
+  # they need.
   emptyTable = {
     zones = { };
     nodes = { };
@@ -73,8 +70,8 @@ let
 
   /*
     Run a phase against the supplied (or `emptyTable`) table with a
-    fresh `emptyCtx`, returning just the resulting `ctx`
-    attrset — what every phase test wants to inspect.
+    fresh `emptyCtx`, returning just the resulting `ctx` attrset —
+    what every phase test wants to inspect.
   */
   runPhase =
     phase: table:
@@ -91,7 +88,7 @@ let
   */
   runPipeline =
     phases: table:
-    (pkgs.lib.pipe {
+    (lib.pipe {
       inherit table;
       ctx = emptyCtx;
     } phases).ctx;
@@ -270,7 +267,7 @@ in
     };
   };
 
-  # ===== convertNodesToZones — node name overlapping a zone silently overwrites =====
+  # ===== convertNodesToZones — node overwrites a same-named zone =====
   # `mergedZones = zones // mapAttrs toZone nodes` — node lowering
   # always wins on collision. The collision is *separately* flagged
   # by `checkNameCollisions`; this test pins the lowering's
@@ -419,7 +416,7 @@ in
 
   testCollectAllZoneNamesShape = {
     expr =
-      pkgs.lib.sort (a: b: a < b)
+      lib.sort (a: b: a < b)
         (runPipeline
           [
             convertNodesToZones
@@ -533,15 +530,12 @@ in
     expected = [
       {
         name = "invalidChainPlacement";
-        value =
-          "snats.masq would emit a base chain at "
-          + "(family=bridge, hook=postrouting, priority=srcnat) "
-          + "— kernel rejects chain type 'nat' on hook 'postrouting' for family 'bridge'";
+        value = "snats.masq would emit a base chain at (family=bridge, hook=postrouting, priority=srcnat) — kernel rejects chain type 'nat' on hook 'postrouting' for family 'bridge'";
       }
     ];
   };
 
-  # ===== checkChainPlacement — bridge sroute hits the null chainType branch =====
+  # ===== checkChainPlacement — bridge sroute has a null chainType =====
 
   testCheckChainPlacementBridgeSrouteUnknownPriority = {
     # Bridge has no `mangle` priority, so `chainTypeFor` returns
@@ -567,10 +561,7 @@ in
     expected = [
       {
         name = "invalidChainPlacement";
-        value =
-          "sroutes.mark would emit a base chain at "
-          + "(family=bridge, hook=prerouting, priority=mangle) "
-          + "— priority symbol 'mangle' has no value in family 'bridge'";
+        value = "sroutes.mark would emit a base chain at (family=bridge, hook=prerouting, priority=mangle) — priority symbol 'mangle' has no value in family 'bridge'";
       }
     ];
   };
@@ -654,24 +645,15 @@ in
       }
       {
         name = "invalidChainPlacement";
-        value =
-          "droutes.mark would emit a base chain at "
-          + "(family=bridge, hook=output, priority=mangle) "
-          + "— priority symbol 'mangle' has no value in family 'bridge'";
+        value = "droutes.mark would emit a base chain at (family=bridge, hook=output, priority=mangle) — priority symbol 'mangle' has no value in family 'bridge'";
       }
       {
         name = "invalidChainPlacement";
-        value =
-          "filters.early would emit a base chain at "
-          + "(family=bridge, hook=prerouting, priority=mangle) "
-          + "— priority symbol 'mangle' has no value in family 'bridge'";
+        value = "filters.early would emit a base chain at (family=bridge, hook=prerouting, priority=mangle) — priority symbol 'mangle' has no value in family 'bridge'";
       }
       {
         name = "invalidChainPlacement";
-        value =
-          "snats.masq would emit a base chain at "
-          + "(family=bridge, hook=postrouting, priority=srcnat) "
-          + "— kernel rejects chain type 'nat' on hook 'postrouting' for family 'bridge'";
+        value = "snats.masq would emit a base chain at (family=bridge, hook=postrouting, priority=srcnat) — kernel rejects chain type 'nat' on hook 'postrouting' for family 'bridge'";
       }
     ];
   };
@@ -727,13 +709,7 @@ in
         };
       }).warnings;
     expected = [
-      (
-        "settings.rpfilter is enabled but a user chain override "
-        + "already claims (prerouting, raw); the synthesized rpfilter "
-        + "chain is suppressed and the user-authored chain is used "
-        + "as-is. Add `fib saddr . iif oif eq 0 drop` to the override "
-        + "manually if you want rpfilter behavior in that chain."
-      )
+      "settings.rpfilter is enabled but a user chain override already claims (prerouting, raw); the synthesized rpfilter chain is suppressed and the user-authored chain is used as-is. Add `fib saddr . iif oif eq 0 drop` to the override manually if you want rpfilter behavior in that chain."
     ];
   };
 
@@ -757,13 +733,7 @@ in
         };
       }).warnings;
     expected = [
-      (
-        "settings.rpfilter is enabled but a user chain override "
-        + "already claims (prerouting, raw); the synthesized rpfilter "
-        + "chain is suppressed and the user-authored chain is used "
-        + "as-is. Add `fib saddr . iif oif eq 0 drop` to the override "
-        + "manually if you want rpfilter behavior in that chain."
-      )
+      "settings.rpfilter is enabled but a user chain override already claims (prerouting, raw); the synthesized rpfilter chain is suppressed and the user-authored chain is used as-is. Add `fib saddr . iif oif eq 0 drop` to the override manually if you want rpfilter behavior in that chain."
     ];
   };
 
@@ -809,9 +779,7 @@ in
     expected = [
       {
         name = "nodeAddressMissing";
-        value =
-          "nodes.web: address must set at least one of `ipv4` / `ipv6` — "
-          + "a node with no address contributes no CIDR to its lowered zone.";
+        value = "nodes.web: address must set at least one of `ipv4` / `ipv6` — a node with no address contributes no CIDR to its lowered zone.";
       }
     ];
   };
@@ -891,10 +859,7 @@ in
     expected = [
       {
         name = "natBodyMissingAddr";
-        value =
-          "snats.outbound: rule.snat.addr is null — `snat` requires a target "
-          + "address. Use `rule.masquerade = { }` for auto-target via the "
-          + "outgoing interface, or set `rule.snat.addr` explicitly.";
+        value = "snats.outbound: rule.snat.addr is null — `snat` requires a target address. Use `rule.masquerade = { }` for auto-target via the outgoing interface, or set `rule.snat.addr` explicitly.";
       }
     ];
   };
@@ -953,10 +918,7 @@ in
     expected = [
       {
         name = "natBodyMissingAddr";
-        value =
-          "dnats.bad-fwd: rule.action.dnat.addr is null — `dnat` requires a "
-          + "target address. Use `rule.action.redirect = { port = N; }` for "
-          + "redirect-to-localhost, or set `rule.action.dnat.addr` explicitly.";
+        value = "dnats.bad-fwd: rule.action.dnat.addr is null — `dnat` requires a target address. Use `rule.action.redirect = { port = N; }` for redirect-to-localhost, or set `rule.action.dnat.addr` explicitly.";
       }
     ];
   };
@@ -1427,7 +1389,7 @@ in
           };
         };
         result =
-          pkgs.lib.pipe
+          lib.pipe
             {
               table = input;
               ctx = emptyCtx;
@@ -1906,8 +1868,8 @@ in
           name = "fw";
           zones.custom = {
             matchOverride = {
-              ingress.extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
-              egress.extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
+              ingress.extra = [ (dsl.eq dsl.fields.meta.mark 256) ];
+              egress.extra = [ (dsl.eq dsl.fields.meta.mark 256) ];
             };
           };
           filters.f = {
@@ -1949,9 +1911,7 @@ in
     expected = [
       {
         name = "zoneNotMatchable";
-        value =
-          "filters.f.from[0] references zone 'empty' which has no ingress match"
-          + " (no interfaces, no CIDRs, and no matchOverride sections set on the ingress side)";
+        value = "filters.f.from[0] references zone 'empty' which has no ingress match (no interfaces, no CIDRs, and no matchOverride sections set on the ingress side)";
       }
     ];
   };
@@ -1985,14 +1945,12 @@ in
     expected = [
       {
         name = "zoneNotMatchable";
-        value =
-          "filters.f.to[0] references zone 'empty' which has no egress match"
-          + " (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
+        value = "filters.f.to[0] references zone 'empty' which has no egress match (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
       }
     ];
   };
 
-  # ===== checkZoneMatchable — asymmetric override flags only the missing side =====
+  # ===== checkZoneMatchable — asymmetric override flags the missing side =====
 
   testCheckZoneMatchableAsymmetricOverride = {
     # Zone has only `ingress` populated (via the `extra` section). Used as
@@ -2008,7 +1966,7 @@ in
         {
           name = "fw";
           zones.partial = {
-            matchOverride.ingress.extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
+            matchOverride.ingress.extra = [ (dsl.eq dsl.fields.meta.mark 256) ];
           };
           filters.from-ok = {
             from = [ "partial" ];
@@ -2020,14 +1978,12 @@ in
     expected = [
       {
         name = "zoneNotMatchable";
-        value =
-          "filters.from-ok.to[0] references zone 'partial' which has no egress match"
-          + " (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
+        value = "filters.from-ok.to[0] references zone 'partial' which has no egress match (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
       }
     ];
   };
 
-  # ===== checkZoneMatchable — empty list section doesn't count as contributing =====
+  # ===== checkZoneMatchable — empty list section contributes nothing =====
 
   testCheckZoneMatchableEmptySectionDoesntCount = {
     # `matchOverride.egress.extra = [ ]` (empty list) is treated
@@ -2059,15 +2015,11 @@ in
     expected = [
       {
         name = "zoneNotMatchable";
-        value =
-          "filters.f.from[0] references zone 'empty-section' which has no ingress match"
-          + " (no interfaces, no CIDRs, and no matchOverride sections set on the ingress side)";
+        value = "filters.f.from[0] references zone 'empty-section' which has no ingress match (no interfaces, no CIDRs, and no matchOverride sections set on the ingress side)";
       }
       {
         name = "zoneNotMatchable";
-        value =
-          "filters.f.to[0] references zone 'empty-section' which has no egress match"
-          + " (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
+        value = "filters.f.to[0] references zone 'empty-section' which has no egress match (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
       }
     ];
   };
@@ -2266,7 +2218,7 @@ in
     expected = [ ];
   };
 
-  # ===== checkChainOverridePlacement — interface-only zone unreachable at restrictive hook =====
+  # ===== checkChainOverridePlacement — interface-only zone unreachable =====
 
   testCheckChainOverridePlacementUnreachable = {
     # `host` is interface-only; at hook=prerouting, `oifname` is
@@ -2303,11 +2255,7 @@ in
     expected = [
       {
         name = "chainOverrideUnreachable";
-        value =
-          "filters.early-drop.to references zone 'host' which has no egress match expressible at chain"
-          + " (hook=prerouting, priority=raw)"
-          + " — zone has no daddr CIDRs and no hook-agnostic matchOverride.egress sections"
-          + " (ipv4 / ipv6 / extra) set, and oifname is unavailable in prerouting";
+        value = "filters.early-drop.to references zone 'host' which has no egress match expressible at chain (hook=prerouting, priority=raw) — zone has no daddr CIDRs and no hook-agnostic matchOverride.egress sections (ipv4 / ipv6 / extra) set, and oifname is unavailable in prerouting";
       }
     ];
   };
@@ -2344,7 +2292,7 @@ in
     expected = [ ];
   };
 
-  # ===== checkChainOverridePlacement — hook-agnostic matchOverride section makes the zone reachable =====
+  # ===== checkChainOverridePlacement — hook-agnostic override reachable =====
 
   testCheckChainOverridePlacementMatchOverrideTrusted = {
     # `host` has a hook-agnostic `matchOverride.egress.extra`
@@ -2366,7 +2314,7 @@ in
             };
             host = {
               interfaces = [ "lo" ];
-              matchOverride.egress.extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
+              matchOverride.egress.extra = [ (dsl.eq dsl.fields.meta.mark 256) ];
             };
           };
           filters.f = {
@@ -2383,7 +2331,7 @@ in
     expected = [ ];
   };
 
-  # ===== checkChainOverridePlacement — wildcard expansion checks each resolved zone =====
+  # ===== checkChainOverridePlacement — wildcard checks each resolved zone =====
 
   testCheckChainOverridePlacementWildcardExpansion = {
     # `to = [ "all" ]` expands to declared zones + localZone.
@@ -2423,11 +2371,7 @@ in
     expected = [
       {
         name = "chainOverrideUnreachable";
-        value =
-          "filters.f.to references zone 'host' which has no egress match expressible at chain"
-          + " (hook=prerouting, priority=raw)"
-          + " — zone has no daddr CIDRs and no hook-agnostic matchOverride.egress sections"
-          + " (ipv4 / ipv6 / extra) set, and oifname is unavailable in prerouting";
+        value = "filters.f.to references zone 'host' which has no egress match expressible at chain (hook=prerouting, priority=raw) — zone has no daddr CIDRs and no hook-agnostic matchOverride.egress sections (ipv4 / ipv6 / extra) set, and oifname is unavailable in prerouting";
       }
     ];
   };
@@ -2460,7 +2404,7 @@ in
         web = out.ctx.mergedZones.web;
       in
       {
-        zoneNames = pkgs.lib.sort (a: b: a < b) (builtins.attrNames out.ctx.mergedZones);
+        zoneNames = lib.sort (a: b: a < b) (builtins.attrNames out.ctx.mergedZones);
         webFields = {
           inherit (web)
             name
@@ -2514,7 +2458,7 @@ in
           };
         });
       in
-      pkgs.lib.sort (a: b: a < b) out.ctx.expandedGroups.filters.f.from;
+      lib.sort (a: b: a < b) out.ctx.expandedGroups.filters.f.from;
     expected = [
       "lan"
       "local"
@@ -2540,7 +2484,7 @@ in
           };
         });
       in
-      pkgs.lib.sort (a: b: a < b) out.ctx.expandedGroups.filters.f.from;
+      lib.sort (a: b: a < b) out.ctx.expandedGroups.filters.f.from;
     expected = [
       "host"
       "lan"
@@ -2709,20 +2653,20 @@ in
       {
         count = builtins.length errors;
         name = (builtins.head errors).name;
-        nm = pkgs.lib.hasInfix "lan_v4" (builtins.head errors).value;
-        zone = pkgs.lib.hasInfix "zone 'lan'" (builtins.head errors).value;
-        suffix = pkgs.lib.hasInfix "suffix 'v4'" (builtins.head errors).value;
+        mentionsName = lib.hasInfix "lan_v4" (builtins.head errors).value;
+        zone = lib.hasInfix "zone 'lan'" (builtins.head errors).value;
+        suffix = lib.hasInfix "suffix 'v4'" (builtins.head errors).value;
       };
     expected = {
       count = 1;
       name = "setNameCollision";
-      nm = true;
+      mentionsName = true;
       zone = true;
       suffix = true;
     };
   };
 
-  # ===== checkSetNameCollisions — underscore-named zone resolves correctly =====
+  # ===== checkSetNameCollisions — underscore-named zone resolves =====
 
   testCheckSetNameCollisionsUnderscoreZone = {
     # Zone `web_app` with v4 CIDRs synthesizes `web_app_v4`. User
@@ -2750,8 +2694,8 @@ in
           ).errors;
       in
       {
-        zone = pkgs.lib.hasInfix "zone 'web_app'" (builtins.head errors).value;
-        suffix = pkgs.lib.hasInfix "suffix 'v4'" (builtins.head errors).value;
+        zone = lib.hasInfix "zone 'web_app'" (builtins.head errors).value;
+        suffix = lib.hasInfix "suffix 'v4'" (builtins.head errors).value;
       };
     expected = {
       zone = true;
@@ -2867,16 +2811,16 @@ in
       {
         count = builtins.length errors;
         name = (builtins.head errors).name;
-        path = pkgs.lib.hasInfix "filters.f.rule" (builtins.head errors).value;
-        kind = pkgs.lib.hasInfix "counters" (builtins.head errors).value;
-        nm = pkgs.lib.hasInfix "missing-counter" (builtins.head errors).value;
+        path = lib.hasInfix "filters.f.rule" (builtins.head errors).value;
+        kind = lib.hasInfix "counters" (builtins.head errors).value;
+        mentionsName = lib.hasInfix "missing-counter" (builtins.head errors).value;
       };
     expected = {
       count = 1;
       name = "objectRefUnknown";
       path = true;
       kind = true;
-      nm = true;
+      mentionsName = true;
     };
   };
 
@@ -2911,7 +2855,7 @@ in
                 from = [ "wan" ];
                 rule = {
                   match = [
-                    (dsl.inSet nftypes.dsl.fields.ip.saddr (dsl.expr.setRef "ghost-set"))
+                    (dsl.inSet dsl.fields.ip.saddr (dsl.expr.setRef "ghost-set"))
                   ];
                   action.dnat = {
                     addr = "10.0.0.5";
@@ -2924,8 +2868,8 @@ in
       in
       {
         count = builtins.length errors;
-        kinds = pkgs.lib.sort (a: b: a < b) (
-          map (e: builtins.head (pkgs.lib.match ".* unknown ([a-zA-Z]+) object .*" e.value)) errors
+        kinds = lib.sort (a: b: a < b) (
+          map (e: builtins.head (lib.match ".* unknown ([a-zA-Z]+) object .*" e.value)) errors
         );
       };
     expected = {
@@ -2937,7 +2881,7 @@ in
     };
   };
 
-  # ===== checkObjectRefs — zone-derived auto-set names accepted (option a) =====
+  # ===== checkObjectRefs — zone-derived auto-set names accepted =====
 
   testCheckObjectRefsZoneSetAccepted = {
     # Per open question 6 (decision (a)): users can reference
@@ -2961,7 +2905,7 @@ in
             from = [ "lan" ];
             to = [ "lan" ];
             rule = [
-              (dsl.inSet nftypes.dsl.fields.ip.saddr (dsl.expr.setRef "lan_v4"))
+              (dsl.inSet dsl.fields.ip.saddr (dsl.expr.setRef "lan_v4"))
               dsl.accept
             ];
           };
@@ -2993,7 +2937,7 @@ in
                 from = [ "wan" ];
                 to = [ "wan" ];
                 rule = [
-                  (dsl.inSet nftypes.dsl.fields.ip6.saddr (dsl.expr.setRef "wan_v6"))
+                  (dsl.inSet dsl.fields.ip6.saddr (dsl.expr.setRef "wan_v6"))
                   dsl.accept
                 ];
               };
@@ -3024,7 +2968,7 @@ in
               zones.lan = {
                 interfaces = [ "lan0" ];
                 matchOverride.ingress.ipv4 = [
-                  (dsl.inSet nftypes.dsl.fields.ip.saddr (dsl.expr.setRef "ghost-set"))
+                  (dsl.inSet dsl.fields.ip.saddr (dsl.expr.setRef "ghost-set"))
                 ];
               };
             }
@@ -3032,15 +2976,15 @@ in
       in
       {
         count = builtins.length errors;
-        path = pkgs.lib.hasInfix "zones.lan.matchOverride.ingress.ipv4" (builtins.head errors).value;
-        kind = pkgs.lib.hasInfix "sets" (builtins.head errors).value;
-        nm = pkgs.lib.hasInfix "ghost-set" (builtins.head errors).value;
+        path = lib.hasInfix "zones.lan.matchOverride.ingress.ipv4" (builtins.head errors).value;
+        kind = lib.hasInfix "sets" (builtins.head errors).value;
+        mentionsName = lib.hasInfix "ghost-set" (builtins.head errors).value;
       };
     expected = {
       count = 1;
       path = true;
       kind = true;
-      nm = true;
+      mentionsName = true;
     };
   };
 
@@ -3112,15 +3056,15 @@ in
       in
       {
         count = builtins.length errors;
-        path = pkgs.lib.hasInfix "objects.sets.tracker" (builtins.head errors).value;
-        kind = pkgs.lib.hasInfix "counters" (builtins.head errors).value;
-        nm = pkgs.lib.hasInfix "ghost-counter" (builtins.head errors).value;
+        path = lib.hasInfix "objects.sets.tracker" (builtins.head errors).value;
+        kind = lib.hasInfix "counters" (builtins.head errors).value;
+        mentionsName = lib.hasInfix "ghost-counter" (builtins.head errors).value;
       };
     expected = {
       count = 1;
       path = true;
       kind = true;
-      nm = true;
+      mentionsName = true;
     };
   };
 
@@ -3171,7 +3115,7 @@ in
           zones.lan = {
             interfaces = [ "lan0" ];
             matchOverride.egress.ipv4 = [
-              (dsl.inSet nftypes.dsl.fields.ip.daddr (dsl.expr.setRef "blocklist"))
+              (dsl.inSet dsl.fields.ip.daddr (dsl.expr.setRef "blocklist"))
             ];
           };
           objects.sets.blocklist = {
@@ -3205,7 +3149,7 @@ in
     expected = false;
   };
 
-  # ===== normalizeTable — multiple validators failing aggregate into one throw =====
+  # ===== normalizeTable — failing validators aggregate into one throw =====
   # Phase 1 is fail-aggregating: when multiple validators detect
   # problems, normalizeTable throws ONCE with all messages, not
   # validator-by-validator. The throw must mention every failing
@@ -3242,7 +3186,7 @@ in
   # that at the contract boundary.
 
   testNormalizeCtxShape = {
-    expr = pkgs.lib.sort (a: b: a < b) (
+    expr = lib.sort (a: b: a < b) (
       builtins.attrNames
         (normalizeTable (evalTable {
           name = "fw";
@@ -3946,7 +3890,7 @@ in
   testCheckChainOverrideSemanticsFilterPostrouting = {
     expr =
       let
-        ws =
+        warnings =
           (runPhase checkChainOverrideSemantics (
             emptyTable
             // {
@@ -3965,9 +3909,9 @@ in
           )).warnings;
       in
       {
-        count = lib.length ws;
-        mentionsHook = lib.any (w: lib.hasInfix "hook=postrouting" w) ws;
-        mentionsEntry = lib.any (w: lib.hasInfix "filters.late.chain" w) ws;
+        count = lib.length warnings;
+        mentionsHook = lib.any (w: lib.hasInfix "hook=postrouting" w) warnings;
+        mentionsEntry = lib.any (w: lib.hasInfix "filters.late.chain" w) warnings;
       };
     expected = {
       count = 1;
@@ -3981,7 +3925,7 @@ in
   testCheckChainOverrideSemanticsDnatOutput = {
     expr =
       let
-        ws =
+        warnings =
           (runPhase checkChainOverrideSemantics (
             emptyTable
             // {
@@ -4005,8 +3949,8 @@ in
           )).warnings;
       in
       {
-        count = lib.length ws;
-        mentionsHook = lib.any (w: lib.hasInfix "hook=output" w) ws;
+        count = lib.length warnings;
+        mentionsHook = lib.any (w: lib.hasInfix "hook=output" w) warnings;
       };
     expected = {
       count = 1;
@@ -4019,7 +3963,7 @@ in
   testCheckChainOverrideSemanticsSnatNonSrcnat = {
     expr =
       let
-        ws =
+        warnings =
           (runPhase checkChainOverrideSemantics (
             emptyTable
             // {
@@ -4038,8 +3982,8 @@ in
           )).warnings;
       in
       {
-        count = lib.length ws;
-        mentionsPriority = lib.any (w: lib.hasInfix "mangle" w && lib.hasInfix "srcnat" w) ws;
+        count = lib.length warnings;
+        mentionsPriority = lib.any (w: lib.hasInfix "mangle" w && lib.hasInfix "srcnat" w) warnings;
       };
     expected = {
       count = 1;
@@ -4131,7 +4075,7 @@ in
     expected = 3;
   };
 
-  # ===== checkExtraSectionFields — extra without iif/oif produces no warnings =====
+  # ===== checkExtraSectionFields — extra without iif/oif is clean =====
 
   testCheckExtraSectionFieldsClean = {
     expr =
@@ -4159,7 +4103,7 @@ in
   testCheckExtraSectionFieldsIifWarns = {
     expr =
       let
-        ws =
+        warnings =
           (runEvalPipeline
             [
               convertNodesToZones
@@ -4172,10 +4116,10 @@ in
           ).warnings;
       in
       {
-        count = lib.length ws;
-        path = lib.any (w: lib.hasInfix "zones.lan.matchOverride.ingress.extra[0]" w) ws;
-        field = lib.any (w: lib.hasInfix "meta.iif" w) ws;
-        recommendsInterfaces = lib.any (w: lib.hasInfix "matchOverride.ingress.interfaces" w) ws;
+        count = lib.length warnings;
+        path = lib.any (w: lib.hasInfix "zones.lan.matchOverride.ingress.extra[0]" w) warnings;
+        field = lib.any (w: lib.hasInfix "meta.iif" w) warnings;
+        recommendsInterfaces = lib.any (w: lib.hasInfix "matchOverride.ingress.interfaces" w) warnings;
       };
     expected = {
       count = 1;
@@ -4190,7 +4134,7 @@ in
   testCheckExtraSectionFieldsOifWarns = {
     expr =
       let
-        ws =
+        warnings =
           (runEvalPipeline
             [
               convertNodesToZones
@@ -4203,8 +4147,8 @@ in
           ).warnings;
       in
       {
-        count = lib.length ws;
-        field = lib.any (w: lib.hasInfix "meta.oifname" w) ws;
+        count = lib.length warnings;
+        field = lib.any (w: lib.hasInfix "meta.oifname" w) warnings;
       };
     expected = {
       count = 1;
@@ -4238,7 +4182,7 @@ in
   testCheckExtraSectionFieldsMultipleZones = {
     expr =
       let
-        ws =
+        warnings =
           (runEvalPipeline
             [
               convertNodesToZones
@@ -4256,12 +4200,11 @@ in
               };
             }
           ).warnings;
-        paths = ws;
       in
       {
-        count = lib.length ws;
-        lan = lib.any (lib.hasInfix "zones.lan.matchOverride.ingress.extra") paths;
-        wan = lib.any (lib.hasInfix "zones.wan.matchOverride.egress.extra") paths;
+        count = lib.length warnings;
+        lan = lib.any (lib.hasInfix "zones.lan.matchOverride.ingress.extra") warnings;
+        wan = lib.any (lib.hasInfix "zones.wan.matchOverride.egress.extra") warnings;
       };
     expected = {
       count = 2;
@@ -4270,7 +4213,7 @@ in
     };
   };
 
-  # ===== checkExtraSectionFields — iif in INTERFACES section is not flagged =====
+  # ===== checkExtraSectionFields — iif in interfaces section not flagged =====
 
   testCheckExtraSectionFieldsInterfacesSectionNotFlagged = {
     # The whole point: the `interfaces` section is the *right*
@@ -4313,7 +4256,7 @@ in
   testCheckWildcardZoneMixFires = {
     expr =
       let
-        ws =
+        warnings =
           (runEvalPipeline [ checkWildcardZoneMix ] {
             zones.lan.interfaces = [ "lan0" ];
             zones.wan.interfaces = [ "wan0" ];
@@ -4328,10 +4271,10 @@ in
           }).warnings;
       in
       {
-        count = lib.length ws;
-        mentionsPath = lib.any (w: lib.hasInfix "policies.confused.from" w) ws;
-        mentionsWildcard = lib.any (w: lib.hasInfix "'all'" w) ws;
-        mentionsExplicit = lib.any (w: lib.hasInfix "'wan'" w) ws;
+        count = lib.length warnings;
+        mentionsPath = lib.any (w: lib.hasInfix "policies.confused.from" w) warnings;
+        mentionsWildcard = lib.any (w: lib.hasInfix "'all'" w) warnings;
+        mentionsExplicit = lib.any (w: lib.hasInfix "'wan'" w) warnings;
       };
     expected = {
       count = 1;
@@ -4426,7 +4369,7 @@ in
     # dispatch order is alphabetical — silent shadowing.
     expr =
       let
-        ws =
+        warnings =
           (runEvalPipeline
             [
               convertNodesToZones
@@ -4442,8 +4385,8 @@ in
           ).warnings;
       in
       {
-        count = lib.length ws;
-        mentionsBothZones = lib.any (w: lib.hasInfix "lan-iface" w && lib.hasInfix "lan-cidr" w) ws;
+        count = lib.length warnings;
+        mentionsBothZones = lib.any (w: lib.hasInfix "lan-iface" w && lib.hasInfix "lan-cidr" w) warnings;
       };
     expected = {
       count = 1;
@@ -4592,7 +4535,7 @@ in
     # duplicate `lan`'s genuine warning against the unrelated CIDR root.
     expr =
       let
-        ws =
+        warnings =
           (runEvalPipeline
             [
               convertNodesToZones
@@ -4624,9 +4567,9 @@ in
           ).warnings;
       in
       {
-        count = lib.length ws;
-        flagsRoots = lib.any (w: lib.hasInfix "lan" w && lib.hasInfix "raw-cidr" w) ws;
-        flagsGroupingZone = lib.any (w: lib.hasInfix "apps" w) ws;
+        count = lib.length warnings;
+        flagsRoots = lib.any (w: lib.hasInfix "lan" w && lib.hasInfix "raw-cidr" w) warnings;
+        flagsGroupingZone = lib.any (w: lib.hasInfix "apps" w) warnings;
       };
     expected = {
       count = 1;
@@ -4714,7 +4657,7 @@ in
   testCheckCrossAxisOverlapMultiplePairs = {
     expr =
       let
-        ws =
+        warnings =
           (runEvalPipeline
             [
               convertNodesToZones
@@ -4731,7 +4674,7 @@ in
             }
           ).warnings;
       in
-      lib.length ws;
+      lib.length warnings;
     # a-iface × {c-cidr, d-cidr} = 2; b-iface × {c-cidr, d-cidr} = 2.
     # iface↔iface (a×b) handled by checkInterfaceOverlap; cidr↔cidr
     # (c×d) handled by checkCidrOverlap. Total cross-axis: 4.

@@ -42,7 +42,7 @@
 }:
 let
   inherit (nftypes.dsl) accept;
-  snip = nftzones.snippets;
+  inherit (nftzones) snippets;
 in
 {
   zones = {
@@ -81,7 +81,7 @@ in
     web-inbound = {
       from = [ "lan" ];
       to = [ "web-server" ];
-      rule = snip.accept.tcp [
+      rule = snippets.accept.tcp [
         80
         443
       ];
@@ -92,7 +92,7 @@ in
     mail-inbound = {
       from = [ "lan" ];
       to = [ "mail-server" ];
-      rule = snip.accept.tcp [
+      rule = snippets.accept.tcp [
         25
         143
         993

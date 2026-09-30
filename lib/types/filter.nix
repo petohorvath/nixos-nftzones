@@ -195,10 +195,10 @@ let
 in
 {
   inherit
-    filterName
-    filterRule
-    filterPriority
-    filterComment
     filter
+    filterComment
+    filterName
+    filterPriority
+    filterRule
     ;
 }

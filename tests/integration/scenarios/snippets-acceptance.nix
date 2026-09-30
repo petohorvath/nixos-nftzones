@@ -23,9 +23,9 @@ let
     reject
     ;
 
-  mkZones = ifname: {
+  mkZones = interfaceName: {
     src = {
-      interfaces = [ ifname ];
+      interfaces = [ interfaceName ];
     };
   };
 
