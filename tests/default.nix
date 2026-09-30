@@ -31,7 +31,7 @@ let
     '';
 in
 {
-  unit = pkgs.callPackage ./unit-check.nix { inherit inputs system; };
+  unit = pkgs.callPackage ./unit-check.nix { inherit inputs sourceDir system; };
   integration = import ./integration testContext;
   examples = import ./examples.nix testContext;
   formatting = mkSourceCheck {

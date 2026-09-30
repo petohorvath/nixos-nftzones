@@ -7,10 +7,10 @@
   lib,
   nix-unit,
   runCommand,
+  sourceDir,
   system,
 }:
 let
-  sourceDir = lib.cleanSource ../.;
   entrypointPath = sourceDir + "/tests/entrypoint.nix";
 
   # A group is an attrset holding test cases; nix-unit discovers the
