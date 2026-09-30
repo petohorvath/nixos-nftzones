@@ -11,7 +11,7 @@
   ...
 }:
 let
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable evalFails;
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalFails evalTable;
 
   basicBody = {
     from = [ "guest" ];

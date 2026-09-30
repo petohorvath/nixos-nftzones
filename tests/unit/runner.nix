@@ -6,12 +6,12 @@
 let
   inherit (pkgs) lib;
 
-  pretty = lib.generators.toPretty { multiline = true; };
+  formatValue = lib.generators.toPretty { multiline = true; };
 
   formatFailure = failure: ''
     ✗ ${failure.name}
-        expected: ${pretty failure.expected}
-        actual:   ${pretty failure.result}
+        expected: ${formatValue failure.expected}
+        actual:   ${formatValue failure.result}
   '';
 in
 {

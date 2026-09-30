@@ -37,7 +37,7 @@ in
   testExpandBidirectional = {
     # `from = [ "lan" "guest" ]` × `to = [ "wan" "vpn" ]` → 4 cells.
     expr =
-      map (c: { inherit (c) from to name; })
+      map (cell: { inherit (cell) from name to; })
         (runExpand {
           name = "fw";
           zones = {
@@ -96,7 +96,7 @@ in
     # `from = [ "all" ]` resolves to declared zones + localZone, so
     # 3 from-values × 1 to-value = 3 cells.
     expr = pkgs.lib.sort (a: b: a < b) (
-      map (c: c.from)
+      map (cell: cell.from)
         (runExpand {
           name = "fw";
           zones = {
@@ -126,7 +126,7 @@ in
   testExpandSingleDirection = {
     expr =
       let
-        out = runExpand {
+        ctx = runExpand {
           name = "fw";
           zones = {
             wan = {
@@ -160,11 +160,11 @@ in
       in
       {
         # dnats: cells have `from` only, no `to`
-        dnatHasFrom = builtins.all (c: c ? from && !(c ? to)) out.cells.dnats;
-        dnatFroms = pkgs.lib.sort (a: b: a < b) (map (c: c.from) out.cells.dnats);
+        dnatHasFrom = builtins.all (cell: cell ? from && !(cell ? to)) ctx.cells.dnats;
+        dnatFroms = pkgs.lib.sort (a: b: a < b) (map (cell: cell.from) ctx.cells.dnats);
         # droutes: cells have `to` only, no `from`
-        drouteHasTo = builtins.all (c: c ? to && !(c ? from)) out.cells.droutes;
-        drouteTos = pkgs.lib.sort (a: b: a < b) (map (c: c.to) out.cells.droutes);
+        drouteHasTo = builtins.all (cell: cell ? to && !(cell ? from)) ctx.cells.droutes;
+        drouteTos = pkgs.lib.sort (a: b: a < b) (map (cell: cell.to) ctx.cells.droutes);
       };
     expected = {
       dnatHasFrom = true;
@@ -207,7 +207,7 @@ in
             }).cells.filters;
       in
       {
-        inherit (cell) name comment priority;
+        inherit (cell) comment name priority;
         ruleIsList = builtins.isList cell.rule;
       };
     expected = {
@@ -244,7 +244,7 @@ in
       in
       {
         hasPriority = cell ? priority;
-        verdict = cell.verdict;
+        inherit (cell) verdict;
       };
     expected = {
       hasPriority = false;
@@ -258,7 +258,7 @@ in
 
   testExpandWildcardDeduplication = {
     expr = pkgs.lib.sort (a: b: a < b) (
-      map (c: c.from)
+      map (cell: cell.from)
         (runExpand {
           name = "fw";
           zones = {
@@ -287,7 +287,7 @@ in
   testExpandTableUntouched = {
     expr =
       let
-        out = expandTable (
+        result = expandTable (
           normalizeTable (evalTable {
             name = "fw";
             zones = {
@@ -308,9 +308,9 @@ in
       in
       {
         # Original from is the wildcard "all", not the expanded list
-        originalFrom = out.table.filters.f.from;
+        originalFrom = result.table.filters.f.from;
         # Expanded cells use concrete zone names
-        cellFroms = pkgs.lib.sort (a: b: a < b) (map (c: c.from) out.ctx.cells.filters);
+        cellFroms = pkgs.lib.sort (a: b: a < b) (map (cell: cell.from) result.ctx.cells.filters);
       };
     expected = {
       originalFrom = [ "all" ];

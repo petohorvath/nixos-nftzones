@@ -10,24 +10,26 @@
   ...
 }:
 let
-  inherit (nftzones.internal.normalize) normalizeTable;
-  inherit (nftzones.internal.expand) expandTable;
+  inherit (pkgs) lib;
+
+  inherit (nftypes.dsl) expr;
   inherit (nftzones.internal.dispatch) dispatchAndSort;
   inherit (nftzones.internal.emit)
+    assembleTable
+    buildEffectiveSubChains
+    emitTable
     mkBaseChain
     mkBaseChains
+    mkChildDispatchJumpRules
+    mkRootJumpRules
     mkRuleBody
     mkSubChain
-    mkSubChains
-    mkRootJumpRules
-    mkChildDispatchJumpRules
     mkSubChainKey
+    mkSubChains
     subChainNameOf
-    buildEffectiveSubChains
-    assembleTable
-    emitTable
     ;
-  inherit (nftypes.dsl) expr;
+  inherit (nftzones.internal.expand) expandTable;
+  inherit (nftzones.internal.normalize) normalizeTable;
 
   inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable membershipFor;
 
@@ -38,18 +40,15 @@ let
   */
   runEmit =
     body:
-    (pkgs.lib.pipe (evalTable body) [
+    (lib.pipe (evalTable body) [
       normalizeTable
       expandTable
       dispatchAndSort
       emitTable
     ]).ctx;
 
-  /*
-    Test fixture: minimal `settings` attrset carrying just the
-    fields `mkBaseChain` reads. Tests overlay what they care
-    about.
-  */
+  # Minimal `settings` carrying just the fields `mkBaseChain` reads.
+  # Tests overlay what they care about.
   defaultSettings = {
     stateful = true;
     loopback = true;
@@ -76,15 +75,14 @@ let
     mkBaseChain {
       family = "inet";
       inherit
-        settings
-        bucket
         baseChainName
+        bucket
         effectiveSubChains
+        settings
         zoneMembership
         ;
     };
 
-  # Empty bucket (no cells): just hook+priority+empty subChains.
   emptyBucket = hook: priority: {
     inherit hook priority;
     subChains = { };
@@ -96,13 +94,13 @@ in
   testEmitTableEmpty = {
     expr =
       let
-        out = (runEmit { }).output;
+        output = (runEmit { }).output;
       in
       {
-        inherit (out) family name;
-        hasSets = out ? sets;
-        hasFlags = out ? flags;
-        hasComment = out ? comment;
+        inherit (output) family name;
+        hasSets = output ? sets;
+        hasFlags = output ? flags;
+        hasComment = output ? comment;
       };
     expected = {
       family = "inet";
@@ -132,7 +130,7 @@ in
   testEmitTableSetsFromZones = {
     expr =
       let
-        out =
+        output =
           (runEmit {
             zones = {
               lan = {
@@ -145,7 +143,7 @@ in
             };
           }).output;
       in
-      pkgs.lib.attrNames out.sets;
+      lib.attrNames output.sets;
     expected = [
       "lan_iifs"
       "lan_v4"
@@ -158,7 +156,7 @@ in
   testEmitTableNodeAddressBecomesSet = {
     expr =
       let
-        out =
+        output =
           (runEmit {
             nodes.api = {
               zone = "dmz";
@@ -171,8 +169,8 @@ in
               interfaces = [ "dmz0" ];
             };
           }).output;
-        apiV4 = out.sets.api_v4;
-        apiV6 = out.sets.api_v6;
+        apiV4 = output.sets.api_v4;
+        apiV6 = output.sets.api_v6;
       in
       {
         v4Type = apiV4.type;
@@ -211,16 +209,16 @@ in
             };
           };
         };
-        out = assembleTable {
+        table = assembleTable {
           family = "inet";
           name = "fw";
           inherit body;
         };
       in
       {
-        inherit (out) family name;
-        hasSets = out ? sets;
-        sameAsDirect = out == nftypes.dsl.table "inet" "fw" body;
+        inherit (table) family name;
+        hasSets = table ? sets;
+        sameAsDirect = table == nftypes.dsl.table "inet" "fw" body;
       };
     expected = {
       family = "inet";
@@ -230,7 +228,7 @@ in
     };
   };
 
-  # Chain type derivation moved upstream to
+  # Chain type derivation belongs to
   # `nftypes.compatibility.chainTypeFor`; tests for it live with
   # the upstream helper. End-to-end coverage of the consumer path
   # comes from the integration scenarios.
@@ -289,15 +287,15 @@ in
           lan = { };
           wan = { };
         };
-        eff = buildEffectiveSubChains bucket (membershipFor {
+        effectiveSubChains = buildEffectiveSubChains bucket (membershipFor {
           zones = mergedZones;
         });
       in
-      builtins.attrNames eff;
+      builtins.attrNames effectiveSubChains;
     expected = [ "lan-to-wan" ];
   };
 
-  # ===== buildEffectiveSubChains — descendant synthesizes intermediate parent =====
+  # ===== buildEffectiveSubChains — descendant synthesizes its parent =====
 
   testBuildEffectiveSubChainsIntermediate = {
     # web-server (parent dmz) has cells; dmz has no cells of its
@@ -321,13 +319,13 @@ in
             parent = "dmz";
           };
         };
-        eff = buildEffectiveSubChains bucket (membershipFor {
+        effectiveSubChains = buildEffectiveSubChains bucket (membershipFor {
           zones = mergedZones;
         });
-        intermediate = eff."dmz-to-local";
+        intermediate = effectiveSubChains."dmz-to-local";
       in
       {
-        keys = pkgs.lib.sort (a: b: a < b) (builtins.attrNames eff);
+        keys = lib.sort (a: b: a < b) (builtins.attrNames effectiveSubChains);
         intermediateIsEmpty = intermediate.preChildCells == [ ] && intermediate.postChildCells == [ ];
         intermediateFrom = intermediate.from;
         intermediateTo = intermediate.to;
@@ -373,11 +371,11 @@ in
             parent = "dmz";
           };
         };
-        eff = buildEffectiveSubChains bucket (membershipFor {
+        effectiveSubChains = buildEffectiveSubChains bucket (membershipFor {
           zones = mergedZones;
         });
       in
-      builtins.length eff."dmz-to-local".postChildCells;
+      builtins.length effectiveSubChains."dmz-to-local".postChildCells;
     expected = 1;
   };
 
@@ -415,11 +413,11 @@ in
             parent = "a";
           };
         };
-        eff = buildEffectiveSubChains bucket (membershipFor {
+        effectiveSubChains = buildEffectiveSubChains bucket (membershipFor {
           zones = mergedZones;
         });
       in
-      builtins.isAttrs eff;
+      builtins.isAttrs effectiveSubChains;
     expected = true;
   };
 
@@ -428,16 +426,16 @@ in
   testMkBaseChainFilterInput = {
     expr =
       let
-        c = mkChain { bucket = emptyBucket "input" "filter"; };
+        chain = mkChain { bucket = emptyBucket "input" "filter"; };
       in
       {
-        inherit (c)
-          type
+        inherit (chain)
           hook
-          prio
           policy
+          prio
+          type
           ;
-        ruleCount = builtins.length c.rules;
+        ruleCount = builtins.length chain.rules;
       };
     expected = {
       type = "filter";
@@ -451,11 +449,11 @@ in
   testMkBaseChainFilterForward = {
     expr =
       let
-        c = mkChain { bucket = emptyBucket "forward" "filter"; };
+        chain = mkChain { bucket = emptyBucket "forward" "filter"; };
       in
       {
-        inherit (c) type hook;
-        ruleCount = builtins.length c.rules;
+        inherit (chain) hook type;
+        ruleCount = builtins.length chain.rules;
       };
     expected = {
       type = "filter";
@@ -467,7 +465,7 @@ in
   testMkBaseChainBoilerplateDisabled = {
     expr =
       let
-        c = mkChain {
+        chain = mkChain {
           settings = defaultSettings // {
             stateful = false;
             loopback = false;
@@ -475,19 +473,19 @@ in
           bucket = emptyBucket "input" "filter";
         };
       in
-      builtins.length c.rules;
+      builtins.length chain.rules;
     expected = 0;
   };
 
   testMkBaseChainSnat = {
     expr =
       let
-        c = mkChain { bucket = emptyBucket "postrouting" "srcnat"; };
+        chain = mkChain { bucket = emptyBucket "postrouting" "srcnat"; };
       in
       {
-        inherit (c) type hook prio;
-        hasPolicy = c ? policy;
-        ruleCount = builtins.length c.rules;
+        inherit (chain) hook prio type;
+        hasPolicy = chain ? policy;
+        ruleCount = builtins.length chain.rules;
       };
     expected = {
       type = "nat";
@@ -506,11 +504,11 @@ in
     # is meaningless at prerouting (no routing decision yet).
     expr =
       let
-        c = mkChain { bucket = emptyBucket "prerouting" "mangle"; };
+        chain = mkChain { bucket = emptyBucket "prerouting" "mangle"; };
       in
       {
-        inherit (c) type hook prio;
-        hasPolicy = c ? policy;
+        inherit (chain) hook prio type;
+        hasPolicy = chain ? policy;
       };
     expected = {
       type = "filter";
@@ -523,11 +521,11 @@ in
   testMkBaseChainDnat = {
     expr =
       let
-        c = mkChain { bucket = emptyBucket "prerouting" "dstnat"; };
+        chain = mkChain { bucket = emptyBucket "prerouting" "dstnat"; };
       in
       {
-        inherit (c) type hook prio;
-        hasPolicy = c ? policy;
+        inherit (chain) hook prio type;
+        hasPolicy = chain ? policy;
       };
     expected = {
       type = "nat";
@@ -540,11 +538,11 @@ in
   testMkBaseChainDroute = {
     expr =
       let
-        c = mkChain { bucket = emptyBucket "output" "mangle"; };
+        chain = mkChain { bucket = emptyBucket "output" "mangle"; };
       in
       {
-        inherit (c) type hook prio;
-        hasPolicy = c ? policy;
+        inherit (chain) hook prio type;
+        hasPolicy = chain ? policy;
       };
     expected = {
       type = "route";
@@ -554,14 +552,14 @@ in
     };
   };
 
-  # `mkBaseChain` no longer attaches the rpfilter rule itself —
+  # `mkBaseChain` does not attach the rpfilter rule itself —
   # the synthesized chain in `mkBaseChains` carries it instead.
   # A user override at (prerouting, raw) gets only the standard
   # boilerplate + jump rules, never the rpfilter `fib` drop.
   testMkBaseChainNoRpfilterPrelude = {
     expr =
       let
-        c = mkChain {
+        chain = mkChain {
           settings = defaultSettings // {
             rpfilter = true;
           };
@@ -569,8 +567,8 @@ in
         };
       in
       {
-        inherit (c) type hook prio;
-        ruleCount = builtins.length c.rules;
+        inherit (chain) hook prio type;
+        ruleCount = builtins.length chain.rules;
       };
     expected = {
       type = "filter";
@@ -598,7 +596,7 @@ in
       in
       {
         keys = builtins.attrNames chains;
-        inherit (chain) type hook prio;
+        inherit (chain) hook prio type;
         ruleCount = builtins.length chain.rules;
       };
     expected = {
@@ -610,7 +608,7 @@ in
     };
   };
 
-  # ===== mkBaseChains — user override at (prerouting, raw) suppresses synthesis =====
+  # ===== mkBaseChains — override at (prerouting, raw) skips synthesis =====
 
   testMkBaseChainsRpfilterUserOverrideWins = {
     expr =
@@ -648,7 +646,7 @@ in
   };
 
   testMkBaseChainsPerBucket = {
-    expr = pkgs.lib.sort (a: b: a < b) (
+    expr = lib.sort (a: b: a < b) (
       builtins.attrNames (mkBaseChains {
         family = "inet";
         settings = defaultSettings;
@@ -672,7 +670,7 @@ in
     ];
   };
 
-  # ===== emitTable — base chain + per-pair sub-chain land in output.chains =====
+  # ===== emitTable — base chain + pair sub-chain land in output.chains =====
 
   testEmitTableHasChains = {
     expr =
@@ -720,10 +718,10 @@ in
       in
       {
         inherit (chain)
-          type
           hook
-          prio
           policy
+          prio
+          type
           ;
       };
     expected = {
@@ -756,7 +754,7 @@ in
       in
       {
         keys = builtins.attrNames chains;
-        inherit (chain) type hook prio;
+        inherit (chain) hook prio type;
         hasPolicy = chain ? policy;
       };
     expected = {
@@ -788,7 +786,7 @@ in
           }).output.chains;
       in
       {
-        keys = pkgs.lib.sort (a: b: a < b) (builtins.attrNames chains);
+        keys = lib.sort (a: b: a < b) (builtins.attrNames chains);
         rpfilterRuleCount = builtins.length chains.prerouting-at-raw.rules;
       };
     expected = {
@@ -983,7 +981,6 @@ in
         ];
       };
       baseChainName = "forward-at-filter";
-
       effectiveSubChains = { };
       zoneMembership = membershipFor {
         zones.lan.interfaces = [ "lan0" ];
@@ -1022,7 +1019,6 @@ in
         ];
       };
       baseChainName = "forward-at-filter";
-
       effectiveSubChains = { };
       zoneMembership = membershipFor {
         zones.lan.interfaces = [ "lan0" ];
@@ -1108,7 +1104,7 @@ in
   testEmitTableSubChainHasRule = {
     expr =
       let
-        sub =
+        subChain =
           (runEmit {
             zones = {
               lan = {
@@ -1125,21 +1121,21 @@ in
             };
           }).output.chains."forward-at-filter__lan-to-wan";
       in
-      sub.rules;
+      subChain.rules;
     expected = [
       [ nftypes.dsl.accept ]
     ];
   };
 
-  # ===== emitTable — preDispatch-priority cells land in sub-chain pre slot =====
+  # ===== emitTable — preDispatch cells land in the sub-chain pre slot =====
 
   testEmitTablePreDispatchInSubChain = {
-    # Under the new model, priority="first" (1 < 100) lands in the
-    # sub-chain's preChildCells — NOT in the base chain pre slot.
-    # Base chain only carries boilerplate + jumps now.
+    # priority="first" (1 < 100) lands in the sub-chain's
+    # preChildCells — NOT in the base chain pre slot. The base chain
+    # only carries boilerplate + jumps.
     expr =
       let
-        out =
+        output =
           (runEmit {
             zones = {
               lan = {
@@ -1156,8 +1152,8 @@ in
               priority = "first";
             };
           }).output;
-        baseChain = out.chains."forward-at-filter";
-        subChain = out.chains."forward-at-filter__lan-to-wan";
+        baseChain = output.chains."forward-at-filter";
+        subChain = output.chains."forward-at-filter__lan-to-wan";
       in
       {
         # Base chain: stateful (2) + jump (1).
@@ -1176,7 +1172,7 @@ in
   testEmitTableFilterAndPolicyInSubChain = {
     expr =
       let
-        sub =
+        subChain =
           (runEmit {
             zones = {
               lan = {
@@ -1199,8 +1195,8 @@ in
           }).output.chains."forward-at-filter__lan-to-wan";
       in
       {
-        ruleCount = builtins.length sub.rules;
-        lastRuleStmt = builtins.head (builtins.elemAt sub.rules 1);
+        ruleCount = builtins.length subChain.rules;
+        lastRuleStmt = builtins.head (builtins.elemAt subChain.rules 1);
       };
     expected = {
       ruleCount = 2;
@@ -1211,7 +1207,7 @@ in
   testEmitTableSnatSubChain = {
     expr =
       let
-        sub =
+        subChain =
           (runEmit {
             zones = {
               lan = {
@@ -1228,7 +1224,7 @@ in
             };
           }).output.chains."postrouting-at-srcnat__lan-to-wan";
       in
-      sub.rules;
+      subChain.rules;
     expected = [
       [ (nftypes.dsl.masquerade { }) ]
     ];
@@ -1392,7 +1388,6 @@ in
       parentFromZone = "dmz";
       toZone = "local";
       baseChainName = "input-at-filter";
-
       effectiveSubChains = {
         "dmz-to-local" = {
           from = "dmz";
@@ -1423,7 +1418,7 @@ in
     ];
   };
 
-  # ===== mkChildDispatchJumpRules — child without effective sub-chain is skipped =====
+  # ===== mkChildDispatchJumpRules — child without a sub-chain is skipped =====
 
   testMkChildDispatchJumpsNoTarget = {
     # web-server is a child but has no entry in effectiveSubChains
@@ -1433,7 +1428,6 @@ in
       parentFromZone = "dmz";
       toZone = "local";
       baseChainName = "input-at-filter";
-
       effectiveSubChains = { };
       zoneMembership = membershipFor {
         zones.dmz.interfaces = [ "dmz0" ];
@@ -1451,7 +1445,7 @@ in
   testEmitTableJumpRule = {
     expr =
       let
-        out =
+        output =
           (runEmit {
             zones = {
               lan = {
@@ -1467,11 +1461,10 @@ in
               rule = [ ];
             };
           }).output;
-        baseRules = out.chains."forward-at-filter".rules;
-        # After stateful (2 rules), the jump.
-        jumpRule = builtins.elemAt baseRules 2;
+        baseRules = output.chains."forward-at-filter".rules;
       in
-      jumpRule;
+      # After stateful (2 rules), the jump.
+      builtins.elemAt baseRules 2;
     expected = [
       (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "lan_iifs"))
       (nftypes.dsl.inSet nftypes.dsl.fields.meta.oifname (nftypes.dsl.expr.setRef "wan_iifs"))
@@ -1482,7 +1475,7 @@ in
   testEmitTableDnatJump = {
     expr =
       let
-        out =
+        output =
           (runEmit {
             zones.wan = {
               interfaces = [ "wan0" ];
@@ -1498,7 +1491,7 @@ in
               };
             };
           }).output;
-        baseRules = out.chains."prerouting-at-dstnat".rules;
+        baseRules = output.chains."prerouting-at-dstnat".rules;
       in
       builtins.head baseRules;
     expected = [
@@ -1510,7 +1503,7 @@ in
   testEmitTableJumpToLocalZone = {
     expr =
       let
-        out =
+        output =
           (runEmit {
             zones.wan = {
               interfaces = [ "wan0" ];
@@ -1522,10 +1515,9 @@ in
             };
           }).output;
         # input chain: stateful (2) + loopback (1) + jump (1) = 4 rules
-        baseRules = out.chains."input-at-filter".rules;
-        jumpRule = builtins.elemAt baseRules 3;
+        baseRules = output.chains."input-at-filter".rules;
       in
-      jumpRule;
+      builtins.elemAt baseRules 3;
     expected = [
       (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "wan_iifs"))
       (nftypes.dsl.jump "input-at-filter__wan-to-local")
@@ -1535,12 +1527,12 @@ in
   # ===== emitTable — base chain rule order =====
 
   testEmitTableBaseChainRuleOrder = {
-    # Under the new model, base chain has only:
+    # The base chain has only:
     #   stateful (2) + loopback (1) + jump (1) = 4 rules.
     # The early/normal/late cells all live inside the sub-chain.
     expr =
       let
-        out =
+        output =
           (runEmit {
             zones.wan = {
               interfaces = [ "wan0" ];
@@ -1565,8 +1557,8 @@ in
               };
             };
           }).output;
-        baseRules = out.chains."input-at-filter".rules;
-        subRules = out.chains."input-at-filter__wan-to-local".rules;
+        baseRules = output.chains."input-at-filter".rules;
+        subRules = output.chains."input-at-filter__wan-to-local".rules;
       in
       {
         baseRuleCount = builtins.length baseRules;
@@ -1591,7 +1583,7 @@ in
           }).output.chains;
       in
       {
-        keys = pkgs.lib.sort (a: b: a < b) (builtins.attrNames chains);
+        keys = lib.sort (a: b: a < b) (builtins.attrNames chains);
         baseType = chains."output-at-mangle".type;
       };
     expected = {
@@ -1618,7 +1610,7 @@ in
           }).output.chains;
       in
       {
-        keys = pkgs.lib.sort (a: b: a < b) (builtins.attrNames chains);
+        keys = lib.sort (a: b: a < b) (builtins.attrNames chains);
         baseType = chains."prerouting-at-mangle".type;
       };
     expected = {
@@ -1633,14 +1625,14 @@ in
   testEmitTableEmptyObjects = {
     expr =
       let
-        out =
+        output =
           (runEmit {
             zones.lan = {
               interfaces = [ "lan0" ];
             };
           }).output;
       in
-      pkgs.lib.attrNames out;
+      lib.attrNames output;
     expected = [
       "__nftTable"
       "family"
@@ -1652,19 +1644,19 @@ in
   testEmitTableCounterPassthrough = {
     expr =
       let
-        out =
+        output =
           (runEmit {
             objects.counters.web-hits = { };
           }).output;
       in
-      pkgs.lib.attrNames out.counters;
+      lib.attrNames output.counters;
     expected = [ "web-hits" ];
   };
 
   testEmitTableMultipleKinds = {
     expr =
       let
-        out =
+        output =
           (runEmit {
             objects = {
               counters.hits = { };
@@ -1678,15 +1670,15 @@ in
             };
           }).output;
       in
-      pkgs.lib.sort (a: b: a < b) (
+      lib.sort (a: b: a < b) (
         builtins.filter (
-          k:
-          builtins.elem k [
+          kind:
+          builtins.elem kind [
             "counters"
             "quotas"
             "ctHelpers"
           ]
-        ) (pkgs.lib.attrNames out)
+        ) (lib.attrNames output)
       );
     expected = [
       "counters"
@@ -1698,7 +1690,7 @@ in
   testEmitTableUserSetMergesWithZoneSets = {
     expr =
       let
-        out =
+        output =
           (runEmit {
             zones.lan = {
               interfaces = [ "lan0" ];
@@ -1709,7 +1701,7 @@ in
             };
           }).output;
       in
-      pkgs.lib.sort (a: b: a < b) (pkgs.lib.attrNames out.sets);
+      lib.sort (a: b: a < b) (lib.attrNames output.sets);
     expected = [
       "blocklist_v4"
       "lan_iifs"
@@ -1719,14 +1711,14 @@ in
   testEmitTableEmptyKindsSkipped = {
     expr =
       let
-        out =
+        output =
           (runEmit {
             zones.lan = {
               interfaces = [ "lan0" ];
             };
           }).output;
       in
-      builtins.any (k: builtins.elem k (pkgs.lib.attrNames out)) [
+      builtins.any (kind: builtins.elem kind (lib.attrNames output)) [
         "counters"
         "quotas"
         "limits"
@@ -1742,7 +1734,7 @@ in
     expected = false;
   };
 
-  # ===== emitTable — parent hierarchy: child sub-chain receives jump from parent =====
+  # ===== emitTable — parent hierarchy: parent jumps to child sub-chain =====
 
   testEmitTableParentBasic = {
     # web-server (node, parent dmz) has its own rule. The dmz
@@ -1750,7 +1742,7 @@ in
     # chain jumps only to dmz; dmz jumps to web-server.
     expr =
       let
-        out =
+        output =
           (runEmit {
             zones.dmz = {
               interfaces = [ "dmz0" ];
@@ -1769,14 +1761,13 @@ in
               ];
             };
           }).output;
-        chains = out.chains;
+        inherit (output) chains;
       in
       {
-        chainKeys = pkgs.lib.sort (a: b: a < b) (builtins.attrNames chains);
+        chainKeys = lib.sort (a: b: a < b) (builtins.attrNames chains);
         # Base chain (input-at-filter): stateful (2) + loopback (1) +
-        # jump-to-dmz (multiple variants if iifs+v4) = 5 rules.
-        # The base chain only jumps to root from-zones (dmz), not
-        # web-server.
+        # one jump to dmz. The base chain only jumps to root
+        # from-zones (dmz), not web-server.
         baseRulesCount = builtins.length chains."input-at-filter".rules;
         # dmz transparent dispatcher: only the child-dispatch jump
         # to web-server.

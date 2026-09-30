@@ -11,13 +11,15 @@
   ...
 }:
 let
+  inherit (pkgs) lib;
+
   inherit (nftypes.dsl) expr;
   inherit (import ../helpers.nix { inherit pkgs nftzones; }) membershipFor;
 
   setsForZone = name: zone: (membershipFor { zones.${name} = zone; }).sets;
   setsFor =
     name: body:
-    pkgs.lib.filterAttrs (
+    lib.filterAttrs (
       setName: _:
       builtins.elem setName [
         "${name}_iifs"
@@ -31,7 +33,7 @@ let
 
   cidrV4 = "10.0.0.0/24";
   cidrV6 = "2001:db8::/32";
-  ifs = [
+  interfaceNames = [
     "eth1"
     "eth2"
   ];
@@ -94,7 +96,7 @@ in
     };
   };
 
-  # ===== membership sets — multiple CIDRs of the same family preserve order =====
+  # ===== membership sets — same-family CIDRs preserve order =====
 
   testMembershipSetsMultipleSameFamily = {
     expr =
@@ -111,11 +113,11 @@ in
     ];
   };
 
-  # ===== membership sets — full dual-stack zone gets all three suffixes (full bodies) =====
+  # ===== membership sets — dual-stack zone gets all three sets =====
 
   testMembershipSetsAll = {
     expr = setsForZone "lan" {
-      interfaces = ifs;
+      interfaces = interfaceNames;
       cidrs = [
         cidrV4
         cidrV6
@@ -124,7 +126,7 @@ in
     expected = {
       lan_iifs = {
         type = "ifname";
-        elements = ifs;
+        elements = interfaceNames;
       };
       lan_v4 = {
         type = "ipv4_addr";
@@ -142,7 +144,7 @@ in
   # ===== membership sets — set names always carry the zone-name prefix =====
 
   testMembershipSetsNamePrefix = {
-    expr = pkgs.lib.attrNames (
+    expr = lib.attrNames (
       setsForZone "guest" {
         interfaces = [ "guest0" ];
         cidrs = [ cidrV4 ];
@@ -154,7 +156,7 @@ in
     ];
   };
 
-  # ===== membership sets — parent zone's _iifs includes child interfaces transitively =====
+  # ===== membership sets — parent `_iifs` includes descendant interfaces =====
 
   testMembershipSetsParentIncludesChildIfaces = {
     # Models the canonical hierarchy: `lan` (lan0) + `lan-guest`
@@ -259,7 +261,7 @@ in
     };
   };
 
-  # ===== membership sets — parent with no own interfaces still emits set from descendants =====
+  # ===== membership sets — interface-less parent gets descendants' set =====
 
   testMembershipSetsParentWithNoOwnIfaces = {
     # Common pattern: a "group" zone with no interfaces of its
@@ -320,7 +322,7 @@ in
     expected = [ (expr.prefix "10.0.0.0" 24) ];
   };
 
-  # ===== membership sets — descendant CIDR contained in ancestor's drops out =====
+  # ===== membership sets — descendant CIDR inside ancestor's drops out =====
 
   testMembershipSetsCidrSubsetCoalesced = {
     # Parent has the broader prefix; child has a CIDR strictly
@@ -399,7 +401,7 @@ in
 
   testMembershipSetsCycleGuard = {
     # `computeZoneMembership` runs before `checkParentCycles` in the
-    # validator pipeline, so a cyclic parent declarations would otherwise
+    # validator pipeline, so cyclic parent declarations would otherwise
     # exhaust Nix's max-call-depth before the dedicated cycle
     # check reports the error. The `descendantsOf` walker's
     # `visited` guard short-circuits the revisit; the eventual
@@ -407,7 +409,7 @@ in
     # pins the defense.
     expr =
       let
-        ws = setsFor "a" {
+        sets = setsFor "a" {
           zones = {
             a = {
               parent = "b";
@@ -422,7 +424,7 @@ in
           };
         };
       in
-      ws.a_iifs.elements;
+      sets.a_iifs.elements;
     # Order is parent-first, then descendants discovered during
     # the walk. The cycle is short-circuited before revisit.
     expected = [
@@ -431,7 +433,7 @@ in
     ];
   };
 
-  # ===== membership sets — descendant CIDRs union with parent CIDRs via summarize =====
+  # ===== membership sets — descendant CIDRs merge into parent's set =====
 
   testMembershipSetsParentIncludesChildCidrs = {
     # Parent with CIDR `10.0.0.0/24` and a lowered-node child
@@ -464,7 +466,7 @@ in
   # ===== active override sections — empty side produces empty active set =====
 
   testMembershipActiveOverridesEmpty = {
-    expr = activeFor ({ }) "ingress";
+    expr = activeFor { } "ingress";
     expected = { };
   };
 
@@ -472,12 +474,12 @@ in
 
   testMembershipActiveOverridesNullsFiltered = {
     # All-null sections (the type's default) → empty active set.
-    expr = activeFor ({
+    expr = activeFor {
       interfaces = null;
       ipv4 = null;
       ipv6 = null;
       extra = null;
-    }) "ingress";
+    } "ingress";
     expected = { };
   };
 
@@ -486,22 +488,22 @@ in
   testMembershipActiveOverridesEmptyListsFiltered = {
     # `[ ]` is treated the same as `null` — both mean "no
     # constraint contributed".
-    expr = activeFor ({
+    expr = activeFor {
       ipv4 = [ ];
       extra = [ ];
-    }) "ingress";
+    } "ingress";
     expected = { };
   };
 
-  # ===== active override sections — mixed: some sections active, others null =====
+  # ===== active override sections — mixed active and null sections =====
 
   testMembershipActiveOverridesMixed = {
-    expr = activeFor ({
+    expr = activeFor {
       interfaces = null;
       ipv4 = [ (nftypes.dsl.eq nftypes.dsl.fields.ip.saddr "10.0.0.5") ];
       ipv6 = [ ];
       extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
-    }) "ingress";
+    } "ingress";
     expected = {
       ipv4 = [ (nftypes.dsl.eq nftypes.dsl.fields.ip.saddr "10.0.0.5") ];
       extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 256) ];
@@ -525,20 +527,22 @@ in
             };
           };
         };
+        membership = membershipFor { zones.lan = zone; };
       in
       {
-        ing = (membershipFor { zones.lan = zone; }).activeOverrides "lan" "ingress";
-        egr = (membershipFor { zones.lan = zone; }).activeOverrides "lan" "egress";
+        ingress = membership.activeOverrides "lan" "ingress";
+        egress = membership.activeOverrides "lan" "egress";
       };
     expected = {
-      ing = {
+      ingress = {
         ipv4 = [ (nftypes.dsl.eq nftypes.dsl.fields.ip.saddr "10.0.0.5") ];
       };
-      egr = {
+      egress = {
         extra = [ (nftypes.dsl.eq nftypes.dsl.fields.meta.mark 512) ];
       };
     };
   };
+
   testMembershipVariantsLocalZone = {
     expr = (membershipFor { }).directionVariants {
       hook = "input";

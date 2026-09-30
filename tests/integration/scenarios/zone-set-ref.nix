@@ -11,7 +11,7 @@
 */
 { nftypes, ... }:
 let
-  inherit (nftypes.dsl) inSet accept expr;
+  inherit (nftypes.dsl) accept expr inSet;
   inherit (nftypes.dsl.fields) ip;
 in
 {

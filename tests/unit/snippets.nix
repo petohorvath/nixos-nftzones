@@ -25,24 +25,22 @@ let
   inherit (nftypes.dsl)
     accept
     drop
-    reject
     eq
     inSet
+    reject
     within
     ;
-  inherit (nftypes.dsl) expr;
+  inherit (nftypes.dsl.expr) range;
   inherit (nftypes.dsl.fields)
-    tcp
-    udp
     icmp
     icmpv6
+    tcp
+    udp
     ;
 
-  range = lo: hi: expr.range lo hi;
-
-  # Helper for throw-path tests: deepSeq forces the full structure
-  # so a thunked throw inside the returned list actually fires.
-  evalDeep = x: builtins.tryEval (builtins.deepSeq x null);
+  # For throw-path tests: deepSeq forces the full structure so a thunked
+  # throw inside the returned list actually fires.
+  evalDeep = value: builtins.tryEval (builtins.deepSeq value null);
   throwExpected = {
     success = false;
     value = false;

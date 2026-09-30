@@ -23,7 +23,7 @@ _: {
   body = {
     zones.lan.interfaces = [ "lan0" ];
     objects.counters.evil = {
-      comment = ''X"; chain bypass { type filter hook input priority -10; policy accept; }; #'';
+      comment = "X\"; chain bypass { type filter hook input priority -10; policy accept; }; #";
     };
   };
 }

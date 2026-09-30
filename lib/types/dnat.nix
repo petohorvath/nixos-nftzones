@@ -4,7 +4,7 @@
   Exported types:
     - `dnat`         — submodule for one dnat definition
     - `dnatName`     — string identifier for a dnat
-    - `dnatRule`     — submodule with `match` (required) and
+    - `dnatRule`     — submodule with `match` (default `[ ]`) and
                        `action` (attrTag of `dnat` / `redirect`)
     - `dnatPriority` — symbol-or-int entry sort key (`first` /
                        `preDispatch` / `default` / …)
@@ -96,7 +96,8 @@ let
   dnatComment = primitives.comment;
 
   /*
-    Two fields: `match` (required) and `action` (the rewrite). The
+    Two fields: `match` (defaults to `[ ]`) and `action` (the
+    rewrite). The
     `action` wrapper exists because `attrTag` requires its attrset
     to contain exactly one tagged key from its fixed set with no
     extras — putting `match` next to `dnat` / `redirect` directly
@@ -126,9 +127,11 @@ let
         type = lib.types.attrTag {
           dnat = lib.mkOption {
             type = nftypes.types.statements.natBody;
+            description = "Full destination address translation.";
           };
           redirect = lib.mkOption {
             type = nftypes.types.statements.masqueradeBody;
+            description = "Redirect to the local host.";
           };
         };
         description = ''
@@ -226,10 +229,10 @@ let
 in
 {
   inherit
-    dnatName
-    dnatRule
-    dnatPriority
-    dnatComment
     dnat
+    dnatComment
+    dnatName
+    dnatPriority
+    dnatRule
     ;
 }

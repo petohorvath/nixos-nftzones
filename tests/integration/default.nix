@@ -36,8 +36,8 @@
 let
   inherit (pkgs) lib;
   inherit (import ./runner.nix { inherit pkgs nftzones nftypes; })
-    mkScenarioCheck
     mkRejectionCheck
+    mkScenarioCheck
     ;
 
   /*
@@ -48,7 +48,7 @@ let
   listNixFiles =
     dir:
     lib.pipe (builtins.readDir dir) [
-      (lib.filterAttrs (n: t: t == "regular" && lib.hasSuffix ".nix" n))
+      (lib.filterAttrs (name: type: type == "regular" && lib.hasSuffix ".nix" name))
       builtins.attrNames
       (map (lib.removeSuffix ".nix"))
     ];

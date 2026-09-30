@@ -157,9 +157,7 @@ let
         hook = lib.mkOption {
           type = nftypes.types.hook;
           example = "prerouting";
-          description = ''
-            nftables hook the chain attaches to.
-          '';
+          description = "nftables hook the chain attaches to.";
         };
         priority = lib.mkOption {
           type = chainPriority;
@@ -176,12 +174,12 @@ let
 in
 {
   inherit
-    identifier
-    comment
-    rule
-    matchRule
-    entryPriority
-    chainPriority
     chainOverride
+    chainPriority
+    comment
+    entryPriority
+    identifier
+    matchRule
+    rule
     ;
 }

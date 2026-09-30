@@ -116,8 +116,8 @@ let
   inherit (inputs) lib;
   inherit (internal.priority) entryPriorities;
   inherit (internal.placement)
-    chainAttrsForCell
     baseChainNameOf
+    chainAttrsForCell
     subChainKeyOf
     ;
 
@@ -165,7 +165,7 @@ let
     lib.optionalAttrs (firstCell ? from) { inherit (firstCell) from; }
     // lib.optionalAttrs (firstCell ? to) { inherit (firstCell) to; }
     // {
-      inherit preChildCells postChildCells;
+      inherit postChildCells preChildCells;
     };
 
   /*
@@ -247,8 +247,8 @@ let
 in
 {
   inherit
-    groupCellsByChain
     buildChainBuckets
     dispatchAndSort
+    groupCellsByChain
     ;
 }

@@ -17,7 +17,7 @@ args@{
 let
   inherit (pkgs) lib;
 
-  excluded = [
+  excludedFiles = [
     "default.nix"
     "runner.nix"
     "helpers.nix"
@@ -26,11 +26,13 @@ let
   listTestFiles =
     dir:
     lib.pipe (builtins.readDir dir) [
-      (lib.filterAttrs (n: t: t == "regular" && lib.hasSuffix ".nix" n && !(builtins.elem n excluded)))
+      (lib.filterAttrs (
+        name: type: type == "regular" && lib.hasSuffix ".nix" name && !(builtins.elem name excludedFiles)
+      ))
       builtins.attrNames
     ];
 
-  importsFromDir = dir: map (n: import (dir + "/${n}") args) (listTestFiles dir);
+  importTestFiles = dir: map (name: import (dir + "/${name}") args) (listTestFiles dir);
 in
 {
   testVersion = {
@@ -38,4 +40,4 @@ in
     expected = "0.1.0";
   };
 }
-// lib.mergeAttrsList (importsFromDir ./. ++ importsFromDir ./internal ++ importsFromDir ./types)
+// lib.mergeAttrsList (importTestFiles ./. ++ importTestFiles ./internal ++ importTestFiles ./types)

@@ -68,7 +68,7 @@ in
 {
   inherit
     compile
-    mkTable
     mkRuleset
+    mkTable
     ;
 }

@@ -229,7 +229,9 @@ pkgs.testers.nixosTest {
             if exc_type is not None:
                 try:
                     ruleset = bridge.succeed("nft list ruleset")
-                    fdb = bridge.succeed("bridge fdb show; echo ---; ip link show br0")
+                    fdb = bridge.succeed(
+                        "bridge fdb show; echo ---; ip link show br0"
+                    )
                 except Exception:
                     ruleset = fdb = "(failed to capture)"
                 print(

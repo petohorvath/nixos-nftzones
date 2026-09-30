@@ -19,8 +19,8 @@
   or `"8000:8100"`), `libnet.port` values, `libnet.portRange`
   values, or lists thereof. `types` accepts ints (0..255), symbolic
   strings (`"echo-request"`), or lists of one form (mixed-form
-  lists throw). See `docs/plans/snippets.md` for the full input /
-  output contract.
+  lists throw). See `snippets/ports.nix` and `snippets/matchers.nix`
+  for the full input / output contract.
 
   Reject variant per protocol:
     - `reject.tcp`      → `reject.tcpReset`  (TCP RST, clean closure)
@@ -44,14 +44,14 @@ let
     reject
     ;
   inherit (nftypes.dsl.fields)
-    tcp
-    udp
     icmp
     icmpv6
+    tcp
+    udp
     ;
 
   matchers = import ./snippets/matchers.nix { inherit inputs; };
-  inherit (matchers) mkPortMatch mkIcmpMatch;
+  inherit (matchers) mkIcmpMatch mkPortMatch;
 in
 {
   accept = {

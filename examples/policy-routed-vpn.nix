@@ -39,7 +39,7 @@
       networking.nftzones = {
         enable = true;
         tables.fw = import ./examples/policy-routed-vpn.nix {
-          nftypes  = inputs.nftypes.lib;
+          nftypes = inputs.nftypes.lib;
           nftzones = inputs.nftzones.lib.${pkgs.system};
         };
       };
@@ -51,9 +51,9 @@
   ...
 }:
 let
-  inherit (nftypes.dsl) eq accept mangle;
-  inherit (nftypes.dsl.fields) tcp meta;
-  snip = nftzones.snippets;
+  inherit (nftypes.dsl) accept eq mangle;
+  inherit (nftypes.dsl.fields) meta tcp;
+  inherit (nftzones) snippets;
 in
 {
   zones = {
@@ -100,14 +100,14 @@ in
     lan-admin-ssh = {
       from = [ "lan" ];
       to = [ "local" ];
-      rule = snip.accept.tcp 22;
+      rule = snippets.accept.tcp 22;
     };
 
     # WAN may ping the router (cheap external uptime probe).
     wan-ping = {
       from = [ "wan" ];
       to = [ "local" ];
-      rule = snip.accept.icmp.v4 8;
+      rule = snippets.accept.icmp.v4 8;
     };
 
     # Post-DNAT half of the WAN→internal port-forward below.

@@ -17,13 +17,13 @@
 { nftypes, ... }:
 let
   inherit (nftypes.dsl)
-    eq
     accept
+    eq
+    expr
     inSet
     jump
-    expr
     ;
-  inherit (nftypes.dsl.fields) tcp meta ip;
+  inherit (nftypes.dsl.fields) ip meta tcp;
 in
 {
   body = {

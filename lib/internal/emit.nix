@@ -58,20 +58,20 @@
 let
   inherit (inputs) lib nftypes;
   inherit (nftypes.dsl)
-    expr
-    eq
-    inSet
     accept
-    drop
-    snat
-    masquerade
     dnat
-    redirect
+    drop
+    eq
+    expr
+    inSet
     jump
+    masquerade
+    redirect
+    snat
     ;
   inherit (nftypes.dsl.fields)
-    meta
     ct
+    meta
     ;
   inherit (nftypes) chainTypeFor priorityNameOf;
   inherit (internal.placement) baseChainNameOf;
@@ -169,7 +169,7 @@ let
 
   /*
     Compose a sub-chain key from explicit `(fromZone, toZone)`
-    components — mirrors `dispatch.subChainKeyOf` but operates on
+    components — mirrors `placement.subChainKeyOf` but operates on
     the unpacked pair instead of a cell. Used by
     `buildEffectiveSubChains` to generate intermediate-parent
     keys without re-parsing strings.
@@ -311,20 +311,18 @@ let
 
       childJumps = mkChildDispatchJumpRules {
         inherit
+          baseChainName
+          effectiveSubChains
           hook
           parentFromZone
           toZone
-          baseChainName
-          effectiveSubChains
           zoneMembership
           ;
       };
-
-      rules =
-        (map mkRuleBody subChain.preChildCells) ++ childJumps ++ (map mkRuleBody subChain.postChildCells);
     in
     {
-      inherit rules;
+      rules =
+        (map mkRuleBody subChain.preChildCells) ++ childJumps ++ (map mkRuleBody subChain.postChildCells);
     };
 
   /*
@@ -350,9 +348,9 @@ let
         lib.nameValuePair (subChainNameOf baseChainName subChainKey) (mkSubChain {
           inherit (bucket) hook;
           inherit
-            subChain
             baseChainName
             effectiveSubChains
+            subChain
             zoneMembership
             ;
         })
@@ -429,15 +427,18 @@ let
             );
             jumpStmt = jump (subChainNameOf baseChainName subChainKey);
           in
-          map ({ from, to }: from.variant ++ to.variant ++ [ jumpStmt ]) (
-            builtins.filter ({ from, to }: from.family == null || to.family == null || from.family == to.family)
-              (
-                lib.cartesianProduct {
-                  from = fromVariants;
-                  to = toVariants;
-                }
-              )
-          );
+          lib.pipe
+            {
+              from = fromVariants;
+              to = toVariants;
+            }
+            [
+              lib.cartesianProduct
+              (builtins.filter (
+                { from, to }: from.family == null || to.family == null || from.family == to.family
+              ))
+              (map ({ from, to }: from.variant ++ to.variant ++ [ jumpStmt ]))
+            ];
     in
     lib.concatLists (lib.mapAttrsToList mkJumpsForSubChain effectiveSubChains);
 
@@ -502,10 +503,10 @@ let
         baseChainName: bucket:
         mkBaseChain {
           inherit
+            baseChainName
+            bucket
             family
             settings
-            bucket
-            baseChainName
             zoneMembership
             ;
           effectiveSubChains = effectiveSubChainsByBucket.${baseChainName};
@@ -602,10 +603,9 @@ let
   /*
     Pure passthrough: `table.objects.<kind>.<name>` maps directly to
     `body.<kind>.<name>` in the assembled `nftypes.dsl.table` value.
-    Pure passthrough — the type layer's `asUserBody` (in
-    `lib/types/table.nix`) has already stripped `family` / `name`
-    / `table` / `handle`; the nftypes renderer fills them back in
-    from the parent table.
+    The type layer's `asUserBody` (in `lib/types/table.nix`) has
+    already stripped `family` / `name` / `table` / `handle`; the
+    nftypes renderer fills them back in from the parent table.
   */
   emitUserObjects =
     { table, ctx }:
@@ -632,9 +632,7 @@ let
 
       # Other user-object kinds pass through as their own body
       # field. Empty kinds are skipped so the output stays clean.
-      otherUserObjectKinds = lib.filterAttrs (_: v: v != { }) (
-        builtins.removeAttrs ctx.userObjects [ "sets" ]
-      );
+      otherUserObjectKinds = lib.filterAttrs (_: v: v != { }) (removeAttrs ctx.userObjects [ "sets" ]);
 
       body =
         lib.optionalAttrs (table.flags != [ ]) { inherit (table) flags; }
@@ -665,22 +663,22 @@ let
 in
 {
   inherit
-    mkRuleBody
-    subChainNameOf
-    mkSubChainKey
-    buildEffectiveSubChains
-    mkSubChain
-    mkSubChains
-    mkChildDispatchJumpRules
-    mkRootJumpRules
-    mkBaseChain
-    mkBaseChains
+    assembleOutput
     assembleTable
+    buildEffectiveSubChains
     computeEffectiveSubChains
     emitBaseChains
     emitSubChains
-    emitUserObjects
-    assembleOutput
     emitTable
+    emitUserObjects
+    mkBaseChain
+    mkBaseChains
+    mkChildDispatchJumpRules
+    mkRootJumpRules
+    mkRuleBody
+    mkSubChain
+    mkSubChainKey
+    mkSubChains
+    subChainNameOf
     ;
 }

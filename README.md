@@ -245,7 +245,7 @@ Four tiers, each runnable via `nix flake check`:
   | [`atomic-reload.nix`](tests/vm/atomic-reload.nix) | client + router + server | mid-flight `nft -f` ruleset swap preserves established connections |
   | [`activation.nix`](tests/vm/activation.nix) | client + router + server | real NixOS activation removes the SSH allow rule while preserving an established connection |
 
-The two reload scenarios use [`reload-verification.py`](tests/vm/reload-verification.py) to establish SSH, run the scenario's reload, verify that the same session survives and fresh connections fail, and collect diagnostics on failure. Each scenario keeps its reload command and ruleset assertions inside the `verify_reload` context. Run them individually with `nix build .#checks.x86_64-linux.vm.entries.atomic-reload` and `nix build .#checks.x86_64-linux.vm.entries.activation` (use `vm-unstable` for the other pinned channel).
+The two reload scenarios use [`reload-verification.py`](tests/vm/reload-verification.py) to establish SSH, run the scenario's reload, verify that the same session survives and fresh connections fail, and collect diagnostics on failure. Each scenario keeps its reload command and ruleset assertions inside the `verify_reload` context. Run them individually with `nix build .#checks.x86_64-linux.vm.entries.atomic-reload` and `nix build .#checks.x86_64-linux.vm.entries.activation` (use `vm-unstable` for the other pinned nixpkgs branch).
 
 CI runs the VM suite against both pinned nixpkgs inputs, `nixos-25.11` and `nixos-unstable`, so upstream regressions surface alongside changes here.
 

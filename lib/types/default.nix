@@ -43,29 +43,29 @@ let
   policy = import ./policy.nix { inherit inputs primitives zone; };
   table = import ./table.nix {
     inherit
-      inputs
-      primitives
-      zone
-      node
-      filter
-      snat
       dnat
-      sroute
       droute
+      filter
+      inputs
+      node
       policy
+      primitives
+      snat
+      sroute
+      zone
       ;
   };
 in
 {
   inherit
-    zone
-    node
-    filter
-    snat
     dnat
-    sroute
     droute
+    filter
+    node
     policy
+    snat
+    sroute
     table
+    zone
     ;
 }

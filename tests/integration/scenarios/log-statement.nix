@@ -11,8 +11,8 @@
 { nftypes, ... }:
 let
   inherit (nftypes.dsl)
-    eq
     accept
+    eq
     log
     ;
   inherit (nftypes.dsl.fields) tcp;
@@ -35,25 +35,25 @@ in
   assertions =
     compiled:
     let
-      rule0 =
+      firstRule =
         builtins.elemAt compiled.tables.log-statement.chains."input-at-filter__wan-to-local".rules
           0;
       # The runner wraps rule bodies in `{ expr; comment; }`
       # when a comment is set, but rules without comments may
       # still arrive as either shape across the pipeline —
       # unwrap defensively.
-      body = if builtins.isList rule0 then rule0 else rule0.expr;
-      logStmts = builtins.filter (s: builtins.isAttrs s && s ? log) body;
+      body = if builtins.isList firstRule then firstRule else firstRule.expr;
+      logStatements = builtins.filter (statement: builtins.isAttrs statement && statement ? log) body;
     in
     [
       {
         description = "log statement is preserved in the compiled rule body";
-        expr = builtins.length logStmts;
+        expr = builtins.length logStatements;
         expected = 1;
       }
       {
         description = "log statement preserves its prefix";
-        expr = (builtins.head logStmts).log.prefix or null;
+        expr = (builtins.head logStatements).log.prefix or null;
         expected = "wan-ssh: ";
       }
     ];

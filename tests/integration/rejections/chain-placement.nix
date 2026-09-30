@@ -4,8 +4,7 @@
   type at the kernel level; without rejection, the rendered
   ruleset would parse but fail at `nft -f` time.
 */
-{ nftypes }:
-{
+_: {
   description = "checkChainPlacement: bridge family + snat (no nat support)";
 
   body = {

@@ -13,7 +13,7 @@
   ...
 }:
 let
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable evalFails;
+  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalFails evalTable;
 
   empty = evalTable { };
 in
@@ -81,14 +81,14 @@ in
   testTableEmptyDefaults = {
     expr = {
       inherit (empty)
-        zones
-        nodes
+        dnats
+        droutes
         filters
+        nodes
         policies
         snats
-        dnats
         sroutes
-        droutes
+        zones
         ;
     };
     expected = {
@@ -108,11 +108,11 @@ in
   testTableSettingsDefaults = {
     expr = {
       inherit (empty.settings)
-        stateful
-        loopback
-        rpfilter
         chainPolicy
         localZone
+        loopback
+        rpfilter
+        stateful
         wildcardZone
         ;
     };
@@ -152,17 +152,17 @@ in
     expr = {
       inherit (empty.objects)
         counters
-        quotas
-        limits
+        ctExpectations
         ctHelpers
         ctTimeouts
-        ctExpectations
+        flowtables
+        limits
+        maps
+        quotas
         secmarks
+        sets
         synproxies
         tunnels
-        sets
-        maps
-        flowtables
         ;
     };
     expected = {

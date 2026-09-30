@@ -15,8 +15,8 @@
 }:
 let
   inherit (nftzones.internal.refs) extractRefs;
+  inherit (nftypes) dsl;
   inherit (nftypes.dsl) fields;
-  dsl = nftypes.dsl;
 
   # Order-insensitive comparison: extractRefs is recursion-order
   # dependent, but tests assert presence/absence not order.

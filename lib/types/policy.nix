@@ -4,8 +4,8 @@
   Exported types:
     - `policy`        — submodule for one policy definition
     - `policyName`    — string identifier for a policy
-    - `policyVerdict` — `"accept"` or `"drop"` (reuses
-                        `nftypes.types.policy`)
+    - `policyVerdict` — `"accept"` or `"drop"` (defined locally;
+                        see below)
     - `policyComment` — optional free-form comment
 
   A policy is the default verdict for a directed `from → to`
@@ -75,8 +75,8 @@
       comment = "no inbound to LAN by default";
     };
     config.policies.catchall = {
-      from = [ "any" ];
-      to = [ "any" ];
+      from = [ "all" ];
+      to = [ "all" ];
       verdict = "drop";
       comment = "deny all unmatched";
     };
@@ -162,9 +162,9 @@ let
 in
 {
   inherit
+    policy
+    policyComment
     policyName
     policyVerdict
-    policyComment
-    policy
     ;
 }

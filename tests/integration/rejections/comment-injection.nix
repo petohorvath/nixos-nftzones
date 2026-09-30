@@ -14,7 +14,7 @@ _: {
   description = "primitives.comment: rejects table comments containing characters unsafe for nft's quoted-string syntax";
 
   body = {
-    comment = ''X"; chain bypass { type filter hook input priority -10; policy accept; }; #'';
+    comment = "X\"; chain bypass { type filter hook input priority -10; policy accept; }; #";
     zones.lan.interfaces = [ "lan0" ];
   };
 }

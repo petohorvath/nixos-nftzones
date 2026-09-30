@@ -64,11 +64,6 @@
 let
   inherit (inputs) lib;
 
-  /*
-    Detect named-ref patterns at THIS attrset level only. Nested
-    refs (sub-statements, sub-expressions) are picked up by the
-    recursive `walkValue` over the attrset's values.
-  */
   # Named-reference strings in expression position carry a leading
   # `@` per libnftables-JSON convention (e.g. `{ set = "@blocklist"; }`).
   # Statement-form names are bare. Strip the prefix uniformly so
@@ -77,6 +72,11 @@ let
   # the prefix is absent, so no guard is needed.
   stripAt = lib.removePrefix "@";
 
+  /*
+    Detect named-ref patterns at THIS attrset level only. Nested
+    refs (sub-statements, sub-expressions) are picked up by the
+    recursive `extractRefs` over the attrset's values.
+  */
   refsAtAttrs =
     v:
     let
@@ -185,16 +185,14 @@ let
     inspected for ref patterns then their values are recursed,
     primitives terminate. Returns a flat list of refs.
   */
-  walkValue =
+  extractRefs =
     v:
     if builtins.isList v then
-      lib.concatMap walkValue v
+      lib.concatMap extractRefs v
     else if builtins.isAttrs v then
-      refsAtAttrs v ++ lib.concatMap walkValue (builtins.attrValues v)
+      refsAtAttrs v ++ lib.concatMap extractRefs (builtins.attrValues v)
     else
       [ ];
-
-  extractRefs = walkValue;
 in
 {
   inherit extractRefs;

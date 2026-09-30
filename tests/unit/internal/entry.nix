@@ -10,7 +10,7 @@
   ...
 }:
 let
-  inherit (nftypes.dsl) eq accept;
+  inherit (nftypes.dsl) accept eq;
   inherit (nftypes.dsl.fields) tcp;
 
   inherit (nftzones.internal.entry) toCells;
@@ -29,10 +29,9 @@ let
     comment = "ssh from anywhere";
   };
 
-  bidirCellOf = f: t: {
+  bidirectionalCell = from: to: {
     name = "ssh";
-    from = f;
-    to = t;
+    inherit from to;
     rule = ruleBody;
     priority = 0;
     comment = "ssh from anywhere";
@@ -43,7 +42,7 @@ in
 
   testToCellsSinglePair = {
     expr = toCells baseEntry;
-    expected = [ (bidirCellOf "wan" "host") ];
+    expected = [ (bidirectionalCell "wan" "host") ];
   };
 
   # ===== toCells — bidirectional, fan-out on `to` only =====
@@ -59,8 +58,8 @@ in
       }
     );
     expected = [
-      (bidirCellOf "wan" "wan")
-      (bidirCellOf "wan" "vpn")
+      (bidirectionalCell "wan" "wan")
+      (bidirectionalCell "wan" "vpn")
     ];
   };
 
@@ -77,8 +76,8 @@ in
       }
     );
     expected = [
-      (bidirCellOf "lan" "host")
-      (bidirCellOf "guest" "host")
+      (bidirectionalCell "lan" "host")
+      (bidirectionalCell "guest" "host")
     ];
   };
 
@@ -99,10 +98,10 @@ in
       }
     );
     expected = [
-      (bidirCellOf "lan" "wan")
-      (bidirCellOf "lan" "vpn")
-      (bidirCellOf "guest" "wan")
-      (bidirCellOf "guest" "vpn")
+      (bidirectionalCell "lan" "wan")
+      (bidirectionalCell "lan" "vpn")
+      (bidirectionalCell "guest" "wan")
+      (bidirectionalCell "guest" "vpn")
     ];
   };
 
@@ -175,7 +174,7 @@ in
     ];
   };
 
-  # ===== toCells — empty direction list collapses the product to zero cells =====
+  # ===== toCells — an empty direction list yields zero cells =====
   # `from = [ ]` is "direction present but empty" — distinct from
   # "direction absent" — and `mapCartesianProduct` correctly emits
   # no cells for the empty side.
@@ -190,7 +189,7 @@ in
     expected = [ ];
   };
 
-  # ===== toCells — entry with no direction fields yields one pass-through cell =====
+  # ===== toCells — no direction fields yields one pass-through cell =====
   # When neither `from` nor `to` is present, the cartesian product
   # over an empty attrset is `[ { } ]`, so the entry passes through
   # as a single cell with no direction fields added.

@@ -77,10 +77,10 @@ let
     in
     {
       inherit
+        cidrs
+        interfaces
         name
         parent
-        interfaces
-        cidrs
         ;
       matchOverride = {
         ingress = { };

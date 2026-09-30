@@ -7,7 +7,7 @@
 */
 { nftypes }:
 let
-  inherit (nftypes.dsl) counter accept;
+  inherit (nftypes.dsl) accept counter;
 in
 {
   description = "checkObjectRefs: rule references undeclared counter";

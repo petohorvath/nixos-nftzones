@@ -264,7 +264,9 @@ pkgs.testers.nixosTest {
                 try:
                     ruleset = router.succeed("nft list ruleset")
                     ct = router.succeed("conntrack -L 2>/dev/null || true")
-                    routes = router.succeed("ip -4 route; echo ---; ip -6 route")
+                    routes = router.succeed(
+                        "ip -4 route; echo ---; ip -6 route"
+                    )
                 except Exception:
                     ruleset = ct = routes = "(failed to capture)"
                 print(
@@ -318,7 +320,8 @@ pkgs.testers.nixosTest {
             f"forward policy, but it succeeded: {result[1]!r}"
         )
         assert "[ASSURED]" not in ct, (
-            f"firewall let iot → admin ICMP complete a bidirectional flow:\n{ct}"
+            "firewall let iot → admin ICMP complete a bidirectional flow:"
+            f"\n{ct}"
         )
   '';
 }

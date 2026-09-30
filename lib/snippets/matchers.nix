@@ -8,34 +8,6 @@
   ICMP-type input normalization are split into separate functions
   because their validation rules differ (libnet covers ports;
   ICMP uses an inline range check + form-uniformity rule).
-
-  ===== normalizeIcmpTypes =====
-
-  Inputs:
-    types — int | string | list of either.
-
-  Output:
-    Sorted, deduped list of canonical elements (ints sorted
-    ascending, strings sorted lexicographically). Mixed-form lists
-    throw — see body for rationale.
-
-  ===== mkPortMatch =====
-
-  Inputs:
-    field — nftypes field expression (e.g. `tcp.dport`, `udp.dport`)
-    ports — accepted by `normalizePorts` (see snippets/ports.nix)
-
-  Output:
-    One nftypes match statement.
-
-  ===== mkIcmpMatch =====
-
-  Inputs:
-    field — nftypes field expression (`icmp.type` or `icmpv6.type`)
-    types — accepted by `normalizeIcmpTypes`
-
-  Output:
-    One nftypes match statement.
 */
 { inputs }:
 let
@@ -45,13 +17,9 @@ let
   ports = import ./ports.nix { inherit inputs; };
   inherit (ports) normalizePorts;
 
-  isIntElem = x: builtins.isInt x;
-  isStringElem = x: builtins.isString x;
-  isRangeElem = x: builtins.isAttrs x && x ? range;
+  isRange = x: builtins.isAttrs x && x ? range;
 
   /*
-    ===== normalizeIcmpTypes =====
-
     Validate the all-ints-or-all-strings rule, range-check ints,
     sort and dedupe. Mixed-form lists throw because we have no
     safe way to dedupe across forms (e.g. `8` and
@@ -80,33 +48,40 @@ let
     enum-validated (typo → eval error) and protocol-version-
     correct. The string form is supported for users who prefer
     the symbolic-constant style nft itself emits.
+
+    Inputs:
+      types — int | string | list of either.
+
+    Returns a sorted, deduped list of canonical elements (ints sorted
+    ascending, strings sorted lexicographically).
   */
   normalizeIcmpTypes =
     types:
     let
-      asList = if builtins.isList types then types else [ types ];
-      allInts = builtins.all isIntElem asList;
-      allStrings = builtins.all isStringElem asList;
-      validateInt =
-        n:
-        if n < 0 || n > 255 then
-          throw "snippets: ICMP type ${builtins.toString n} out of range [0, 255]"
+      typeList = lib.toList types;
+      checkRange =
+        type:
+        if type < 0 || type > 255 then
+          throw "snippets: ICMP type ${toString type} out of range [0, 255]"
         else
-          n;
+          type;
     in
-    if asList == [ ] then
-      asList
-    else if allInts then
-      lib.unique (lib.sort (a: b: a < b) (map validateInt asList))
-    else if allStrings then
-      lib.unique (lib.sort (a: b: a < b) asList)
+    if typeList == [ ] then
+      typeList
+    else if builtins.all builtins.isInt typeList then
+      lib.pipe typeList [
+        (map checkRange)
+        (lib.sort (a: b: a < b))
+        lib.unique
+      ]
+    else if builtins.all builtins.isString typeList then
+      lib.unique (lib.sort (a: b: a < b) typeList)
     else
       throw "snippets: ICMP types must be all ints or all strings, not mixed";
 
   /*
-    ===== mkPortMatch =====
-
-    Branch by normalized list length and singleton kind:
+    Build one port match statement, branching by normalized list
+    length and singleton kind:
       - empty       → throw
       - single int  → `eq    field N`
       - single rng  → `within field { range = [lo hi]; }`
@@ -114,43 +89,53 @@ let
 
     `within` is an alias for `inSet` in nftypes; using it for the
     single-range case is purely a readability choice.
+
+    Inputs:
+      field — nftypes field expression (e.g. `tcp.dport`, `udp.dport`)
+      ports — accepted by `normalizePorts` (see snippets/ports.nix)
+
+    Returns one nftypes match statement.
   */
   mkPortMatch =
     field: ports:
     let
       normalized = normalizePorts ports;
-      n = builtins.length normalized;
-      head = builtins.head normalized;
+      count = builtins.length normalized;
+      first = builtins.head normalized;
     in
-    if n == 0 then
+    if count == 0 then
       throw "snippets: ports list is empty"
-    else if n == 1 && isIntElem head then
-      eq field head
-    else if n == 1 && isRangeElem head then
-      within field head
+    else if count == 1 && builtins.isInt first then
+      eq field first
+    else if count == 1 && isRange first then
+      within field first
     else
       inSet field normalized;
 
   /*
-    ===== mkIcmpMatch =====
+    Build one ICMP-type match statement. Same length-driven branching
+    as `mkPortMatch`, but ICMP types are scalar (int or string) — no
+    range case, so single-element lists always emit `eq`.
 
-    Same length-driven branching as `mkPortMatch`, but ICMP types
-    are scalar (int or string) — no range case, so single-element
-    lists always emit `eq`.
+    Inputs:
+      field — nftypes field expression (`icmp.type` or `icmpv6.type`)
+      types — accepted by `normalizeIcmpTypes`
+
+    Returns one nftypes match statement.
   */
   mkIcmpMatch =
     field: types:
     let
       normalized = normalizeIcmpTypes types;
-      n = builtins.length normalized;
+      count = builtins.length normalized;
     in
-    if n == 0 then
+    if count == 0 then
       throw "snippets: types list is empty"
-    else if n == 1 then
+    else if count == 1 then
       eq field (builtins.head normalized)
     else
       inSet field normalized;
 in
 {
-  inherit normalizeIcmpTypes mkPortMatch mkIcmpMatch;
+  inherit mkIcmpMatch mkPortMatch normalizeIcmpTypes;
 }

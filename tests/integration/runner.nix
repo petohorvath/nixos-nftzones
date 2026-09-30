@@ -76,7 +76,9 @@ let
     name: body:
     if builtins.isList body then
       {
-        tables = lib.listToAttrs (map (e: lib.nameValuePair e.name (nftzones.mkTable e.name e.body)) body);
+        tables = lib.listToAttrs (
+          map (table: lib.nameValuePair table.name (nftzones.mkTable table.name table.body)) body
+        );
       }
     else
       {
@@ -85,11 +87,15 @@ let
         };
       };
 
-  # Compile a scenario body into libnftables-JSON.
+  /*
+    Render a scenario body as libnftables-JSON for `nft -j --check`.
+    Takes the scenario name and a body in form 1 or form 2; returns
+    the JSON string.
+  */
   renderScenario =
     name: body:
     if builtins.isList body then
-      nftypes.toJson (nftypes.dsl.ruleset (map (e: nftzones.mkTable e.name e.body) body))
+      nftypes.toJson (nftypes.dsl.ruleset (map (table: nftzones.mkTable table.name table.body) body))
     else
       nftypes.toJson (nftzones.mkRuleset name body);
 
@@ -109,15 +115,15 @@ let
   evaluateAssertions =
     name: checks:
     let
-      failures = builtins.filter (a: a.expr != a.expected) checks;
+      failures = builtins.filter (check: check.expr != check.expected) checks;
       formatFailure =
-        a:
+        check:
         let
-          desc = a.description or "(no description)";
+          description = check.description or "(no description)";
         in
-        "  - '${desc}'\n"
-        + "      expected: ${lib.generators.toPretty { } a.expected}\n"
-        + "      actual:   ${lib.generators.toPretty { } a.expr}";
+        "  - '${description}'\n"
+        + "      expected: ${lib.generators.toPretty { } check.expected}\n"
+        + "      actual:   ${lib.generators.toPretty { } check.expr}";
     in
     if failures == [ ] then
       null
@@ -157,7 +163,9 @@ let
 
       checked = evaluateAssertions name assertions;
 
-      rulesetFile = builtins.toFile "${name}.json" (renderScenario name body);
+      rulesetPath = builtins.toFile "${name}.json" (renderScenario name body);
+
+      preloadLibraries = "${pkgs.buildPackages.libredirect}/lib/libredirect.so ${pkgs.buildPackages.lklWithFirewall.lib}/lib/liblkl-hijack.so";
     in
     builtins.seq checked (
       pkgs.runCommand "nftzones-integration-${name}"
@@ -169,8 +177,8 @@ let
           ];
         }
         ''
-          LD_PRELOAD="${pkgs.buildPackages.libredirect}/lib/libredirect.so ${pkgs.buildPackages.lklWithFirewall.lib}/lib/liblkl-hijack.so" \
-            nft -j --check --file ${rulesetFile}
+          LD_PRELOAD="${preloadLibraries}" \
+            nft -j --check --file ${rulesetPath}
           touch $out
         ''
     );
@@ -208,17 +216,15 @@ let
     name: rejection:
     let
       attempt = builtins.tryEval (builtins.deepSeq (nftzones.mkRuleset name rejection.body) null);
+      description = rejection.description or "no description";
     in
     if attempt.success then
       throw (
-        "nftzones rejection scenario '${name}': "
-        + "expected mkRuleset to throw on the supplied body, "
-        + "but it compiled cleanly. "
-        + "(${rejection.description or "no description"})"
+        "nftzones rejection scenario '${name}': expected mkRuleset to throw on the supplied body, but it compiled cleanly. (${description})"
       )
     else
       pkgs.runCommand "nftzones-rejection-${name}" { } "touch $out";
 in
 {
-  inherit renderScenario mkScenarioCheck mkRejectionCheck;
+  inherit mkRejectionCheck mkScenarioCheck renderScenario;
 }

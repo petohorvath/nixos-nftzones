@@ -133,10 +133,10 @@ let
 in
 {
   inherit
-    drouteName
-    drouteRule
-    droutePriority
-    drouteComment
     droute
+    drouteComment
+    drouteName
+    droutePriority
+    drouteRule
     ;
 }

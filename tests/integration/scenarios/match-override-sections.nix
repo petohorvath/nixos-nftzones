@@ -8,7 +8,7 @@
 */
 { nftypes, ... }:
 let
-  inherit (nftypes.dsl) eq accept expr;
+  inherit (nftypes.dsl) accept eq expr;
   inherit (nftypes.dsl.fields) ip ip6;
 in
 {

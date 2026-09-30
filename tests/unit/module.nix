@@ -72,7 +72,7 @@ let
     failures. Each test asserts on the count or the message
     content directly.
   */
-  failingAssertions = config: lib.filter (a: !a.assertion) config.assertions;
+  failingAssertions = config: lib.filter (assertion: !assertion.assertion) config.assertions;
 in
 {
   # ===== module — disabled produces no nftzones-managed table =====
@@ -91,7 +91,7 @@ in
     expected = false;
   };
 
-  # ===== module — enabled with empty tables fails the empty-tables assertion =====
+  # ===== module — enabled with empty tables fails its assertion =====
 
   testModuleEnabledEmptyTablesAssertion = {
     # `enable = true` + `tables = { }` previously compiled silently to
@@ -107,7 +107,7 @@ in
       in
       {
         count = lib.length failing;
-        mentionsEmpty = lib.any (a: lib.hasInfix "tables is empty" a.message) failing;
+        mentionsEmpty = lib.any (assertion: lib.hasInfix "tables is empty" assertion.message) failing;
       };
     expected = {
       count = 1;
@@ -115,7 +115,7 @@ in
     };
   };
 
-  # ===== module — disabled with empty tables passes (assertion is mkIf-gated) =====
+  # ===== module — disabled empty tables pass (mkIf-gated assertion) =====
 
   testModuleDisabledEmptyTablesNoAssertion = {
     expr = failingAssertions (evalSystem {
@@ -134,7 +134,7 @@ in
     # the conflict.
     expr =
       let
-        ws =
+        warnings =
           (evalSystem {
             networking.nftables.enable = true;
             networking.firewall.enable = true;
@@ -145,8 +145,8 @@ in
           }).warnings;
       in
       {
-        count = lib.length (lib.filter (w: lib.hasInfix "networking.nftzones" w) ws);
-        mentionsFirewall = lib.any (w: lib.hasInfix "networking.firewall.enable" w) ws;
+        count = lib.length (lib.filter (lib.hasInfix "networking.nftzones") warnings);
+        mentionsFirewall = lib.any (lib.hasInfix "networking.firewall.enable") warnings;
       };
     expected = {
       count = 1;
@@ -161,7 +161,7 @@ in
     # test must explicitly disable it to verify the warning DOESN'T
     # fire when firewall is off.
     expr =
-      lib.filter (w: lib.hasInfix "networking.nftzones" w)
+      lib.filter (lib.hasInfix "networking.nftzones")
         (evalSystem {
           networking.nftables.enable = true;
           networking.firewall.enable = false;
@@ -184,7 +184,7 @@ in
           }).networking.nftables.tables.fw;
       in
       {
-        family = table.family;
+        inherit (table) family;
         hasLanIifs = lib.hasInfix "set lan_iifs" table.content;
         hasLan0 = lib.hasInfix "lan0" table.content;
       };
@@ -305,7 +305,7 @@ in
     };
   };
 
-  # ===== module — a facade `table` option forwards cleanly into tables.<key> =====
+  # ===== module — a facade `table` option forwards into tables.<key> =====
   # Reproduction from the `name`-projection fix: a standalone option
   # of type `nftzones.types.table` (whose `name` defaults to the
   # option path `myfw`) forwarded into `networking.nftzones.tables.fw`
@@ -400,7 +400,7 @@ in
     };
   };
 
-  # ===== module — collision with networking.nftables.tables.<n> trips assertion =====
+  # ===== module — collision with nftables.tables.<name> trips assertion =====
 
   testModuleCollisionAssertion = {
     # Pin the exact assertion message, not just an "infix" match —
@@ -425,11 +425,12 @@ in
           };
         };
         expectedMessage = ''
-          networking.nftzones.tables.fw collides with networking.nftables.tables.fw.
-          Declare each table in exactly one module.
+          networking.nftzones.tables.fw collides with
+          networking.nftables.tables.fw. Declare each table in exactly
+          one module.
         '';
       in
-      lib.any (a: a.message == expectedMessage) (failingAssertions cfg);
+      lib.any (assertion: assertion.message == expectedMessage) (failingAssertions cfg);
     expected = true;
   };
 
@@ -446,7 +447,9 @@ in
           };
         };
       in
-      lib.any (a: lib.hasInfix "requires networking.nftables.enable" a.message) (failingAssertions cfg);
+      lib.any (assertion: lib.hasInfix "requires networking.nftables.enable" assertion.message) (
+        failingAssertions cfg
+      );
     expected = true;
   };
 
@@ -510,7 +513,7 @@ in
           };
         };
       in
-      lib.hasInfix ''comment "main firewall";'' cfg.networking.nftables.tables.fw.content;
+      lib.hasInfix "comment \"main firewall\";" cfg.networking.nftables.tables.fw.content;
     expected = true;
   };
 

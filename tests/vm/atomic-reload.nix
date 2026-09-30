@@ -47,10 +47,7 @@
   ...
 }:
 let
-  inherit (nftypes.dsl)
-    eq
-    accept
-    ;
+  inherit (nftypes.dsl) accept eq;
   inherit (nftypes.dsl.fields) tcp;
 
   lanNet = "192.168.1";
