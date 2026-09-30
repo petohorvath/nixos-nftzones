@@ -8,16 +8,16 @@
 */
 { flake, system }:
 let
-  testArgs = import ../helpers/test-context.nix { inherit flake system; };
+  testContext = import ../helpers/test-context.nix { inherit flake system; };
 in
 {
-  activation = import ./activation.nix testArgs;
-  atomic-reload = import ./atomic-reload.nix testArgs;
-  bridge = import ./bridge.nix testArgs;
-  droutes = import ./droutes.nix testArgs;
-  dualstack = import ./dualstack.nix testArgs;
-  forward = import ./forward.nix testArgs;
-  marks = import ./marks.nix testArgs;
-  rpfilter = import ./rpfilter.nix testArgs;
-  vlan = import ./vlan.nix testArgs;
+  activation = import ./activation.nix testContext;
+  atomic-reload = import ./atomic-reload.nix testContext;
+  bridge = import ./bridge.nix testContext;
+  droutes = import ./droutes.nix testContext;
+  dualstack = import ./dualstack.nix testContext;
+  forward = import ./forward.nix testContext;
+  marks = import ./marks.nix testContext;
+  rpfilter = import ./rpfilter.nix testContext;
+  vlan = import ./vlan.nix testContext;
 }
