@@ -207,7 +207,7 @@ stay valid against the current type surface.
 | [`docs/zone-based-firewall.md`](docs/zone-based-firewall.md) | Newcomers to the zone-based firewall model.                     |
 | [`docs/compile-pipeline.md`](docs/compile-pipeline.md)       | Integrators, debuggers, contributors.                           |
 | [`docs/zone-hierarchy.md`](docs/zone-hierarchy.md)           | Zone hierarchy semantics and dispatch model.                    |
-| [`CONTEXT.md`](CONTEXT.md)                                   | Glossary of domain terms.                                       |
+| [`GLOSSARY.md`](GLOSSARY.md)                                 | Glossary of domain terms.                                       |
 | [`docs/adr/`](docs/adr/)                                     | Architecture decision records, including rejected alternatives. |
 
 ## Requirements

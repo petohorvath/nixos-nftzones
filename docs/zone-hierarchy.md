@@ -24,7 +24,7 @@ both sides; this initial implementation keeps the model
 asymmetric.
 
 Terms such as root zone, child zone, subtree, slot and transparent
-dispatcher are defined in [`CONTEXT.md`](../CONTEXT.md). An **effective
+dispatcher are defined in [`GLOSSARY.md`](../GLOSSARY.md). An **effective
 sub-chain** (`buildEffectiveSubChains` in `lib/internal/emit.nix`) is
 one of the sub-chains that must exist in a base chain bucket: the
 sub-chains that carry cells, plus the transparent dispatchers
