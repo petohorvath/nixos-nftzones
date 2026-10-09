@@ -1,7 +1,7 @@
 # AGENTS.md
 
 nftzones compiles zone-keyed Nix configs into vanilla nftables rulesets.
-Start with `README.md`, the glossary in `CONTEXT.md`, and the reference
+Start with `README.md`, the glossary in `GLOSSARY.md`, and the reference
 docs under `docs/`.
 
 ## Agent skills
@@ -19,5 +19,5 @@ Uses the five default labels: `needs-triage`, `needs-info`,
 
 ### Domain docs
 
-Single-context: a root `CONTEXT.md` plus `docs/adr/`. See
+Single-context: a root `GLOSSARY.md` plus `docs/adr/`. See
 `docs/agents/domain.md`.

@@ -12,7 +12,7 @@ Without the pipeline, the type system catches structural errors but nothing prod
 
 Domain terms (group, entry, direction, side, cell, slot, section,
 variant, base chain, sub-chain, chain placement, entry priority vs.
-chain priority) are defined in [`CONTEXT.md`](../CONTEXT.md). This
+chain priority) are defined in [`GLOSSARY.md`](../GLOSSARY.md). This
 section covers only how the pipeline names things internally.
 
 A **bucket** is the Phase 3 container holding all cells destined for
