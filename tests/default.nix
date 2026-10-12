@@ -1,7 +1,8 @@
 /*
   Assemble the project checks. The unit, integration, examples, and VM
   tiers test the root flake's public exports; formatting and lint run
-  against the cleaned source tree. The VM tests are named `vm-<name>`.
+  against the cleaned source tree. The `vm-` prefix keeps VM test names
+  such as `activation` apart from the names of the other checks.
 */
 {
   formatter,
@@ -53,9 +54,4 @@ in
     '';
   };
 }
-// pkgs.lib.mapAttrs' (name: test: pkgs.lib.nameValuePair "vm-${name}" test) (
-  import ./vm {
-    flake = inputs.self;
-    inherit system;
-  }
-)
+// pkgs.lib.mapAttrs' (name: pkgs.lib.nameValuePair "vm-${name}") (import ./vm testContext)

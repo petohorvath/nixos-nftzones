@@ -228,14 +228,14 @@ Trust model: pin by `rev` + `narHash` via `flake.lock` (the lock file `nftzones`
 
 ## Testing
 
-`nix flake check` runs five check tiers and the VM tests:
+`nix flake check` runs these checks:
 
 - **Unit** (`tests/unit/`): per-module tests of the compile pipeline's helpers and validators, run by [nix-unit](https://github.com/nix-community/nix-unit). For a focused run inside `nix develop`, select one test file or case, for example `nix-unit tests/entrypoint.nix --attr internal.compile`.
 - **Integration** (`tests/integration/`): structured assertions on the rendered nftables JSON for representative scenarios, plus negative tests that confirm Phase 1 validators reject known-bad inputs in the live `mkRuleset` pipeline.
 - **Examples** (`tests/examples.nix`): compile-checks every `examples/*.nix` through `mkRuleset` so the shipped example configs can't drift out of sync with the type surface.
 - **Formatting** and **lint**: `nix fmt` must leave the tree unchanged, and statix, deadnix, and actionlint must report nothing.
 
-The VM tests are checks named `vm-<name>`, so `nix flake check` needs KVM:
+It also runs the VM tests, checks named `vm-<name>`, so it needs KVM:
 
 - **VM** (`tests/vm/`): real-kernel multi-VM scenarios via `pkgs.testers.nixosTest`. One topology per feature, each requiring `/dev/kvm` on the builder. Verification is conntrack-on-router for NAT and deny-path tests, packet-content for everything else:
 
