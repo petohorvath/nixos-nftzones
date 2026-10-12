@@ -16,11 +16,5 @@
         inherit inputs pkgs system;
         inherit (config) formatter;
       };
-      # The shared policy builds `vmTests` in a KVM-enabled job, apart
-      # from `checks`.
-      legacyPackages.vmTests = import ../tests/vm {
-        inherit system;
-        flake = inputs.self;
-      };
     };
 }

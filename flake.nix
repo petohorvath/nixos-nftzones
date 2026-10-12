@@ -42,7 +42,6 @@
         checks = "dev";
         devShells = "dev";
         formatter = "dev";
-        legacyPackages = "dev";
       };
 
       flake = {

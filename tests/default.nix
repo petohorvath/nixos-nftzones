@@ -1,7 +1,7 @@
 /*
-  Assemble the project checks. The unit, integration, and examples
+  Assemble the project checks. The unit, integration, examples, and VM
   tiers test the root flake's public exports; formatting and lint run
-  against the cleaned source tree.
+  against the cleaned source tree. The VM tests are named `vm-<name>`.
 */
 {
   formatter,
@@ -53,3 +53,9 @@ in
     '';
   };
 }
+// pkgs.lib.mapAttrs' (name: test: pkgs.lib.nameValuePair "vm-${name}" test) (
+  import ./vm {
+    flake = inputs.self;
+    inherit system;
+  }
+)

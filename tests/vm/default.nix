@@ -2,9 +2,9 @@
   VM tests — Tier B. Real-kernel multi-VM scenarios that boot
   three NixOS machines (client, router, server) and assert traffic
   behaviour from a live kernel. Slower than the parse-check and
-  validator-rejection tiers, and they need KVM, so they are exposed
-  as `legacyPackages.<system>.vmTests.<name>` rather than `checks`.
-  Build one with `nix build .#vmTests.<name>`.
+  validator-rejection tiers, and they need KVM. They are checks named
+  `vm-<name>`; build one with
+  `nix build .#checks.x86_64-linux.vm-<name>`.
 */
 { flake, system }:
 let
