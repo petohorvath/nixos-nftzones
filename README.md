@@ -1,39 +1,139 @@
 # nixos-nftzones
 
-Compile zone-based firewall configurations into nftables rulesets, in Nix.
+nixos-nftzones is pre-release: version 0.1.0 has no tagged release, and the interface can change before 1.0.
 
-> **Pre-release** (`0.1.0`, no tagged release yet). Expect API tweaks before 1.0.
+nixos-nftzones provides `nftzones`, a Nix library and NixOS module that compile zone-based firewall configurations into vanilla nftables rulesets. A configuration declares each zone's interfaces and addresses once, such as `lan` for `eth1` and `10.0.0.0/24`, and writes rules between zones instead of repeating interfaces and addresses in every rule. It serves NixOS routers and hosts whose firewall policy reads naturally as traffic between network segments.
 
-Most nftables configs hardwire interfaces and addresses into every rule. nftzones describes zone membership once — "lan is `eth1` plus `10.0.0.0/24`", "wan is `eth0`" — and expresses rules between **zones** instead. The library compiles a zone-keyed config into a vanilla nftables ruleset; the underlying nftables knows nothing about zones. See [`docs/zone-based-firewall.md`](docs/zone-based-firewall.md) for the model and [`docs/compile-pipeline.md`](docs/compile-pipeline.md) for the four-phase pipeline.
+## Overview
 
-## Quick start
+A table body declares zones and named entries in rule groups. Each entry selects traffic with `from` and `to` zone lists, and the compiler expands it into one rule per zone pair. The output is one ordinary nftables table of base chains, per-pair sub-chains, sets, and jumps; the loaded ruleset has no notion of zones.
 
-### Add the flake inputs
+| Group      | Compiles to                                                           |
+| ---------- | --------------------------------------------------------------------- |
+| `filters`  | Rules in the input, forward, or output filter chain                   |
+| `policies` | The default verdict for a zone pair, applied when no filter matches   |
+| `snats`    | Source NAT at postrouting, such as masquerade                         |
+| `dnats`    | Destination NAT at prerouting, such as a port forward                 |
+| `sroutes`  | Packet marks at prerouting, keyed by source zone, for policy routing  |
+| `droutes`  | Packet marks at output, keyed by destination zone, for policy routing |
 
-Both nftzones and nftypes are typically declared as inputs — nftzones provides the zone abstraction; nftypes provides the DSL helpers (`eq`, `accept`, `tcp.dport`, etc.) used in rule bodies.
+Two zone names are reserved. `local` is the firewall host itself: `to = [ "local" ]` lands in the input chain and `from = [ "local" ]` in the output chain. `all` matches every zone. `settings.localZone` and `settings.wildcardZone` rename them.
+
+Rule bodies are statement lists built with the [nftypes](https://github.com/petohorvath/nix-nftypes) DSL. A zone can name a `parent` to refine it, and `nodes` declare single hosts inside a zone; traffic dispatches to the most specific child first and falls back to the parent's rules.
+
+[`docs/zone-based-firewall.md`](docs/zone-based-firewall.md) explains the model, [`docs/zone-hierarchy.md`](docs/zone-hierarchy.md) the parent and node semantics, and [`docs/compile-pipeline.md`](docs/compile-pipeline.md) how a table compiles. [`GLOSSARY.md`](GLOSSARY.md) defines the project's terms, and [`docs/adr/`](docs/adr/) records the design decisions.
+
+## Install
+
+Add nftzones as a flake input, and take nftypes from it for the rule-body DSL:
 
 ```nix
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-
-    nftzones.url = "github:petohorvath/nixos-nftzones";
-    nftzones.inputs.nixpkgs.follows = "nixpkgs";
-
-    nftypes.url = "github:petohorvath/nix-nftypes";
-    nftypes.inputs.nixpkgs.follows = "nixpkgs";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    nftzones = {
+      url = "github:petohorvath/nixos-nftzones";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    nftypes.follows = "nftzones/nftypes";
   };
 }
 ```
 
-### NixOS module (recommended)
+Following `nftzones/nftypes` keeps the DSL at the commit nftzones pins and tests against. nftzones pins its `nftypes` and `libnet` inputs by commit until those projects publish release tags.
 
-Import the module into a NixOS configuration; declare tables under `networking.nftzones.tables`. nixpkgs' `networking.nftables` machinery handles activation, atomic reload, and per-table cleanup on rebuild.
+The flake exposes the library as the system-independent `lib` output and the NixOS module as `nixosModules.default`.
+
+## Usage
+
+This flake compiles a table with two zones, an SSH rule, and a zone-pair policy, and renders it as nftables text:
 
 ```nix
-# flake.nix outputs
+{
+  inputs = {
+    nftzones.url = "github:petohorvath/nixos-nftzones";
+    nftypes.follows = "nftzones/nftypes";
+  };
+
+  outputs =
+    { nftzones, nftypes, ... }:
+    let
+      inherit (nftypes.lib.dsl) accept eq;
+      inherit (nftypes.lib.dsl.fields) tcp;
+    in
+    {
+      ruleset = nftypes.lib.toTextPretty (
+        nftzones.lib.mkRuleset "fw" {
+          zones = {
+            lan.interfaces = [ "eth1" ];
+            wan.interfaces = [ "eth0" ];
+          };
+          filters.allow-ssh = {
+            from = [ "lan" ];
+            to = [ "local" ];
+            rule = [
+              (eq tcp.dport 22)
+              accept
+            ];
+          };
+          policies.lan-to-wan = {
+            from = [ "lan" ];
+            to = [ "wan" ];
+            verdict = "accept";
+          };
+        }
+      );
+    };
+}
+```
+
+```console
+$ nix eval --raw .#ruleset
+add table inet fw
+add chain inet fw forward-at-filter {
+  type filter hook forward priority 0;
+  policy drop;
+}
+add chain inet fw forward-at-filter__lan-to-wan
+add chain inet fw input-at-filter {
+  type filter hook input priority 0;
+  policy drop;
+}
+add chain inet fw input-at-filter__lan-to-local
+add set inet fw lan_iifs {
+  type ifname;
+  elements = { eth1 };
+}
+add set inet fw wan_iifs {
+  type ifname;
+  elements = { eth0 };
+}
+add rule inet fw forward-at-filter ct state { established, related } accept
+add rule inet fw forward-at-filter ct state invalid drop
+add rule inet fw forward-at-filter meta iifname @lan_iifs meta oifname @wan_iifs jump forward-at-filter__lan-to-wan
+add rule inet fw forward-at-filter__lan-to-wan accept
+add rule inet fw input-at-filter ct state { established, related } accept
+add rule inet fw input-at-filter ct state invalid drop
+add rule inet fw input-at-filter meta iif lo accept
+add rule inet fw input-at-filter meta iifname @lan_iifs jump input-at-filter__lan-to-local
+add rule inet fw input-at-filter__lan-to-local tcp dport 22 accept
+```
+
+The connection-tracking, loopback, and `policy drop` lines come from the table's default `settings`. Load the text with `nft -f`, or render with `nftypes.lib.toJson` and load the JSON with `nft -j -f`.
+
+The [`examples`](examples/) directory holds complete, commented tables. Each file is a function of `{ nftypes, nftzones, ... }` that returns a table body, and the `examples` check compiles every one:
+
+- [`home-router.nix`](examples/home-router.nix): a home router with LAN and WAN zones, masquerade, a port forward, and default-deny inbound traffic.
+- [`vlan-segmentation.nix`](examples/vlan-segmentation.nix): four VLAN security zones with a reachability matrix.
+- [`dmz-hierarchy.nix`](examples/dmz-hierarchy.nix): a DMZ whose hosts are nodes under a shared parent zone.
+- [`policy-routed-vpn.nix`](examples/policy-routed-vpn.nix): a router that marks guest traffic and remote-office traffic for routing through a VPN tunnel.
+
+## Configure a NixOS host
+
+The NixOS module compiles each table under `networking.nftzones.tables` and passes it to `networking.nftables.tables.<name>`, so nixpkgs handles activation, atomic reload, the build-time `nft --check`, and removal of dropped tables. Add the module to the system and pass the flake inputs to its modules:
+
+```nix
 nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
-  system = "x86_64-linux";
   modules = [
     inputs.nftzones.nixosModules.default
     ./configuration.nix
@@ -42,224 +142,149 @@ nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
 };
 ```
 
+Then declare tables in `configuration.nix`:
+
 ```nix
-# configuration.nix
 { inputs, ... }:
 let
-  inherit (inputs.nftypes.lib.dsl) eq accept limit;
+  inherit (inputs.nftypes.lib.dsl) accept eq;
   inherit (inputs.nftypes.lib.dsl.fields) tcp;
 in
 {
-  networking.nftables.enable = true;
-  networking.nftzones = {
-    enable = true;
-    tables.fw = {
-      zones = {
-        lan = { interfaces = [ "eth1" ]; cidrs = [ "10.0.0.0/24" ]; };
-        wan = { interfaces = [ "eth0" ]; };
-      };
-      filters.allow-ssh = {
-        from = [ "wan" ];
-        to = [ "local" ];
-        rule = [ (eq tcp.dport 22) accept ];
-      };
-      policies.lan-out = {
-        from = [ "lan" ];
-        to = [ "wan" ];
-        verdict = "accept";
+  networking = {
+    firewall.enable = false;
+    nftables.enable = true;
+    nftzones = {
+      enable = true;
+      tables.fw = {
+        zones = {
+          lan = {
+            interfaces = [ "eth1" ];
+            cidrs = [ "10.0.0.0/24" ];
+          };
+          wan.interfaces = [ "eth0" ];
+        };
+        filters.allow-ssh = {
+          from = [ "lan" ];
+          to = [ "local" ];
+          rule = [
+            (eq tcp.dport 22)
+            accept
+          ];
+        };
+        policies.lan-to-wan = {
+          from = [ "lan" ];
+          to = [ "wan" ];
+          verdict = "accept";
+        };
       };
     };
   };
 }
 ```
 
-The module compiles each table, renders to nftables block-form text via nftypes, and feeds the result into `networking.nftables.tables.<name>.content`. Build-time assertions catch missing `networking.nftables.enable`, an enabled module with no tables declared (which would silently ship no firewall), and table-name collisions.
+The module has three options:
 
-#### Coexistence with `networking.firewall`
+| Option                       | Default | Effect                                                   |
+| ---------------------------- | ------- | -------------------------------------------------------- |
+| `networking.nftzones.enable` | `false` | Compiles and installs the declared tables                |
+| `networking.nftzones.tables` | `{ }`   | Table bodies, keyed by nftables table name               |
+| `networking.nftzones.pretty` | `false` | Renders multi-line indented text instead of compact text |
 
-`networking.firewall` (the stock NixOS firewall) installs its own `inet filter` table at hook `(input, filter)` — the same hook slot nftzones tables typically claim. When both are enabled, nftables runs both base chains at the same priority and the effective input policy is the **union** of their accepts: every port either module opens is open. That's almost never what users want.
+The build fails when `networking.nftables.enable` is false, when the module is enabled with no tables, or when a table name is also declared in `networking.nftables.tables`.
 
-Set `networking.firewall.enable = false` whenever nftzones owns the input chain. The module emits a build-time warning when both are enabled to surface the conflict.
+### Disable the stock firewall
+
+Set `networking.firewall.enable = false` when nftzones owns the input chain, as the example does. The stock firewall installs its own `inet filter` table on the same input hook and priority, so nftables runs both chains and accepts every port either one opens. The module warns at build time when both are enabled.
+
+### Keep hand-written tables
+
+Tables in `networking.nftables.tables` coexist with nftzones tables as long as the names differ. Use them for rules that do not fit the zone model:
 
 ```nix
-networking = {
-  firewall.enable = false;
-  nftables.enable = true;
-  nftzones = {
-    enable = true;
-    tables.fw = {
-      # ...
-    };
-  };
+networking.nftables.tables.raw-output = {
+  family = "inet";
+  content = ''
+    chain output {
+      type filter hook output priority 0; policy accept;
+    }
+  '';
 };
 ```
 
-#### Mixing with hand-written tables
+## Write rule bodies with snippets
 
-Zone-managed and hand-written tables coexist freely as long as their names differ — the module's collision assertion only fires when the same name is declared in both `networking.nftzones.tables` and `networking.nftables.tables`. Use `networking.nftables.tables.<name>` directly for any table that doesn't fit the zone model:
-
-```nix
-networking.nftables = {
-  enable = true;
-  tables.legacy-raw = {
-    family = "inet";
-    content = ''
-      chain output { type filter hook output priority 0; ... }
-    '';
-  };
-};
-networking.nftzones.tables.zonefw = {
-  zones.lan.interfaces = [ "eth1" ];
-  # ...
-};
-```
-
-### Direct library (without the NixOS module)
+`nftzones.lib.snippets` returns ready-made rule bodies for opening, dropping, or rejecting ports and ICMP types:
 
 ```nix
 { inputs, ... }:
 let
-  nftzones = inputs.nftzones.lib;
-  inherit (inputs.nftypes.lib) toJson toText dsl;
-  inherit (dsl) eq accept;
-  inherit (dsl.fields) tcp;
-
-  table = nftzones.mkTable "fw" {
-    zones.lan.interfaces = [ "eth1" ];
-    zones.wan.interfaces = [ "eth0" ];
-    filters.allow-ssh = {
-      from = [ "wan" ];
-      to = [ "local" ];
-      rule = [ (eq tcp.dport 22) accept ];
-    };
-  };
-in {
-  # Compose into a multi-table ruleset and serialize.
-  rulesetJson = toJson (dsl.ruleset [ table ]);
-  rulesetText = toText (dsl.ruleset [ table ]);
-}
-```
-
-`mkTable` returns an `nftypes.dsl.table` value; `mkRuleset name body` is a shortcut that wraps a single table in `nftypes.dsl.ruleset`. Either is renderable to JSON (`toJson`) for `nft -j -f`, or to text (`toText`) for `nft -f`.
-
-### Snippets — rule-body shorthand
-
-Constructing rule bodies by hand requires reaching into the `nftypes.dsl` surface (`eq`, `accept`, `inSet`, `tcp.dport`, …). For the common "open / drop / reject these ports" case, `nftzones.snippets.*` returns a ready-made statement list:
-
-```nix
-{ inputs, ... }:
-let
-  inherit (inputs.nftzones.lib.snippets) accept drop reject;
-  inherit (inputs.libnet.lib.registry) wellKnownPorts;
+  inherit (inputs.nftzones.lib) snippets;
 in
 {
-  networking.nftzones.tables.fw = {
-    zones.lan.interfaces = [ "eth1" ];
-
-    filters.allow-ssh   = { from = [ "all" ]; to = [ "local" ]; rule = accept.tcp 22; };
-    filters.allow-web   = { from = [ "all" ]; to = [ "local" ]; rule = accept.tcp [ 80 443 "8000-8100" ]; };
-    filters.allow-dns-u = { from = [ "lan" ]; to = [ "local" ]; rule = accept.udp wellKnownPorts.udp.dns; };
-    filters.allow-ping  = { from = [ "all" ]; to = [ "local" ]; rule = accept.icmp.v4 8; };
-    filters.kick-rdp    = { from = [ "all" ]; to = [ "local" ]; rule = reject.tcp wellKnownPorts.tcp.rdp; };
+  networking.nftzones.tables.fw.filters = {
+    allow-web = {
+      from = [ "all" ];
+      to = [ "local" ];
+      rule = snippets.accept.tcp [
+        80
+        443
+        "8000-8100"
+      ];
+    };
+    allow-ping = {
+      from = [ "all" ];
+      to = [ "local" ];
+      rule = snippets.accept.icmp.v4 "echo-request";
+    };
+    kick-rdp = {
+      from = [ "wan" ];
+      to = [ "local" ];
+      rule = snippets.reject.tcp 3389;
+    };
   };
 }
 ```
 
-Twelve leaf functions across `accept` / `drop` / `reject` × `tcp` / `udp` / `icmp.v4` / `icmp.v6`. Port arguments accept ints, decimal strings, range strings (`"8000-8100"` / `"8000:8100"`), `libnet.port` / `libnet.portRange` values, or lists thereof — validation routes through `libnet`. ICMP-type arguments accept ints (`0`..`255`) or symbolic strings (`"echo-request"`); mixed-form lists throw.
+Each of `accept`, `drop`, and `reject` provides `tcp`, `udp`, `icmp.v4`, and `icmp.v6`. Port arguments take an integer, a decimal string, a range string such as `"8000-8100"` or `"8000:8100"`, a `libnet` port or port range, or a list of these. ICMP arguments take type numbers from 0 to 255 or names such as `"echo-request"`, or a list of one form. `reject.tcp` answers with a TCP reset; the other `reject` variants send the nftables default ICMP port-unreachable reply. [`lib/snippets.nix`](lib/snippets.nix) documents the full contract.
 
-### Hierarchical zones
+## Compose several tables
 
-Zones can declare a `parent` (and a node's `zone` field becomes its lowered child's parent). Traffic dispatches into the most-specific child sub-chain via the parent's chain; rules attached to the parent run as fallbacks if no child handles the packet first. See [`docs/zone-hierarchy.md`](docs/zone-hierarchy.md) for semantics.
+`mkTable name body` compiles one table body into an nftypes table value, and `mkRuleset name body` wraps one table in a complete ruleset. To build a ruleset of several tables, pass the `mkTable` results to `nftypes.lib.dsl.ruleset`:
 
 ```nix
-zones.dmz = { interfaces = [ "dmz0" ]; cidrs = [ "10.0.0.0/24" ]; };
-nodes.web-server = { zone = "dmz"; address.ipv4 = "10.0.0.5"; };
-
-filters.dmz-rate-limit = {
-  from = [ "dmz" ]; to = [ "local" ];
-  rule = [ (eq tcp.dport 22) (limit { rate = 100; per = "second"; }) accept ];
-};
-filters.web-server-http = {
-  from = [ "web-server" ]; to = [ "local" ];
-  rule = [ (eq tcp.dport 80) accept ];
-};
+let
+  inherit (nftypes.lib) dsl toText;
+  ipv4Table = nftzones.lib.mkTable "fw-v4" {
+    family = "ip";
+    zones.lan.interfaces = [ "eth1" ];
+  };
+  ipv6Table = nftzones.lib.mkTable "fw-v6" {
+    family = "ip6";
+    zones.lan.interfaces = [ "eth1" ];
+  };
+in
+toText (
+  dsl.ruleset [
+    ipv4Table
+    ipv6Table
+  ]
+)
 ```
 
-## Examples
+The `name` argument sets the nftables table name and overrides any `name` in the body. `nftzones.lib.types.table` is the option type for a table body, for modules that accept tables from their own users.
 
-Complete, commented configurations under [`examples/`](examples/), each a
-`{ nftypes, nftzones, ... }: body` function ready to drop into
-`networking.nftzones.tables.<name>`:
+## Limitations
 
-| File                                                               | Scenario                                                                    |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| [`examples/home-router.nix`](examples/home-router.nix)             | SOHO router — LAN/WAN, masquerade, a port-forward, default-deny inbound.    |
-| [`examples/vlan-segmentation.nix`](examples/vlan-segmentation.nix) | Four VLAN security zones with a rule-by-rule reachability matrix.           |
-| [`examples/dmz-hierarchy.nix`](examples/dmz-hierarchy.nix)         | A DMZ whose hosts are `nodes` — per-host child zones under a shared parent. |
-
-Each is compiled by the `examples` check on every CI run, so they
-stay valid against the current type surface.
-
-## Documentation
-
-| File                                                         | Audience                                                        |
-| ------------------------------------------------------------ | --------------------------------------------------------------- |
-| [`docs/zone-based-firewall.md`](docs/zone-based-firewall.md) | Newcomers to the zone-based firewall model.                     |
-| [`docs/compile-pipeline.md`](docs/compile-pipeline.md)       | Integrators, debuggers, contributors.                           |
-| [`docs/zone-hierarchy.md`](docs/zone-hierarchy.md)           | Zone hierarchy semantics and dispatch model.                    |
-| [`GLOSSARY.md`](GLOSSARY.md)                                 | Glossary of domain terms.                                       |
-| [`docs/adr/`](docs/adr/)                                     | Architecture decision records, including rejected alternatives. |
-
-## Requirements
-
-**Requires** Nix 2.17+ with flakes, and (for the NixOS module path) NixOS 24.11+.
-
-## Supply chain
-
-`nftzones` depends on two sibling flakes — [`nftypes`](https://github.com/petohorvath/nix-nftypes) (the libnftables-JSON schema + DSL) and [`libnet`](https://github.com/petohorvath/nix-libnet) (CIDR / port / interface-name primitives). All three are single-maintainer GitHub repos (`petohorvath`). Commits and release tags are **not** GPG-signed.
-
-Trust model: pin by `rev` + `narHash` via `flake.lock` (the lock file `nftzones` ships does this; `flake.nix` also pins both sibling inputs to a commit until they publish release tags) so a fetch only succeeds if the content matches the recorded hash. Bumps are explicit (`nix flake update nftypes`) and surface in the lockfile diff for review. Users who require third-party auditability should pin their own fork.
-
-## Known limitations
-
-- **Supported table families: `inet`, `ip`, `ip6`, `bridge`.** `arp` and `netdev` are rejected at the type level. `netdev` in particular needs a per-chain `device` binding that the chain submodule doesn't model today; `arp` is too rare to justify the testing investment without a concrete use case.
-- **Bridge family supports `filter` chains only.** `nat` (not supported by the bridge family) and `route` (no `mangle` priority on bridge) placements are rejected at compile time by `checkChainPlacement` so users get a clear error rather than a kernel-level rejection.
-- Tracked design gaps live in [GitHub issues](https://github.com/petohorvath/nixos-nftzones/issues).
-
-## Testing
-
-`nix flake check` runs these checks:
-
-- **Unit** (`tests/unit/`): per-module tests of the compile pipeline's helpers and validators, run by [nix-unit](https://github.com/nix-community/nix-unit). For a focused run inside `nix develop`, select one test file or case, for example `nix-unit tests/entrypoint.nix --attr internal.compile`.
-- **Integration** (`tests/integration/`): structured assertions on the rendered nftables JSON for representative scenarios, plus negative tests that confirm Phase 1 validators reject known-bad inputs in the live `mkRuleset` pipeline.
-- **Examples** (`tests/examples.nix`): compile-checks every `examples/*.nix` through `mkRuleset` so the shipped example configs can't drift out of sync with the type surface.
-- **Formatting** and **lint**: `nix fmt` must leave the tree unchanged, and statix, deadnix, and actionlint must report nothing.
-
-It also runs the VM tests, checks named `vm-<name>`, so it needs KVM:
-
-- **VM** (`tests/vm/`): real-kernel multi-VM scenarios via `pkgs.testers.nixosTest`. One topology per feature, each requiring `/dev/kvm` on the builder. Verification is conntrack-on-router for NAT and deny-path tests, packet-content for everything else:
-
-  | File                                              | VMs                                                                  | Coverage                                                                                                                                                                                          |
-  | ------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | [`forward.nix`](tests/vm/forward.nix)             | client + router + server + external                                  | L3 forwarding, ICMP, SSH, SNAT masquerade, DNAT port-forward, DNS redirect, default-deny wan→lan, non-DNAT'd port, stateful prelude `[ASSURED]` + INVALID drop, `reject` verdict, `log` statement |
-  | [`vlan.nix`](tests/vm/vlan.nix)                   | router + vlan-iot + vlan-admin (single 802.1Q trunk)                 | inter-VLAN allow, inter-VLAN default-deny                                                                                                                                                         |
-  | [`rpfilter.nix`](tests/vm/rpfilter.nix)           | client + router + spoofer (wan-side host with a lan-range /32 alias) | `settings.rpfilter = true` accepts legit src, drops spoofed                                                                                                                                       |
-  | [`marks.nix`](tests/vm/marks.nix)                 | client + router + server (with `ip rule fwmark X table Y`)           | `sroutes` mark steers forwarded traffic to an alternate routing table                                                                                                                             |
-  | [`droutes.nix`](tests/vm/droutes.nix)             | router + target                                                      | `droutes` mark steers router-originated traffic (OUTPUT hook)                                                                                                                                     |
-  | [`dualstack.nix`](tests/vm/dualstack.nix)         | client + router + server, IPv4 + IPv6                                | dual-stack forwarding on an `inet` table, v6 conntrack tracking                                                                                                                                   |
-  | [`bridge.nix`](tests/vm/bridge.nix)               | vmA + bridge + vmB                                                   | `family = "bridge"` L2 filter across a Linux bridge                                                                                                                                               |
-  | [`atomic-reload.nix`](tests/vm/atomic-reload.nix) | client + router + server                                             | mid-flight `nft -f` ruleset swap preserves established connections                                                                                                                                |
-  | [`activation.nix`](tests/vm/activation.nix)       | client + router + server                                             | real NixOS activation removes the SSH allow rule while preserving an established connection                                                                                                       |
-
-The two reload scenarios use [`reload-verification.py`](tests/vm/reload-verification.py) to establish SSH, run the scenario's reload, verify that the same session survives and fresh connections fail, and collect diagnostics on failure. Each scenario keeps its reload command and ruleset assertions inside the `verify_reload` context. Run any VM test individually, for example `nix build .#checks.x86_64-linux.vm-atomic-reload` or `nix build .#checks.x86_64-linux.vm-activation`.
-
-CI calls the shared [project policy](https://github.com/petohorvath/nixos-project-policy) workflow. It builds the checks against the locked `nixpkgs` revision and the policy's stable and unstable revisions, so upstream regressions surface alongside changes here. The VM tests run in the policy's `VM tests` jobs with all three revisions; a runner without KVM reports them as skipped. To check another nixpkgs revision locally, override the input:
-
-```bash
-nix flake check --override-input nixpkgs "github:NixOS/nixpkgs/$NIXPKGS_REV" \
-  --no-write-lock-file --print-build-logs
-```
+- Tables support the `inet`, `ip`, `ip6`, and `bridge` families. `arp` and `netdev` are rejected: `netdev` needs a per-chain device binding that the chain model lacks, and `arp` has no use case yet to justify testing it.
+- Bridge tables support `filters` and `policies` only. The bridge family has no NAT chains and no `mangle` priority for route marks, so the compiler rejects `snats`, `dnats`, `sroutes`, and `droutes` in a bridge table.
+- Zone interfaces take exact names; wildcard patterns such as `wlan*` are not supported.
+- [GitHub issues](https://github.com/petohorvath/nixos-nftzones/issues) track the known design gaps.
 
 ## Contributing
 
-Issues and PRs welcome on [github.com/petohorvath/nixos-nftzones](https://github.com/petohorvath/nixos-nftzones). `nix develop` (or direnv with `.envrc`) provides the development tools. Format with `nix fmt` and run the checks with `nix flake check`.
+Report bugs, ask questions, and open pull requests on [GitHub](https://github.com/petohorvath/nixos-nftzones). The development shell, loaded by `nix develop` or by direnv through `.envrc`, provides the tools. [`AGENTS.md`](AGENTS.md) lists the required checks, and [`docs/testing.md`](docs/testing.md) describes the test tiers and VM tests.
+
+## License
+
+[MIT](LICENSE)

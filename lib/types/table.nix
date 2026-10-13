@@ -113,7 +113,7 @@ let
     families we don't support end-to-end. `arp` and `netdev` would
     need extra plumbing (e.g. per-chain `device` binding for
     netdev) before the pipeline could emit valid tables for them.
-    See README "Known limitations".
+    See the README "Limitations" section.
   */
   tableFamily = lib.types.enum (lib.subtractLists [ "arp" "netdev" ] nftypes.enums.family);
 
@@ -388,7 +388,7 @@ let
             nftables address family — `inet` (combined v4/v6),
             `ip`, `ip6`, or `bridge`. Defaults to `inet`; most use
             cases want it. `arp` and `netdev` are not supported;
-            see the README's "Known limitations" for rationale.
+            see the README's "Limitations" section.
           '';
         };
 

@@ -60,7 +60,7 @@ in
 
   # `arp` and `netdev` are admitted by nftypes' family enum but
   # not by ours — see the type comment on `tableFamily` and the
-  # README "Known limitations" section for rationale.
+  # README "Limitations" section for rationale.
   testTableFamilyRejectsArp = {
     expr = evalFails (evalTable { family = "arp"; }).family;
     expected = true;
