@@ -228,14 +228,14 @@ Trust model: pin by `rev` + `narHash` via `flake.lock` (the lock file `nftzones`
 
 ## Testing
 
-`nix flake check` runs five checks:
+`nix flake check` runs these checks:
 
 - **Unit** (`tests/unit/`): per-module tests of the compile pipeline's helpers and validators, run by [nix-unit](https://github.com/nix-community/nix-unit). For a focused run inside `nix develop`, select one test file or case, for example `nix-unit tests/entrypoint.nix --attr internal.compile`.
 - **Integration** (`tests/integration/`): structured assertions on the rendered nftables JSON for representative scenarios, plus negative tests that confirm Phase 1 validators reject known-bad inputs in the live `mkRuleset` pipeline.
 - **Examples** (`tests/examples.nix`): compile-checks every `examples/*.nix` through `mkRuleset` so the shipped example configs can't drift out of sync with the type surface.
 - **Formatting** and **lint**: `nix fmt` must leave the tree unchanged, and statix, deadnix, and actionlint must report nothing.
 
-The VM tests are not part of `nix flake check`; they are exposed as `legacyPackages.<system>.vmTests.<name>`:
+It also runs the VM tests, checks named `vm-<name>`, so it needs KVM:
 
 - **VM** (`tests/vm/`): real-kernel multi-VM scenarios via `pkgs.testers.nixosTest`. One topology per feature, each requiring `/dev/kvm` on the builder. Verification is conntrack-on-router for NAT and deny-path tests, packet-content for everything else:
 
@@ -251,9 +251,9 @@ The VM tests are not part of `nix flake check`; they are exposed as `legacyPacka
   | [`atomic-reload.nix`](tests/vm/atomic-reload.nix) | client + router + server                                             | mid-flight `nft -f` ruleset swap preserves established connections                                                                                                                                |
   | [`activation.nix`](tests/vm/activation.nix)       | client + router + server                                             | real NixOS activation removes the SSH allow rule while preserving an established connection                                                                                                       |
 
-The two reload scenarios use [`reload-verification.py`](tests/vm/reload-verification.py) to establish SSH, run the scenario's reload, verify that the same session survives and fresh connections fail, and collect diagnostics on failure. Each scenario keeps its reload command and ruleset assertions inside the `verify_reload` context. Run any VM test individually, for example `nix build .#vmTests.atomic-reload` or `nix build .#vmTests.activation`.
+The two reload scenarios use [`reload-verification.py`](tests/vm/reload-verification.py) to establish SSH, run the scenario's reload, verify that the same session survives and fresh connections fail, and collect diagnostics on failure. Each scenario keeps its reload command and ruleset assertions inside the `verify_reload` context. Run any VM test individually, for example `nix build .#checks.x86_64-linux.vm-atomic-reload` or `nix build .#checks.x86_64-linux.vm-activation`.
 
-CI calls the shared [project policy](https://github.com/petohorvath/nixos-project-policy) workflow. It runs `nix flake check` against the locked `nixpkgs` revision and the policy's stable and unstable revisions, so upstream regressions surface alongside changes here. The VM tests run once, against the locked revision, on a KVM-enabled x86_64 runner. To check another nixpkgs revision locally, override the input:
+CI calls the shared [project policy](https://github.com/petohorvath/nixos-project-policy) workflow. It builds the checks against the locked `nixpkgs` revision and the policy's stable and unstable revisions, so upstream regressions surface alongside changes here. The VM tests run in the policy's `VM tests` jobs with all three revisions; a runner without KVM reports them as skipped. To check another nixpkgs revision locally, override the input:
 
 ```bash
 nix flake check --override-input nixpkgs "github:NixOS/nixpkgs/$NIXPKGS_REV" \

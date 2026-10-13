@@ -1,7 +1,8 @@
 /*
-  Assemble the project checks. The unit, integration, and examples
+  Assemble the project checks. The unit, integration, examples, and VM
   tiers test the root flake's public exports; formatting and lint run
-  against the cleaned source tree.
+  against the cleaned source tree. The `vm-` prefix keeps VM test names
+  such as `activation` apart from the names of the other checks.
 */
 {
   formatter,
@@ -53,3 +54,4 @@ in
     '';
   };
 }
+// pkgs.lib.mapAttrs' (name: pkgs.lib.nameValuePair "vm-${name}") (import ./vm testContext)
