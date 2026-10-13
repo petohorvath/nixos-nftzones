@@ -7,16 +7,20 @@
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
-    # Sibling libraries are pinned by commit until they publish release tags.
     libnet = {
-      url = "github:petohorvath/nix-libnet?rev=2e544133d906e7c631d08ce1b57770edca8e3349";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.git-hooks.inputs.nixpkgs.follows = "nixpkgs";
+      url = "github:petohorvath/nix-libnet/v0.1.0";
+      inputs = {
+        flake-parts.follows = "flake-parts";
+        nixpkgs.follows = "nixpkgs";
+      };
     };
     # Downstream flakes read `inputs.nftypes`, so keep this input name.
     nftypes = {
-      url = "github:petohorvath/nix-nftypes?rev=aab9d4bc4f7b1dafb1d2d3297c8e010713745d3a";
-      inputs.nixpkgs.follows = "nixpkgs";
+      url = "github:petohorvath/nix-nftypes/v0.1.0";
+      inputs = {
+        flake-parts.follows = "flake-parts";
+        nixpkgs.follows = "nixpkgs";
+      };
     };
   };
 

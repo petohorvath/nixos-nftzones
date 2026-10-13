@@ -16,10 +16,11 @@
 }:
 let
   /*
-    Call a flake's `outputs` with `self` and the inputs it names.
-    `functionArgs` cannot see inputs reached only through `...`, so
-    `self` is always passed. Inputs that the offline evaluation does not
-    provide throw only when a test reaches them.
+    Call a flake's `outputs` with `self` and every input provided, as
+    Nix does. `functionArgs` cannot see inputs reached only through
+    `...`, so all provided inputs are passed, not only the named ones.
+    Named inputs that the offline evaluation does not provide throw only
+    when a test reaches them.
   */
   callFlake =
     dir: inputs:
@@ -28,11 +29,9 @@ let
       inputsWithSelf = inputs // {
         self = flake;
       };
-      selectInput =
-        name: _:
-        inputsWithSelf.${name} or (throw "offline-flake: input `${name}` of ${dir} is unavailable");
+      missingInput = name: _: throw "offline-flake: input `${name}` of ${dir} is unavailable";
       flake =
-        outputs (builtins.mapAttrs selectInput (builtins.functionArgs outputs // { self = false; }))
+        outputs (builtins.mapAttrs missingInput (builtins.functionArgs outputs) // inputsWithSelf)
         // {
           inherit inputs;
           outPath = dir;
@@ -42,8 +41,8 @@ let
 
   nixpkgs = callFlake nixpkgsDir { };
   flake-parts = callFlake flakePartsDir { nixpkgs-lib = nixpkgs; };
-  libnet = callFlake libnetDir { inherit nixpkgs; };
-  nftypes = callFlake nftypesDir { inherit nixpkgs; };
+  libnet = callFlake libnetDir { inherit flake-parts nixpkgs; };
+  nftypes = callFlake nftypesDir { inherit flake-parts nixpkgs; };
 in
 callFlake rootDir {
   inherit
