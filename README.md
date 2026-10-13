@@ -40,7 +40,7 @@ Add nftzones as a flake input, and take nftypes from it for the rule-body DSL:
 }
 ```
 
-Following `nftzones/nftypes` keeps the DSL at the commit nftzones pins and tests against. nftzones pins its `nftypes` and `libnet` inputs by commit until those projects publish release tags.
+Following `nftzones/nftypes` keeps the DSL at the nftypes release that nftzones pins and tests against.
 
 The flake exposes the library as the system-independent `lib` output and the NixOS module as `nixosModules.default`. [`CHANGELOG.md`](CHANGELOG.md) lists breaking changes and their migration steps.
 
