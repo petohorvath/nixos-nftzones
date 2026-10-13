@@ -134,6 +134,7 @@ The NixOS module compiles each table under `networking.nftzones.tables` and pass
 
 ```nix
 nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+  system = "x86_64-linux";
   modules = [
     inputs.nftzones.nixosModules.default
     ./configuration.nix

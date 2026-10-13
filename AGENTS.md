@@ -13,8 +13,8 @@ The development shell, loaded by `nix develop` or by direnv through
 ```sh
 nix fmt                     # fix a failing `formatting` check
 nix-unit tests/entrypoint.nix --attr internal.compile  # one unit suite
-nix flake check -L          # every check, with the locked nixpkgs
-nix build -L .#vmTests.<name>  # one VM test; needs KVM
+nix flake check -L          # every check with the locked nixpkgs; needs KVM
+nix build -L .#checks.x86_64-linux.vm-<name>  # one VM test; needs KVM
 ```
 
 CI calls the shared
@@ -24,12 +24,14 @@ test tiers, the VM tests, and the nixpkgs revisions CI runs against.
 To run the policy checks locally:
 
 ```sh
-nix run github:petohorvath/nixos-project-policy/v0.5 -- check .
-nix run github:petohorvath/nixos-project-policy/v0.5 -- test . --nixpkgs locked
-nix run github:petohorvath/nixos-project-policy/v0.5 -- vm .
+nix run github:petohorvath/nixos-project-policy/v0.6 -- check .
+nix run github:petohorvath/nixos-project-policy/v0.6 -- test . --nixpkgs locked
+nix run github:petohorvath/nixos-project-policy/v0.6 -- test . --nixpkgs locked --vm
 ```
 
-`test` also accepts `--nixpkgs stable` and `--nixpkgs unstable`.
+`test` also accepts `--nixpkgs stable` and `--nixpkgs unstable`. With
+`--vm` it builds only the VM tests, and skips them on a host without
+KVM.
 
 ## Agent skills
 

@@ -1,6 +1,6 @@
 # Testing
 
-`nix flake check` runs five checks. The VM tests need KVM, so they live outside `checks` as `legacyPackages.<system>.vmTests.<name>`.
+`nix flake check` runs every check below, including the VM tests, so it needs KVM.
 
 ## Checks
 
@@ -11,25 +11,25 @@
 
 ## VM tests
 
-The VM tests in [`tests/vm/`](../tests/vm/) boot NixOS machines with `pkgs.testers.nixosTest` and check traffic against a real kernel, one topology per feature. NAT and deny-path tests verify through conntrack on the router; the others verify packet contents. Build one with `nix build .#vmTests.<name>`, for example `nix build .#vmTests.atomic-reload`.
+The VM tests in [`tests/vm/`](../tests/vm/) are checks named `vm-<name>`. They boot NixOS machines with `pkgs.testers.nixosTest` and check traffic against a real kernel, one topology per feature. NAT and deny-path tests verify through conntrack on the router; the others verify packet contents. Build one with `nix build .#checks.<system>.vm-<name>`, for example `nix build .#checks.x86_64-linux.vm-atomic-reload`.
 
-| Test            | VMs                                                                  | Coverage                                                                                                                                                                                          |
-| --------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `forward`       | client + router + server + external                                  | L3 forwarding, ICMP, SSH, SNAT masquerade, DNAT port-forward, DNS redirect, default-deny wan→lan, non-DNAT'd port, stateful prelude `[ASSURED]` + INVALID drop, `reject` verdict, `log` statement |
-| `vlan`          | router + vlan-iot + vlan-admin (single 802.1Q trunk)                 | inter-VLAN allow, inter-VLAN default-deny                                                                                                                                                         |
-| `rpfilter`      | client + router + spoofer (wan-side host with a lan-range /32 alias) | `settings.rpfilter = true` accepts legit src, drops spoofed                                                                                                                                       |
-| `marks`         | client + router + server (with `ip rule fwmark X table Y`)           | `sroutes` mark steers forwarded traffic to an alternate routing table                                                                                                                             |
-| `droutes`       | router + target                                                      | `droutes` mark steers router-originated traffic (OUTPUT hook)                                                                                                                                     |
-| `dualstack`     | client + router + server, IPv4 + IPv6                                | dual-stack forwarding on an `inet` table, v6 conntrack tracking                                                                                                                                   |
-| `bridge`        | vmA + bridge + vmB                                                   | `family = "bridge"` L2 filter across a Linux bridge                                                                                                                                               |
-| `atomic-reload` | client + router + server                                             | mid-flight `nft -f` ruleset swap preserves established connections                                                                                                                                |
-| `activation`    | client + router + server                                             | real NixOS activation removes the SSH allow rule while preserving an established connection                                                                                                       |
+| Test               | VMs                                                                  | Coverage                                                                                                                                                                                          |
+| ------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vm-forward`       | client + router + server + external                                  | L3 forwarding, ICMP, SSH, SNAT masquerade, DNAT port-forward, DNS redirect, default-deny wan→lan, non-DNAT'd port, stateful prelude `[ASSURED]` + INVALID drop, `reject` verdict, `log` statement |
+| `vm-vlan`          | router + vlan-iot + vlan-admin (single 802.1Q trunk)                 | inter-VLAN allow, inter-VLAN default-deny                                                                                                                                                         |
+| `vm-rpfilter`      | client + router + spoofer (wan-side host with a lan-range /32 alias) | `settings.rpfilter = true` accepts legit src, drops spoofed                                                                                                                                       |
+| `vm-marks`         | client + router + server (with `ip rule fwmark X table Y`)           | `sroutes` mark steers forwarded traffic to an alternate routing table                                                                                                                             |
+| `vm-droutes`       | router + target                                                      | `droutes` mark steers router-originated traffic (OUTPUT hook)                                                                                                                                     |
+| `vm-dualstack`     | client + router + server, IPv4 + IPv6                                | dual-stack forwarding on an `inet` table, v6 conntrack tracking                                                                                                                                   |
+| `vm-bridge`        | vmA + bridge + vmB                                                   | `family = "bridge"` L2 filter across a Linux bridge                                                                                                                                               |
+| `vm-atomic-reload` | client + router + server                                             | mid-flight `nft -f` ruleset swap preserves established connections                                                                                                                                |
+| `vm-activation`    | client + router + server                                             | real NixOS activation removes the SSH allow rule while preserving an established connection                                                                                                       |
 
 The two reload tests use [`reload-verification.py`](../tests/vm/reload-verification.py) to establish SSH, run the test's reload, verify that the same session survives and fresh connections fail, and collect diagnostics on failure. Each test keeps its reload command and ruleset assertions inside the `verify_reload` context.
 
 ## CI and other nixpkgs revisions
 
-CI calls the shared [project policy](https://github.com/petohorvath/nixos-project-policy) workflow. It runs `nix flake check` against the locked nixpkgs revision and against the policy's stable and unstable revisions, so upstream regressions surface alongside changes here. The VM tests run once, against the locked revision, on a KVM-enabled `x86_64-linux` runner.
+CI calls the shared [project policy](https://github.com/petohorvath/nixos-project-policy) workflow. It builds the checks against the locked nixpkgs revision and against the policy's stable and unstable revisions, so upstream regressions surface alongside changes here. The VM tests run in the policy's separate `VM tests` jobs with all three revisions; a runner without KVM reports them as skipped.
 
 To check another nixpkgs revision locally, override the input:
 
