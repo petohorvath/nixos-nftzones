@@ -5,7 +5,7 @@
 ## Checks
 
 - **`unit`** ([`tests/unit/`](../tests/unit/)): per-module tests of the compile pipeline's helpers and validators, run by [nix-unit](https://github.com/nix-community/nix-unit). For a focused run inside `nix develop`, select one test file or case, for example `nix-unit tests/entrypoint.nix --attr internal.compile`.
-- **`integration`** ([`tests/integration/`](../tests/integration/)): assertions on the rendered nftables JSON for representative scenarios, plus rejection tests that confirm the Phase 1 validators reject known-bad inputs in the live `mkRuleset` pipeline.
+- **`integration`** ([`tests/integration/`](../tests/integration/)): assertions on the rendered nftables JSON for representative scenarios, plus rejection tests that confirm the [Phase 1](compile-pipeline.md#phase-1-normalize) validators reject known-bad inputs in the live `mkRuleset` pipeline.
 - **`examples`** ([`tests/examples.nix`](../tests/examples.nix)): compiles every `examples/*.nix` through `mkRuleset`, so the shipped examples stay in sync with the types and the compiler.
 - **`formatting`** and **`lint`**: `nix fmt` must leave the tree unchanged, and statix, deadnix, and actionlint must report nothing.
 

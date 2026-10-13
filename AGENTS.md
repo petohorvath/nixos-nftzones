@@ -19,10 +19,9 @@ nix build -L .#vmTests.<name>  # one VM test; needs KVM
 
 CI calls the shared
 [project policy](https://github.com/petohorvath/nixos-project-policy)
-from `.github/workflows/check.yml`. It runs `nix flake check` with the
-locked nixpkgs and with the policy's stable and unstable pins, and
-builds the VM tests with the locked nixpkgs. To run the same checks
-locally:
+from `.github/workflows/check.yml`; `docs/testing.md` describes the
+test tiers, the VM tests, and the nixpkgs revisions CI runs against.
+To run the policy checks locally:
 
 ```sh
 nix run github:petohorvath/nixos-project-policy/v0.5 -- check .
@@ -31,7 +30,6 @@ nix run github:petohorvath/nixos-project-policy/v0.5 -- vm .
 ```
 
 `test` also accepts `--nixpkgs stable` and `--nixpkgs unstable`.
-`docs/testing.md` describes the test tiers and what each VM test covers.
 
 ## Agent skills
 

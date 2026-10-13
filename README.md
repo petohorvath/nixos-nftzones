@@ -42,7 +42,7 @@ Add nftzones as a flake input, and take nftypes from it for the rule-body DSL:
 
 Following `nftzones/nftypes` keeps the DSL at the commit nftzones pins and tests against. nftzones pins its `nftypes` and `libnet` inputs by commit until those projects publish release tags.
 
-The flake exposes the library as the system-independent `lib` output and the NixOS module as `nixosModules.default`.
+The flake exposes the library as the system-independent `lib` output and the NixOS module as `nixosModules.default`. [`CHANGELOG.md`](CHANGELOG.md) lists breaking changes and their migration steps.
 
 ## Usage
 
@@ -191,7 +191,7 @@ The module has three options:
 | `networking.nftzones.tables` | `{ }`   | Table bodies, keyed by nftables table name               |
 | `networking.nftzones.pretty` | `false` | Renders multi-line indented text instead of compact text |
 
-The build fails when `networking.nftables.enable` is false, when the module is enabled with no tables, or when a table name is also declared in `networking.nftables.tables`.
+With the module enabled, the build fails when `networking.nftables.enable` is false, when no tables are declared, or when a table name is also declared in `networking.nftables.tables`.
 
 ### Disable the stock firewall
 
@@ -237,7 +237,7 @@ in
       to = [ "local" ];
       rule = snippets.accept.icmp.v4 "echo-request";
     };
-    kick-rdp = {
+    reject-rdp = {
       from = [ "wan" ];
       to = [ "local" ];
       rule = snippets.reject.tcp 3389;
@@ -246,11 +246,11 @@ in
 }
 ```
 
-Each of `accept`, `drop`, and `reject` provides `tcp`, `udp`, `icmp.v4`, and `icmp.v6`. Port arguments take an integer, a decimal string, a range string such as `"8000-8100"` or `"8000:8100"`, a `libnet` port or port range, or a list of these. ICMP arguments take type numbers from 0 to 255 or names such as `"echo-request"`, or a list of one form. `reject.tcp` answers with a TCP reset; the other `reject` variants send the nftables default ICMP port-unreachable reply. [`lib/snippets.nix`](lib/snippets.nix) documents the full contract.
+Each of `accept`, `drop`, and `reject` provides `tcp`, `udp`, `icmp.v4`, and `icmp.v6`. Port arguments take an integer, a decimal string, a range string such as `"8000-8100"` or `"8000:8100"`, a `libnet` port or port range, or a list of these. ICMP arguments take type numbers from 0 to 255 or names such as `"echo-request"`, or a list of one form. `reject.tcp` answers with a TCP reset; the other `reject` variants send the nftables default ICMP port-unreachable reply. [`lib/snippets.nix`](lib/snippets.nix) and the files in [`lib/snippets/`](lib/snippets/) document the full contract.
 
 ## Compose several tables
 
-`mkTable name body` compiles one table body into an nftypes table value, and `mkRuleset name body` wraps one table in a complete ruleset. To build a ruleset of several tables, pass the `mkTable` results to `nftypes.lib.dsl.ruleset`:
+`mkTable name body` compiles one table body into an nftypes table value, and `mkRuleset name body` wraps one table in a complete ruleset. To build a ruleset of several tables, pass the `mkTable` results to `nftypes.lib.dsl.ruleset`, where `nftzones` and `nftypes` are the flake inputs:
 
 ```nix
 let
@@ -279,11 +279,12 @@ The `name` argument sets the nftables table name and overrides any `name` in the
 - Tables support the `inet`, `ip`, `ip6`, and `bridge` families. `arp` and `netdev` are rejected: `netdev` needs a per-chain device binding that the chain model lacks, and `arp` has no use case yet to justify testing it.
 - Bridge tables support `filters` and `policies` only. The bridge family has no NAT chains and no `mangle` priority for route marks, so the compiler rejects `snats`, `dnats`, `sroutes`, and `droutes` in a bridge table.
 - Zone interfaces take exact names; wildcard patterns such as `wlan*` are not supported.
-- [GitHub issues](https://github.com/petohorvath/nixos-nftzones/issues) track the known design gaps.
+
+[GitHub issues](https://github.com/petohorvath/nixos-nftzones/issues) track the known design gaps.
 
 ## Contributing
 
-Report bugs, ask questions, and open pull requests on [GitHub](https://github.com/petohorvath/nixos-nftzones). The development shell, loaded by `nix develop` or by direnv through `.envrc`, provides the tools. [`AGENTS.md`](AGENTS.md) lists the required checks, and [`docs/testing.md`](docs/testing.md) describes the test tiers and VM tests.
+Report bugs, ask questions, and open pull requests on [GitHub](https://github.com/petohorvath/nixos-nftzones). [`AGENTS.md`](AGENTS.md) lists the development shell and the required checks, and [`docs/testing.md`](docs/testing.md) describes the test tiers and VM tests.
 
 ## License
 
