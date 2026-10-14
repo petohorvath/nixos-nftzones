@@ -15,10 +15,11 @@ variant, base chain, sub-chain, chain placement, entry priority vs.
 chain priority) are defined in [`GLOSSARY.md`](../GLOSSARY.md). This
 section covers only how the pipeline names things internally.
 
-A **bucket** is the Phase 3 container holding all cells destined for
-one base chain: `ctx.chainBuckets.<baseChainName> = { hook; priority;
-subChains; }`, where each sub-chain carries its own `preChildCells` /
-`postChildCells` slots. The direction-to-side mapping lives in
+A **dispatch tree** (see the glossary) is the Phase 3 value for one
+base chain: `ctx.dispatchTrees.<baseChainName> = { hook; priority;
+roots; subChains; }`, where each sub-chain carries its own
+`preChildCells` / `postChildCells` slots and its `children`. `roots`
+and `children` hold sub-chain names. The direction-to-side mapping lives in
 `internal.zone.directionToSide`; entry priorities resolve through
 `internal.priority.resolvePriority`.
 
@@ -26,8 +27,8 @@ subChains; }`, where each sub-chain carries its own `preChildCells` /
 
 The same string travels from Phase 3 (as an attrset key) through to Phase 4 (as the actual nftables chain name):
 
-- **`baseChainName`** = `"<hook>-at-<priority>"` (e.g. `"forward-at-filter"`). Computed by `internal.placement.baseChainNameOf`, with family-aware canonicalization of integer and symbol priorities. Used as the bucket key in `chainBuckets` _and_ as the base chain's name in the emitted nftables output.
-- **`subChainName`** — `"<baseChainName>__<from>-TO-<to>"`, `"<baseChainName>__<from>"` or `"<baseChainName>__<to>"` (e.g. `"forward-at-filter__lan-TO-wan"`). Computed by `internal.placement.subChainNameOf` from the base chain name and a cell's `from` / `to`. Used as the key in `bucket.subChains` _and_ as the sub-chain's name in the emitted nftables output.
+- **`baseChainName`** = `"<hook>-at-<priority>"` (e.g. `"forward-at-filter"`). Computed by `internal.placement.baseChainNameOf`, with family-aware canonicalization of integer and symbol priorities. Used as the key in `dispatchTrees` _and_ as the base chain's name in the emitted nftables output.
+- **`subChainName`** — `"<baseChainName>__<from>-TO-<to>"`, `"<baseChainName>__<from>"` or `"<baseChainName>__<to>"` (e.g. `"forward-at-filter__lan-TO-wan"`). Computed by `internal.placement.subChainNameOf` from the base chain name and a cell's `from` / `to`. Used as the key in a dispatch tree's `subChains`, `roots` and `children` _and_ as the sub-chain's name in the emitted nftables output.
 
 ### Two framings of `(hook, priority)`
 
@@ -43,7 +44,7 @@ Same concept, different framings.
 - `chainAttrsForEntry group localZone entry` returns validation candidates as a list of chain attrs. The entry's directions must already be wildcard-expanded and deduplicated. It inspects the direction lists without materializing their Cartesian product.
 - `chainAttrsForCell group localZone cell` returns one concrete cell's chain attrs, with scalar directions. An override wins; otherwise filters and policies prefer input when `to == localZone`, then output when `from == localZone`, then forward. Other groups use their defaults.
 
-Entry analysis preserves conservative validation: fixed group placements and overrides are checked even for empty direction lists, and a local-zone reference contributes its hook independently of the opposite direction. A local-to-local entry therefore checks both input and output, while its cell dispatches to input. `normalize.checkChainPlacement` adds entry names and aggregates compatibility errors; `dispatch` buckets cells using their selected attrs. Priority values keep their original integer or symbol form until `baseChainNameOf` canonicalizes the name.
+Entry analysis preserves conservative validation: fixed group placements and overrides are checked even for empty direction lists, and a local-zone reference contributes its hook independently of the opposite direction. A local-to-local entry therefore checks both input and output, while its cell dispatches to input. `normalize.checkChainPlacement` adds entry names and aggregates compatibility errors; `dispatch` groups cells by their selected attrs. Priority values keep their original integer or symbol form until `baseChainNameOf` canonicalizes the name.
 
 The Group / Entry / Direction trio shows up directly in `internal/normalize.nix`'s helpers:
 
@@ -73,8 +74,8 @@ table
 normalizedTable
   ↓ Phase 2: expand          cartesian product per entry (entry.toCells)
 expandedTable
-  ↓ Phase 3: dispatch + sort chain bucketing, priority sort
-chainBuckets
+  ↓ Phase 3: dispatch + sort dispatch trees, priority sort
+dispatchTrees
   ↓ Phase 4: emit            per-zone sets, base chains, sub-chains, rules
 nftypesTable
   ↓ wrap                      (optional) ruleset envelope
@@ -189,17 +190,21 @@ Each cell goes to a chain based on its group:
 
 The per-entry `chain` override submodule on `filters` / `snats` / `dnats` redirects a cell to a custom hook + priority chain (e.g., rpfilter at `prerouting + raw`).
 
-Output is a 2D buckets attrset: `{ <baseChainName> = [ <cells>... ]; ... }`.
+Cells are grouped per base chain (`ctx.groupedByChain`), and each group becomes one dispatch tree (`ctx.dispatchTrees.<baseChainName>`):
+
+- **`subChains`** — one sub-chain per `(from, to)` with cells, plus a **transparent dispatcher** with empty slots for every ancestor of a from-zone that has cells. Only root zones jump from the base chain, so a descendant is reachable only through its ancestors' sub-chains. A cell-bearing sub-chain wins over a transparent dispatcher of the same name.
+- **`roots`** — the sub-chains the base chain jumps to: those whose `from` is a root zone, plus those without a `from` (droutes), which dispatch flat. Sorted by name.
+- **`children`** (per sub-chain) — the sub-chains its child-dispatch jumps target: for each child of the sub-chain's from-zone, in lexical order, the child's sub-chain for the same to-zone, if it exists.
 
 ### 3.2 Sort
 
-`internal.priority.resolvePriority` resolves entry priority symbols (`first` / `preDispatch` / `postDispatch` / `default` / `last`) to ints (Phase 1 runs this for every entry; the pre-resolved values land in `ctx.resolvedPriorities`). Each chain bucket sorts by `(priority asc, name asc)`. Name is the attrset key from the original collection; it acts as a stable tiebreaker.
+`internal.priority.resolvePriority` resolves entry priority symbols (`first` / `preDispatch` / `postDispatch` / `default` / `last`) to ints (Phase 1 runs this for every entry; the pre-resolved values land in `ctx.resolvedPriorities`). Each sub-chain's slots sort by `(priority asc, name asc)`. Name is the attrset key from the original collection; it acts as a stable tiebreaker.
 
 The cutoff at `100` (between `preDispatch=50` and `postDispatch=100`) splits cells into pre-dispatch (emit before the per-pair dispatch jump) and post-dispatch (emit after) — see Phase 4.
 
 ## Phase 4: emit
 
-Composes the chain buckets and the rest of the table state into one `nftypes.dsl.table` value.
+Renders the dispatch trees and the rest of the table state into one `nftypes.dsl.table` value.
 
 ### 4.1 Per-zone sets
 
@@ -213,7 +218,7 @@ Each set carries the union of the zone's own interfaces/CIDRs **plus every desce
 
 ### 4.2 Base chains
 
-One base chain per `(hook, priority)` bucket from `ctx.chainBuckets` (Phase 3). Default placements:
+One base chain per dispatch tree in `ctx.dispatchTrees` (Phase 3). Default placements:
 
 - **Filter base chains** — `input`, `forward`, `output` at `priority filter`. Header: `type filter hook <name> priority filter; policy <chainPolicy>;`.
 - **NAT base chains** — `prerouting` (DNAT) at `dstnat`, `postrouting` (SNAT) at `srcnat`.
@@ -246,9 +251,9 @@ Chain `policy <chainPolicy>` is declared on the chain header (filter chains only
 
 ### 4.3 Per-pair sub-chains
 
-For each non-empty `(chain, from, to)` bucket, emit one chain. Inside it: sorted cells (filter / snat / dnat / sroute / droute rules) plus the tail rule from the matching policy if any.
+For each sub-chain in a dispatch tree, emit one chain. Inside it: sorted cells (filter / snat / dnat / sroute / droute rules) plus the tail rule from the matching policy if any.
 
-**Naming convention:** `<baseChainName>__<from>-TO-<to>`, `<baseChainName>__<from>` or `<baseChainName>__<to>` (double-underscore separator), built by `internal.placement.subChainNameOf`. Phase 3 already keys `bucket.subChains` by these names, so Phase 4 emits them verbatim. The `baseChainName` is the bucket key from Phase 3 (`"<hook>-at-<priority>"`). Zone names can't contain the uppercase `-TO-`, so no two zone pairs, and no zone pair and single zone, share a name (ADR-0011). A from-only and a to-only sub-chain for the same zone still can (#20):
+**Naming convention:** `<baseChainName>__<from>-TO-<to>`, `<baseChainName>__<from>` or `<baseChainName>__<to>` (double-underscore separator), built by `internal.placement.subChainNameOf`. Phase 3 already keys each dispatch tree's `subChains` by these names, so Phase 4 emits them verbatim. The `baseChainName` is the dispatch tree's key from Phase 3 (`"<hook>-at-<priority>"`). Zone names can't contain the uppercase `-TO-`, so no two zone pairs, and no zone pair and single zone, share a name (ADR-0011). A from-only and a to-only sub-chain for the same zone still can (#20):
 
 | Group / scenario                                     | Sub-chain name                      |
 | ---------------------------------------------------- | ----------------------------------- |
@@ -262,7 +267,7 @@ For each non-empty `(chain, from, to)` bucket, emit one chain. Inside it: sorted
 
 Verbose but readable: each name joins the base chain name and the zones, so the name → `(hook, priority, from, to)` mapping is mechanical and auditable in the generated JSON.
 
-**Body:** sorted cells (per `(priority asc, name asc)` from Phase 3) followed by the policy tail rule (if any).
+**Body:** pre-child cells, one child-dispatch jump per child × from-side variant of the child's match, then post-child cells and the policy tail rule (if any). The cells arrive sorted from Phase 3; transparent dispatchers hold only the jumps.
 
 **Rule body emission per group:**
 
@@ -273,7 +278,7 @@ Verbose but readable: each name joins the base chain name and the zones, so the 
 
 ### 4.4 Jumps
 
-In each base chain, emit one or more jumps per non-empty sub-chain in that bucket's `subChains`. Match conditions select packets belonging to the `(from, to)` pair using per-zone sets from §4.1 — or via `zone.matchOverride.<side>` slot content where the user supplied an override — and the verdict is `jump <sub-chain-name>`.
+In each base chain, emit one or more jumps per sub-chain in its dispatch tree's `roots`. Match conditions select packets belonging to the `(from, to)` pair using per-zone sets from §4.1 — or via `zone.matchOverride.<side>` slot content where the user supplied an override — and the verdict is `jump <sub-chain-name>`.
 
 **Per-direction variants — _not_ a single ANDed clause list.** In `inet` family, `ip <addr>` and `ip6 <addr>` clauses cannot be ANDed in the same rule: a v4 packet hitting `ip6 saddr ...` skips the rule entirely (and vice versa). So each direction emits **one variant per address family** that has a non-empty contribution, plus the optional interface prefix when the hook allows it, plus any `extra` section content the user supplied.
 
@@ -292,7 +297,7 @@ The `interfaces` section is **hook-gated**: dropped when the relevant `iifname` 
 
 **Own-ness.** The auto-path sets are transitive unions (§4.1), so each section is additionally classified as **own** (anchored by the zone's raw `interfaces` / `cidrs` as classified privately by the zone module, or by an active override — overrides are own by definition) vs **inherited** (present in the union set only through descendants). Only own sections AND together. An inherited section ANDed into the gate would narrow the ancestor's dispatch to just the descendant's traffic — e.g. an address-only node under an interface-only zone would turn the zone's `iifname @<zone>_iifs` gate into `iifname @<zone>_iifs ip saddr @<zone>_v4`, cutting off every other host in the zone. Inherited sections widen the gate instead: inherited v4/v6 each become one extra OR variant behind the own prefix (unless the own gate is interface/extra-only, which is family-agnostic and already covers the subtree), and inherited interfaces become one standalone family-agnostic variant. Pinned by the `parent-mixed-sections` / `parent-mixed-sections-mirror` integration scenarios.
 
-> Note — _section_ here is unrelated to the _bucket slot_ concept defined in the Terminology section above. Bucket slots (`preDispatch` / `subChains` / `postDispatch`) are Phase 3 cell placements within a chain bucket; override sections are per-direction match-clause containers within `matchOverride`. Different concepts, same generic vocabulary; they never appear together in code.
+> Note — _section_ here is unrelated to the _slot_ concept defined in the glossary. Slots (`preChildCells` / `postChildCells`) are Phase 3 cell placements within a sub-chain; override sections are per-direction match-clause containers within `matchOverride`. Different concepts, same generic vocabulary; they never appear together in code.
 
 **Variant construction.**
 
@@ -356,12 +361,11 @@ zoneMembership = internal.zone.resolveMembership { zones = mergedZones; localZon
 zoneMembership.directionVariants { hook; direction; zoneName; }
   # -> list of DSL statement lists; null/localZone -> [ [ ] ]
 
-mkRootJumpRules = { hook, baseChainName, effectiveSubChains, zoneMembership }:
-  <list-of-rules>;  # base-chain jumps to root from-zones only
+mkRootJumpRules = { tree, zoneMembership }:
+  <list-of-rules>;  # base-chain jumps to the tree's roots
 
-mkChildDispatchJumpRules = { hook, baseChainName, parentFromZone, toZone,
-                             effectiveSubChains, zoneMembership }:
-  <list-of-rules>;  # in-sub-chain jumps to from-side descendants
+mkSubChain = { hook, subChain, subChains, zoneMembership }:
+  { rules; };       # slots around jumps to the sub-chain's children
 ```
 
 ### 4.5 User objects
@@ -431,17 +435,18 @@ lib/
     expand.nix               — Phase 2 orchestrator: expandTable
                                (cartesian product per entry into cells).
     dispatch.nix             — Phase 3 orchestrator: dispatchAndSort
-                               (groupCellsByChain → chain buckets
-                               keyed by `<hook>-at-<priority>`, then
-                               buildChainBuckets partitioning cells
-                               into per-(from, to) sub-chains with
-                               pre/post-child slots).
+                               (groupCellsByChain → cells per base
+                               chain keyed by `<hook>-at-<priority>`,
+                               then buildDispatchTrees: per-(from, to)
+                               sub-chains with pre/post-child slots,
+                               transparent dispatchers, roots and
+                               children).
     emit.nix                 — Phase 4 orchestrator: emitTable
                                (emitBaseChains → emitSubChains →
                                emitUserObjects → assembleOutput) plus
                                every helper used by those phases
                                (mkBaseChain, mkSubChain, mkRuleBody,
-                               mkRootJumpRules, mkChildDispatchJumpRules,
+                               mkRootJumpRules, mkSubChains,
                                mkDirectionVariants, etc.).
 
     # Layer 2 — top-level orchestrator (consumes all phases above)
@@ -511,7 +516,7 @@ normalizeTable = lib.pipe (mkInitialState table) [
 # Phase 3 — internal/dispatch.nix
 dispatchAndSort = lib.pipe state [
   groupCellsByChain        # ctx.groupedByChain
-  buildChainBuckets        # ctx.chainBuckets
+  buildDispatchTrees       # ctx.dispatchTrees
 ];
 
 # Phase 4 — internal/emit.nix (reads ctx.zoneMembership.sets from Phase 1)

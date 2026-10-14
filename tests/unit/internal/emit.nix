@@ -16,11 +16,9 @@ let
   inherit (nftzones.internal.dispatch) dispatchAndSort;
   inherit (nftzones.internal.emit)
     assembleTable
-    buildEffectiveSubChains
     emitTable
     mkBaseChain
     mkBaseChains
-    mkChildDispatchJumpRules
     mkRootJumpRules
     mkRuleBody
     mkSubChain
@@ -55,31 +53,27 @@ let
     localZone = "local";
   };
 
-  /*
-    Convenience wrapper: pin family to `"inet"` and default
-    settings, with neutral defaults for the jump-related args
-    (no sub-chains by default, so `zoneMembership` is inert).
-    Tests pass a `bucket` and optionally override the rest.
-  */
+  # Convenience wrapper: pin family to `"inet"` and default settings.
+  # With no sub-chains in the tree, `zoneMembership` is inert. Tests
+  # pass a `tree` and optionally override the rest.
   mkChain =
     {
       settings ? defaultSettings,
-      bucket,
-      effectiveSubChains ? { },
+      tree,
       zoneMembership ? membershipFor { },
     }:
     mkBaseChain {
       family = "inet";
       inherit
-        bucket
-        effectiveSubChains
         settings
+        tree
         zoneMembership
         ;
     };
 
-  emptyBucket = hook: priority: {
+  emptyTree = hook: priority: {
     inherit hook priority;
+    roots = [ ];
     subChains = { };
   };
 in
@@ -228,167 +222,12 @@ in
   # the upstream helper. End-to-end coverage of the consumer path
   # comes from the integration scenarios.
 
-  # ===== buildEffectiveSubChains — direct only (no hierarchy) =====
-
-  testBuildEffectiveSubChainsDirect = {
-    # No descendants → no synthetic intermediates. Direct sub-chain
-    # passes through unchanged.
-    expr =
-      let
-        bucket = {
-          subChains = {
-            "forward-at-filter__lan-TO-wan" = {
-              from = "lan";
-              to = "wan";
-              preChildCells = [ ];
-              postChildCells = [ { name = "x"; } ];
-            };
-          };
-        };
-        mergedZones = {
-          lan = { };
-          wan = { };
-        };
-        effectiveSubChains = buildEffectiveSubChains "forward-at-filter" bucket (membershipFor {
-          zones = mergedZones;
-        });
-      in
-      builtins.attrNames effectiveSubChains;
-    expected = [ "forward-at-filter__lan-TO-wan" ];
-  };
-
-  # ===== buildEffectiveSubChains — descendant synthesizes its parent =====
-
-  testBuildEffectiveSubChainsIntermediate = {
-    # web-server (parent dmz) has cells; dmz has no cells of its
-    # own. An intermediate `dmz-TO-local` chain must be synthesized
-    # so the base chain has somewhere to dispatch into.
-    expr =
-      let
-        bucket = {
-          subChains = {
-            "input-at-filter__web-server-TO-local" = {
-              from = "web-server";
-              to = "local";
-              preChildCells = [ ];
-              postChildCells = [ { name = "allow-http"; } ];
-            };
-          };
-        };
-        mergedZones = {
-          dmz = { };
-          web-server = {
-            parent = "dmz";
-          };
-        };
-        effectiveSubChains = buildEffectiveSubChains "input-at-filter" bucket (membershipFor {
-          zones = mergedZones;
-        });
-        intermediate = effectiveSubChains."input-at-filter__dmz-TO-local";
-      in
-      {
-        keys = lib.sort (a: b: a < b) (builtins.attrNames effectiveSubChains);
-        intermediateIsEmpty = intermediate.preChildCells == [ ] && intermediate.postChildCells == [ ];
-        intermediateFrom = intermediate.from;
-        intermediateTo = intermediate.to;
-      };
-    expected = {
-      keys = [
-        "input-at-filter__dmz-TO-local"
-        "input-at-filter__web-server-TO-local"
-      ];
-      intermediateIsEmpty = true;
-      intermediateFrom = "dmz";
-      intermediateTo = "local";
-    };
-  };
-
-  # ===== buildEffectiveSubChains — direct wins over synthetic =====
-
-  testBuildEffectiveSubChainsDirectOverridesSynthetic = {
-    # If both parent (dmz) AND child (web-server) have cells,
-    # bucket.subChains has both. The intermediate synthesis would
-    # generate `dmz-TO-local` empty; the direct entry must win.
-    expr =
-      let
-        bucket = {
-          subChains = {
-            "input-at-filter__dmz-TO-local" = {
-              from = "dmz";
-              to = "local";
-              preChildCells = [ ];
-              postChildCells = [ { name = "dmz-rate"; } ];
-            };
-            "input-at-filter__web-server-TO-local" = {
-              from = "web-server";
-              to = "local";
-              preChildCells = [ ];
-              postChildCells = [ { name = "allow-http"; } ];
-            };
-          };
-        };
-        mergedZones = {
-          dmz = { };
-          web-server = {
-            parent = "dmz";
-          };
-        };
-        effectiveSubChains = buildEffectiveSubChains "input-at-filter" bucket (membershipFor {
-          zones = mergedZones;
-        });
-      in
-      builtins.length effectiveSubChains."input-at-filter__dmz-TO-local".postChildCells;
-    expected = 1;
-  };
-
-  # ===== buildEffectiveSubChains — terminates on parent cycle =====
-
-  testBuildEffectiveSubChainsCycleSafe = {
-    # Phase 1's `checkParentCycles` rejects cycles in normal use,
-    # but a unit-test fixture (or a future caller that bypasses
-    # Phase 1) might hand emit a cyclic mergedZones. The
-    # `visited` guard inside `ancestorsOf` must stop the walk
-    # rather than infinite-loop. We don't assert structural
-    # equality — just that the call terminates and returns a
-    # finite attrset.
-    expr =
-      let
-        bucket = {
-          subChains = {
-            "input-at-filter__leaf-TO-local" = {
-              from = "leaf";
-              to = "local";
-              preChildCells = [ ];
-              postChildCells = [ { name = "x"; } ];
-            };
-          };
-        };
-        # cycle: a → b → a
-        mergedZones = {
-          a = {
-            parent = "b";
-          };
-          b = {
-            parent = "a";
-          };
-          leaf = {
-            parent = "a";
-          };
-        };
-        effectiveSubChains = buildEffectiveSubChains "input-at-filter" bucket (membershipFor {
-          zones = mergedZones;
-        });
-      in
-      builtins.isAttrs effectiveSubChains;
-    expected = true;
-  };
-
   # ===== mkBaseChain — filter input gets stateful + loopback =====
 
   testMkBaseChainFilterInput = {
     expr =
       let
-        chain = mkChain { bucket = emptyBucket "input" "filter"; };
+        chain = mkChain { tree = emptyTree "input" "filter"; };
       in
       {
         inherit (chain)
@@ -411,7 +250,7 @@ in
   testMkBaseChainFilterForward = {
     expr =
       let
-        chain = mkChain { bucket = emptyBucket "forward" "filter"; };
+        chain = mkChain { tree = emptyTree "forward" "filter"; };
       in
       {
         inherit (chain) hook type;
@@ -432,7 +271,7 @@ in
             stateful = false;
             loopback = false;
           };
-          bucket = emptyBucket "input" "filter";
+          tree = emptyTree "input" "filter";
         };
       in
       builtins.length chain.rules;
@@ -442,7 +281,7 @@ in
   testMkBaseChainSnat = {
     expr =
       let
-        chain = mkChain { bucket = emptyBucket "postrouting" "srcnat"; };
+        chain = mkChain { tree = emptyTree "postrouting" "srcnat"; };
       in
       {
         inherit (chain) hook prio type;
@@ -466,7 +305,7 @@ in
     # is meaningless at prerouting (no routing decision yet).
     expr =
       let
-        chain = mkChain { bucket = emptyBucket "prerouting" "mangle"; };
+        chain = mkChain { tree = emptyTree "prerouting" "mangle"; };
       in
       {
         inherit (chain) hook prio type;
@@ -483,7 +322,7 @@ in
   testMkBaseChainDnat = {
     expr =
       let
-        chain = mkChain { bucket = emptyBucket "prerouting" "dstnat"; };
+        chain = mkChain { tree = emptyTree "prerouting" "dstnat"; };
       in
       {
         inherit (chain) hook prio type;
@@ -500,7 +339,7 @@ in
   testMkBaseChainDroute = {
     expr =
       let
-        chain = mkChain { bucket = emptyBucket "output" "mangle"; };
+        chain = mkChain { tree = emptyTree "output" "mangle"; };
       in
       {
         inherit (chain) hook prio type;
@@ -525,7 +364,7 @@ in
           settings = defaultSettings // {
             rpfilter = true;
           };
-          bucket = emptyBucket "prerouting" "raw";
+          tree = emptyTree "prerouting" "raw";
         };
       in
       {
@@ -550,8 +389,7 @@ in
           settings = defaultSettings // {
             rpfilter = true;
           };
-          chainBuckets = { };
-          effectiveSubChainsByBucket = { };
+          dispatchTrees = { };
           zoneMembership = membershipFor { };
         };
         chain = chains."prerouting-at-raw";
@@ -580,11 +418,8 @@ in
           settings = defaultSettings // {
             rpfilter = true;
           };
-          chainBuckets = {
-            "prerouting-at-raw" = emptyBucket "prerouting" "raw";
-          };
-          effectiveSubChainsByBucket = {
-            "prerouting-at-raw" = { };
+          dispatchTrees = {
+            "prerouting-at-raw" = emptyTree "prerouting" "raw";
           };
           zoneMembership = membershipFor { };
         };
@@ -600,27 +435,21 @@ in
     expr = mkBaseChains {
       family = "inet";
       settings = defaultSettings;
-      chainBuckets = { };
-      effectiveSubChainsByBucket = { };
+      dispatchTrees = { };
       zoneMembership = membershipFor { };
     };
     expected = { };
   };
 
-  testMkBaseChainsPerBucket = {
+  testMkBaseChainsPerTree = {
     expr = lib.sort (a: b: a < b) (
       builtins.attrNames (mkBaseChains {
         family = "inet";
         settings = defaultSettings;
-        chainBuckets = {
-          "input-at-filter" = emptyBucket "input" "filter";
-          "forward-at-filter" = emptyBucket "forward" "filter";
-          "postrouting-at-srcnat" = emptyBucket "postrouting" "srcnat";
-        };
-        effectiveSubChainsByBucket = {
-          "input-at-filter" = { };
-          "forward-at-filter" = { };
-          "postrouting-at-srcnat" = { };
+        dispatchTrees = {
+          "input-at-filter" = emptyTree "input" "filter";
+          "forward-at-filter" = emptyTree "forward" "filter";
+          "postrouting-at-srcnat" = emptyTree "postrouting" "srcnat";
         };
         zoneMembership = membershipFor { };
       })
@@ -941,9 +770,9 @@ in
             comment = null;
           }
         ];
+        children = [ ];
       };
-      baseChainName = "forward-at-filter";
-      effectiveSubChains = { };
+      subChains = { };
       zoneMembership = membershipFor {
         zones.lan.interfaces = [ "lan0" ];
         zones.wan.interfaces = [ "wan0" ];
@@ -956,17 +785,16 @@ in
     };
   };
 
-  # ===== mkSubChain — pre-child cells emit before child dispatch =====
+  # ===== mkSubChain — pre-child cells, child jumps, post-child cells =====
 
   testMkSubChainOrder = {
-    # preChildCells (priority < 100) emit first, then child-dispatch
-    # jumps, then postChildCells (priority >= 100) — in this test
-    # there are no children, so just pre then post.
+    # The child-dispatch jump re-checks only the child's from-side
+    # match and sits between the parent's pre- and post-child cells.
     expr = mkSubChain {
-      hook = "forward";
+      hook = "input";
       subChain = {
-        from = "lan";
-        to = "wan";
+        from = "dmz";
+        to = "local";
         preChildCells = [
           {
             rule = [ nftypes.dsl.accept ];
@@ -979,17 +807,30 @@ in
             comment = null;
           }
         ];
+        children = [ "input-at-filter__web-server-TO-local" ];
       };
-      baseChainName = "forward-at-filter";
-      effectiveSubChains = { };
+      subChains."input-at-filter__web-server-TO-local" = {
+        from = "web-server";
+        to = "local";
+        preChildCells = [ ];
+        postChildCells = [ ];
+        children = [ ];
+      };
       zoneMembership = membershipFor {
-        zones.lan.interfaces = [ "lan0" ];
-        zones.wan.interfaces = [ "wan0" ];
+        zones.dmz.interfaces = [ "dmz0" ];
+        nodes.web-server = {
+          zone = "dmz";
+          address.ipv4 = "10.0.0.5";
+        };
       };
     };
     expected = {
       rules = [
         [ nftypes.dsl.accept ]
+        [
+          (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "web-server_v4"))
+          (nftypes.dsl.jump "input-at-filter__web-server-TO-local")
+        ]
         [ nftypes.dsl.drop ]
       ];
     };
@@ -999,66 +840,10 @@ in
 
   testMkSubChainsEmpty = {
     expr = mkSubChains {
-      chainBuckets = { };
-      effectiveSubChainsByBucket = { };
+      dispatchTrees = { };
       zoneMembership = membershipFor { };
     };
     expected = { };
-  };
-
-  testMkSubChainsBidirectional = {
-    expr =
-      let
-        bucket = {
-          hook = "forward";
-          priority = "filter";
-          subChains = {
-            "forward-at-filter__lan-TO-wan" = {
-              from = "lan";
-              to = "wan";
-              preChildCells = [ ];
-              postChildCells = [
-                {
-                  rule = [ nftypes.dsl.accept ];
-                  comment = null;
-                }
-              ];
-            };
-          };
-        };
-      in
-      builtins.attrNames (mkSubChains {
-        chainBuckets."forward-at-filter" = bucket;
-        effectiveSubChainsByBucket."forward-at-filter" = bucket.subChains;
-        zoneMembership = membershipFor {
-          zones.lan.interfaces = [ "lan0" ];
-          zones.wan.interfaces = [ "wan0" ];
-        };
-      });
-    expected = [ "forward-at-filter__lan-TO-wan" ];
-  };
-
-  testMkSubChainsSingleDirection = {
-    expr =
-      let
-        bucket = {
-          hook = "prerouting";
-          priority = "dstnat";
-          subChains = {
-            "prerouting-at-dstnat__wan" = {
-              from = "wan";
-              preChildCells = [ ];
-              postChildCells = [ ];
-            };
-          };
-        };
-      in
-      builtins.attrNames (mkSubChains {
-        chainBuckets."prerouting-at-dstnat" = bucket;
-        effectiveSubChainsByBucket."prerouting-at-dstnat" = bucket.subChains;
-        zoneMembership = membershipFor { zones.wan.interfaces = [ "wan0" ]; };
-      });
-    expected = [ "prerouting-at-dstnat__wan" ];
   };
 
   # ===== emitTable — sub-chain body contains the cell rule =====
@@ -1196,23 +981,23 @@ in
 
   testMkRootJumpRulesEmpty = {
     expr = mkRootJumpRules {
-      hook = "forward";
-      effectiveSubChains = { };
+      tree = emptyTree "forward" "filter";
       zoneMembership = membershipFor { };
     };
     expected = [ ];
   };
 
   testMkRootJumpRulesBidirectional = {
-    # Root from-zone (lan with parent==null) → emits a base-chain jump.
+    # One jump per root, gated on both sides' direction variants.
     expr = mkRootJumpRules {
-      hook = "forward";
-      effectiveSubChains = {
-        "forward-at-filter__lan-TO-wan" = {
+      tree = emptyTree "forward" "filter" // {
+        roots = [ "forward-at-filter__lan-TO-wan" ];
+        subChains."forward-at-filter__lan-TO-wan" = {
           from = "lan";
           to = "wan";
           preChildCells = [ ];
           postChildCells = [ ];
+          children = [ ];
         };
       };
       zoneMembership = membershipFor {
@@ -1231,12 +1016,13 @@ in
 
   testMkRootJumpRulesSingleDirection = {
     expr = mkRootJumpRules {
-      hook = "prerouting";
-      effectiveSubChains = {
-        "prerouting-at-dstnat__wan" = {
+      tree = emptyTree "prerouting" "dstnat" // {
+        roots = [ "prerouting-at-dstnat__wan" ];
+        subChains."prerouting-at-dstnat__wan" = {
           from = "wan";
           preChildCells = [ ];
           postChildCells = [ ];
+          children = [ ];
         };
       };
       zoneMembership = membershipFor { zones.wan.interfaces = [ "wan0" ]; };
@@ -1245,45 +1031,6 @@ in
       [
         (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "wan_iifs"))
         (nftypes.dsl.jump "prerouting-at-dstnat__wan")
-      ]
-    ];
-  };
-
-  # ===== mkRootJumpRules — non-root from-zone is skipped =====
-
-  testMkRootJumpRulesNonRootSkipped = {
-    # web-server (parent dmz) is not a root → no base-chain jump.
-    # Only `dmz-TO-wan` (root) emits one.
-    expr = mkRootJumpRules {
-      hook = "forward";
-      effectiveSubChains = {
-        "forward-at-filter__dmz-TO-wan" = {
-          from = "dmz";
-          to = "wan";
-          preChildCells = [ ];
-          postChildCells = [ ];
-        };
-        "forward-at-filter__web-server-TO-wan" = {
-          from = "web-server";
-          to = "wan";
-          preChildCells = [ ];
-          postChildCells = [ ];
-        };
-      };
-      zoneMembership = membershipFor {
-        zones.dmz.interfaces = [ "dmz0" ];
-        nodes.web-server = {
-          zone = "dmz";
-          address.ipv4 = "10.0.0.5";
-        };
-        zones.wan.interfaces = [ "wan0" ];
-      };
-    };
-    expected = [
-      [
-        (nftypes.dsl.inSet nftypes.dsl.fields.meta.iifname (nftypes.dsl.expr.setRef "dmz_iifs"))
-        (nftypes.dsl.inSet nftypes.dsl.fields.meta.oifname (nftypes.dsl.expr.setRef "wan_iifs"))
-        (nftypes.dsl.jump "forward-at-filter__dmz-TO-wan")
       ]
     ];
   };
@@ -1301,13 +1048,14 @@ in
     # ones) would still produce length 2 and pass a count-only
     # assertion.
     expr = mkRootJumpRules {
-      hook = "forward";
-      effectiveSubChains = {
-        "forward-at-filter__lan-TO-wan" = {
+      tree = emptyTree "forward" "filter" // {
+        roots = [ "forward-at-filter__lan-TO-wan" ];
+        subChains."forward-at-filter__lan-TO-wan" = {
           from = "lan";
           to = "wan";
           preChildCells = [ ];
           postChildCells = [ ];
+          children = [ ];
         };
       };
       zoneMembership = membershipFor {
@@ -1333,68 +1081,6 @@ in
         (nftypes.dsl.jump "forward-at-filter__lan-TO-wan")
       ]
     ];
-  };
-
-  # ===== mkChildDispatchJumpRules — emits jumps for matching children =====
-
-  testMkChildDispatchJumpsBasic = {
-    # parent dmz with one child web-server. Child's from-side
-    # variant becomes the jump rule's match.
-    expr = mkChildDispatchJumpRules {
-      hook = "input";
-      parentFromZone = "dmz";
-      toZone = "local";
-      baseChainName = "input-at-filter";
-      effectiveSubChains = {
-        "input-at-filter__dmz-TO-local" = {
-          from = "dmz";
-          to = "local";
-          preChildCells = [ ];
-          postChildCells = [ ];
-        };
-        "input-at-filter__web-server-TO-local" = {
-          from = "web-server";
-          to = "local";
-          preChildCells = [ ];
-          postChildCells = [ ];
-        };
-      };
-      zoneMembership = membershipFor {
-        zones.dmz.interfaces = [ "dmz0" ];
-        nodes.web-server = {
-          zone = "dmz";
-          address.ipv4 = "10.0.0.5";
-        };
-      };
-    };
-    expected = [
-      [
-        (nftypes.dsl.inSet nftypes.dsl.fields.ip.saddr (nftypes.dsl.expr.setRef "web-server_v4"))
-        (nftypes.dsl.jump "input-at-filter__web-server-TO-local")
-      ]
-    ];
-  };
-
-  # ===== mkChildDispatchJumpRules — child without a sub-chain is skipped =====
-
-  testMkChildDispatchJumpsNoTarget = {
-    # web-server is a child but has no entry in effectiveSubChains
-    # for this (baseChainName, toZone). No jump emitted.
-    expr = mkChildDispatchJumpRules {
-      hook = "input";
-      parentFromZone = "dmz";
-      toZone = "local";
-      baseChainName = "input-at-filter";
-      effectiveSubChains = { };
-      zoneMembership = membershipFor {
-        zones.dmz.interfaces = [ "dmz0" ];
-        nodes.web-server = {
-          zone = "dmz";
-          address.ipv4 = "10.0.0.5";
-        };
-      };
-    };
-    expected = [ ];
   };
 
   # ===== emitTable — jump rule lands in base chain =====

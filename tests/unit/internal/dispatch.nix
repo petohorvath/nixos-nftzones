@@ -17,11 +17,8 @@ let
 
   inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
 
-  /*
-    Run Phase 1 + Phase 2 + Phase 3 against an evalModules-produced
-    table and return the final `ctx`. Tests inspect
-    `ctx.chainBuckets`.
-  */
+  # Run Phase 1 + Phase 2 + Phase 3 against an evalModules-produced
+  # table and return the final `ctx`. Tests inspect `ctx.dispatchTrees`.
   runDispatch =
     body:
     (lib.pipe (evalTable body) [
@@ -36,7 +33,7 @@ in
   # ===== dispatchAndSort — empty cells =====
 
   testDispatchEmpty = {
-    expr = (runDispatch { name = "fw"; }).chainBuckets;
+    expr = (runDispatch { name = "fw"; }).dispatchTrees;
     expected = { };
   };
 
@@ -45,7 +42,7 @@ in
   testDispatchFilterToLocal = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones.wan = {
@@ -56,11 +53,11 @@ in
               to = [ "local" ];
               rule = [ ];
             };
-          }).chainBuckets."input-at-filter";
+          }).dispatchTrees."input-at-filter";
       in
       {
-        inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        inherit (tree) hook priority;
+        subChainNames = lib.attrNames tree.subChains;
       };
     expected = {
       hook = "input";
@@ -74,7 +71,7 @@ in
   testDispatchFilterFromLocal = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones.wan = {
@@ -85,11 +82,11 @@ in
               to = [ "wan" ];
               rule = [ ];
             };
-          }).chainBuckets."output-at-filter";
+          }).dispatchTrees."output-at-filter";
       in
       {
-        inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        inherit (tree) hook priority;
+        subChainNames = lib.attrNames tree.subChains;
       };
     expected = {
       hook = "output";
@@ -103,7 +100,7 @@ in
   testDispatchFilterForward = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones = {
@@ -119,11 +116,11 @@ in
               to = [ "wan" ];
               rule = [ ];
             };
-          }).chainBuckets."forward-at-filter";
+          }).dispatchTrees."forward-at-filter";
       in
       {
-        inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        inherit (tree) hook priority;
+        subChainNames = lib.attrNames tree.subChains;
       };
     expected = {
       hook = "forward";
@@ -137,7 +134,7 @@ in
   testDispatchSnat = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones = {
@@ -153,11 +150,11 @@ in
               to = [ "wan" ];
               rule.masquerade = { };
             };
-          }).chainBuckets."postrouting-at-srcnat";
+          }).dispatchTrees."postrouting-at-srcnat";
       in
       {
-        inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        inherit (tree) hook priority;
+        subChainNames = lib.attrNames tree.subChains;
       };
     expected = {
       hook = "postrouting";
@@ -171,7 +168,7 @@ in
   testDispatchDnat = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones.wan = {
@@ -187,12 +184,12 @@ in
                 };
               };
             };
-          }).chainBuckets."prerouting-at-dstnat";
-        subChain = bucket.subChains."prerouting-at-dstnat__wan";
+          }).dispatchTrees."prerouting-at-dstnat";
+        subChain = tree.subChains."prerouting-at-dstnat__wan";
       in
       {
-        inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        inherit (tree) hook priority;
+        subChainNames = lib.attrNames tree.subChains;
         subFields = {
           inherit (subChain) from;
           hasTo = subChain ? to;
@@ -219,7 +216,7 @@ in
   testDispatchDroute = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones.vpn = {
@@ -229,11 +226,11 @@ in
               to = [ "vpn" ];
               rule = [ ];
             };
-          }).chainBuckets."output-at-mangle";
-        subChain = bucket.subChains."output-at-mangle__vpn";
+          }).dispatchTrees."output-at-mangle";
+        subChain = tree.subChains."output-at-mangle__vpn";
       in
       {
-        inherit (bucket) hook priority;
+        inherit (tree) hook priority;
         subFields = {
           inherit (subChain) to;
           hasFrom = subChain ? from;
@@ -254,7 +251,7 @@ in
   testDispatchChainOverride = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones.wan = {
@@ -269,11 +266,11 @@ in
                 priority = "raw";
               };
             };
-          }).chainBuckets."prerouting-at-raw";
+          }).dispatchTrees."prerouting-at-raw";
       in
       {
-        inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        inherit (tree) hook priority;
+        subChainNames = lib.attrNames tree.subChains;
       };
     expected = {
       hook = "prerouting";
@@ -283,7 +280,7 @@ in
   };
 
   # ===== dispatchAndSort — int priority on chain override collapses
-  # into the same bucket as the symbol-form default =====
+  # into the same tree as the symbol-form default =====
 
   testDispatchIntPriorityCanonicalizes = {
     # `chain.priority = 0` is the int form of `"filter"`; the
@@ -293,7 +290,7 @@ in
     # different names.
     expr =
       let
-        buckets =
+        trees =
           (runDispatch {
             name = "fw";
             zones.wan = {
@@ -315,14 +312,14 @@ in
                 };
               };
             };
-          }).chainBuckets;
+          }).dispatchTrees;
       in
       {
-        bucketKeys = lib.attrNames buckets;
-        subNames = lib.attrNames buckets."input-at-filter".subChains;
+        baseChainNames = lib.attrNames trees;
+        subNames = lib.attrNames trees."input-at-filter".subChains;
       };
     expected = {
-      bucketKeys = [ "input-at-filter" ];
+      baseChainNames = [ "input-at-filter" ];
       subNames = [ "input-at-filter__wan-TO-local" ];
     };
   };
@@ -350,7 +347,7 @@ in
               rule = [ ];
               priority = "first";
             };
-          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
+          }).dispatchTrees."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       {
         preChildNames = cellNames subChain.preChildCells;
@@ -385,7 +382,7 @@ in
               rule = [ ];
               priority = "last";
             };
-          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
+          }).dispatchTrees."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       {
         preChildNames = cellNames subChain.preChildCells;
@@ -420,7 +417,7 @@ in
               to = [ "wan" ];
               rule = [ ];
             };
-          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
+          }).dispatchTrees."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       {
         preChildNames = cellNames subChain.preChildCells;
@@ -469,7 +466,7 @@ in
               priority = 200;
             };
           };
-        }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan".postChildCells;
+        }).dispatchTrees."forward-at-filter".subChains."forward-at-filter__lan-TO-wan".postChildCells;
     # Sorted by priority asc, name asc within priority.
     expected = [
       "high"
@@ -503,7 +500,7 @@ in
             to = [ "wan" ];
             verdict = "drop";
           };
-        }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan".postChildCells;
+        }).dispatchTrees."forward-at-filter".subChains."forward-at-filter__lan-TO-wan".postChildCells;
     # Filter first (has priority); policy last (tail rule).
     expected = [
       "allow-https"
@@ -541,15 +538,15 @@ in
         };
       in
       {
-        filterChainSubs = lib.attrNames ctx.chainBuckets."forward-at-filter".subChains;
-        snatChainSubs = lib.attrNames ctx.chainBuckets."postrouting-at-srcnat".subChains;
+        filterChainSubs = lib.attrNames ctx.dispatchTrees."forward-at-filter".subChains;
+        snatChainSubs = lib.attrNames ctx.dispatchTrees."postrouting-at-srcnat".subChains;
         filterCellName =
           (builtins.head
-            ctx.chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan".postChildCells
+            ctx.dispatchTrees."forward-at-filter".subChains."forward-at-filter__lan-TO-wan".postChildCells
           ).name;
         snatCellName =
           (builtins.head
-            ctx.chainBuckets."postrouting-at-srcnat".subChains."postrouting-at-srcnat__lan-TO-wan".postChildCells
+            ctx.dispatchTrees."postrouting-at-srcnat".subChains."postrouting-at-srcnat__lan-TO-wan".postChildCells
           ).name;
       };
     expected = {
@@ -560,9 +557,9 @@ in
     };
   };
 
-  # ===== dispatchAndSort — chain override + default land in same bucket =====
+  # ===== dispatchAndSort — chain override + default land in same tree =====
   # An explicit chain override like `{ hook = "forward"; priority =
-  # "filter"; }` must merge into the existing default-chain bucket
+  # "filter"; }` must merge into the existing default-chain tree
   # rather than creating a duplicate. Documented in dispatch.nix.
 
   testDispatchOverrideMergesWithDefault = {
@@ -593,7 +590,7 @@ in
                 };
               };
             };
-          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
+          }).dispatchTrees."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       lib.sort (a: b: a < b) (cellNames subChain.postChildCells);
     expected = [
@@ -635,7 +632,7 @@ in
                 priority = "last";
               };
             };
-          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
+          }).dispatchTrees."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       {
         preChildNames = cellNames subChain.preChildCells;
@@ -676,7 +673,7 @@ in
               to = [ "wan" ];
               verdict = "drop";
             };
-          }).chainBuckets."forward-at-filter".subChains;
+          }).dispatchTrees."forward-at-filter".subChains;
       in
       {
         keys = lib.sort (a: b: a < b) (lib.attrNames subChains);
@@ -693,14 +690,14 @@ in
     };
   };
 
-  # ===== dispatchAndSort — bucket carries hook + priority as fields =====
+  # ===== dispatchAndSort — tree carries hook + priority as fields =====
 
-  testDispatchBucketFields = {
+  testDispatchTreeFields = {
     # Verify Phase 4 doesn't have to parse the chain key — the
-    # bucket exposes hook and priority directly.
+    # tree exposes hook and priority directly.
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones = {
@@ -716,15 +713,15 @@ in
               to = [ "wan" ];
               rule = [ ];
             };
-          }).chainBuckets."forward-at-filter";
+          }).dispatchTrees."forward-at-filter";
       in
       {
-        inherit (bucket) hook priority;
-        hasSubChains = bucket ? subChains;
+        inherit (tree) hook priority;
+        hasSubChains = tree ? subChains;
         # Base chain no longer carries pre/post slots — every cell
         # lives in a sub-chain now.
-        hasPreDispatch = bucket ? preDispatch;
-        hasPostDispatch = bucket ? postDispatch;
+        hasPreDispatch = tree ? preDispatch;
+        hasPostDispatch = tree ? postDispatch;
       };
     expected = {
       hook = "forward";
@@ -732,6 +729,149 @@ in
       hasSubChains = true;
       hasPreDispatch = false;
       hasPostDispatch = false;
+    };
+  };
+
+  # ===== dispatchAndSort — transparent dispatcher for a cell-less parent =====
+
+  testDispatchTransparentDispatcher = {
+    # web-server (node under dmz) has a cell; dmz has none. The
+    # tree still holds a dmz sub-chain with empty slots, because
+    # the base chain only jumps to root zones.
+    expr =
+      let
+        tree =
+          (runDispatch {
+            name = "fw";
+            zones.dmz.interfaces = [ "dmz0" ];
+            nodes.web-server = {
+              zone = "dmz";
+              address.ipv4 = "10.0.0.5";
+            };
+            filters.allow-http = {
+              from = [ "web-server" ];
+              to = [ "local" ];
+              rule = [ ];
+            };
+          }).dispatchTrees."input-at-filter";
+        dispatcher = tree.subChains."input-at-filter__dmz-TO-local";
+      in
+      {
+        subChainNames = lib.attrNames tree.subChains;
+        inherit (dispatcher) from to;
+        preChildCells = cellNames dispatcher.preChildCells;
+        postChildCells = cellNames dispatcher.postChildCells;
+      };
+    expected = {
+      subChainNames = [
+        "input-at-filter__dmz-TO-local"
+        "input-at-filter__web-server-TO-local"
+      ];
+      from = "dmz";
+      to = "local";
+      preChildCells = [ ];
+      postChildCells = [ ];
+    };
+  };
+
+  # ===== dispatchAndSort — roots: root from-zones, from-less sub-chains =====
+
+  testDispatchRoots = {
+    # dmz is a root; web-server (node under dmz) is reached only
+    # through dmz's child-dispatch jump. A droute has no `from`,
+    # so its sub-chain dispatches straight from the base chain.
+    expr =
+      let
+        trees =
+          (runDispatch {
+            name = "fw";
+            zones.dmz.interfaces = [ "dmz0" ];
+            zones.wan.interfaces = [ "wan0" ];
+            zones.vpn.cidrs = [ "10.8.0.0/24" ];
+            nodes.web-server = {
+              zone = "dmz";
+              address.ipv4 = "10.0.0.5";
+            };
+            filters.dmz-out = {
+              from = [ "dmz" ];
+              to = [ "wan" ];
+              rule = [ ];
+            };
+            filters.web-out = {
+              from = [ "web-server" ];
+              to = [ "wan" ];
+              rule = [ ];
+            };
+            droutes.to-vpn = {
+              to = [ "vpn" ];
+              rule = [ ];
+            };
+          }).dispatchTrees;
+      in
+      {
+        forward = trees."forward-at-filter".roots;
+        droute = trees."output-at-mangle".roots;
+      };
+    expected = {
+      forward = [ "forward-at-filter__dmz-TO-wan" ];
+      droute = [ "output-at-mangle__vpn" ];
+    };
+  };
+
+  # ===== dispatchAndSort — children are child sub-chains with content =====
+
+  testDispatchChildren = {
+    # dmz keeps its own cell and lists the children whose sub-chain
+    # exists for the same to-zone, in lexical order. mail has no
+    # cells, so dmz doesn't dispatch to it.
+    expr =
+      let
+        tree =
+          (runDispatch {
+            name = "fw";
+            zones.dmz.interfaces = [ "dmz0" ];
+            nodes.db = {
+              zone = "dmz";
+              address.ipv4 = "10.0.0.6";
+            };
+            nodes.mail = {
+              zone = "dmz";
+              address.ipv4 = "10.0.0.7";
+            };
+            nodes.web-server = {
+              zone = "dmz";
+              address.ipv4 = "10.0.0.5";
+            };
+            filters.dmz-ssh = {
+              from = [ "dmz" ];
+              to = [ "local" ];
+              rule = [ ];
+            };
+            filters.db-backup = {
+              from = [ "db" ];
+              to = [ "local" ];
+              rule = [ ];
+            };
+            filters.web-http = {
+              from = [ "web-server" ];
+              to = [ "local" ];
+              rule = [ ];
+            };
+          }).dispatchTrees."input-at-filter";
+        dmz = tree.subChains."input-at-filter__dmz-TO-local";
+      in
+      {
+        dmzChildren = dmz.children;
+        dmzCells = cellNames dmz.postChildCells;
+        webServerChildren = tree.subChains."input-at-filter__web-server-TO-local".children;
+      };
+    expected = {
+      dmzChildren = [
+        "input-at-filter__db-TO-local"
+        "input-at-filter__web-server-TO-local"
+      ];
+      dmzCells = [ "dmz-ssh" ];
+      webServerChildren = [ ];
     };
   };
 }

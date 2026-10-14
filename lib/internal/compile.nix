@@ -7,7 +7,7 @@
       table (evaluated `nftzones.types.table` value)
         ↓ normalizeTable      Phase 1 — validates + lowers nodes
         ↓ expandTable         Phase 2 — cells per group
-        ↓ dispatchAndSort     Phase 3 — chain buckets
+        ↓ dispatchAndSort     Phase 3 — dispatch trees
         ↓ emitTable           Phase 4 — assembles `ctx.output`
       { table; ctx (full pipeline state) }
 
