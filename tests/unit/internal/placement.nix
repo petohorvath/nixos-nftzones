@@ -13,7 +13,7 @@ let
     baseChainNameOf
     chainAttrsForCell
     chainAttrsForEntry
-    subChainKeyOf
+    subChainNameOf
     ;
 in
 {
@@ -386,35 +386,64 @@ in
     expected = "input-at-42";
   };
 
-  # ===== subChainKeyOf — bucket-local sub-chain key =====
+  # ===== subChainNameOf — `<base>__<key>` sub-chain name =====
 
-  testSubChainKeyOfBidirectional = {
-    expr = subChainKeyOf {
+  testSubChainNameOfBidirectional = {
+    expr = subChainNameOf "forward-at-filter" {
       from = "lan";
       to = "wan";
     };
-    expected = "lan-to-wan";
+    expected = "forward-at-filter__lan-TO-wan";
   };
 
-  testSubChainKeyOfFromOnly = {
-    expr = subChainKeyOf { from = "lan"; };
-    expected = "lan";
+  # Zone names can contain `-to-` but no uppercase, so the `-TO-`
+  # separator keeps these two pairs apart (issue #18).
+  testSubChainNameOfZoneNamesContainingTo = {
+    expr = {
+      "a-to → b" = subChainNameOf "forward-at-filter" {
+        from = "a-to";
+        to = "b";
+      };
+      "a → to-b" = subChainNameOf "forward-at-filter" {
+        from = "a";
+        to = "to-b";
+      };
+    };
+    expected = {
+      "a-to → b" = "forward-at-filter__a-to-TO-b";
+      "a → to-b" = "forward-at-filter__a-TO-to-b";
+    };
   };
 
-  testSubChainKeyOfToOnly = {
-    expr = subChainKeyOf { to = "wan"; };
-    expected = "wan";
+  testSubChainNameOfFromOnly = {
+    expr = subChainNameOf "prerouting-at-dstnat" { from = "wan"; };
+    expected = "prerouting-at-dstnat__wan";
+  };
+
+  testSubChainNameOfToOnly = {
+    expr = subChainNameOf "output-at-mangle" { to = "vpn"; };
+    expected = "output-at-mangle__vpn";
+  };
+
+  # A null direction counts as absent, so callers can pass an
+  # optional zone without building the attrset conditionally.
+  testSubChainNameOfNullDirection = {
+    expr = subChainNameOf "forward-at-filter" {
+      from = "lan";
+      to = null;
+    };
+    expected = "forward-at-filter__lan";
   };
 
   # Extra fields (rule, priority, etc.) are ignored — works on
   # cell-shaped inputs directly.
-  testSubChainKeyOfIgnoresExtraFields = {
-    expr = subChainKeyOf {
+  testSubChainNameOfIgnoresExtraFields = {
+    expr = subChainNameOf "forward-at-filter" {
       from = "lan";
       to = "wan";
       rule = [ ];
       priority = "default";
     };
-    expected = "lan-to-wan";
+    expected = "forward-at-filter__lan-TO-wan";
   };
 }

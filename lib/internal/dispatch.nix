@@ -25,7 +25,7 @@ let
   inherit (internal.placement)
     baseChainNameOf
     chainAttrsForCell
-    subChainKeyOf
+    subChainNameOf
     ;
 
   # Sub-chain pre/post-child-dispatch cutoff. Cells with resolved
@@ -45,13 +45,19 @@ let
 
   /*
     Build one sub-chain attrset from a list of cells sharing a
-    sub-chain key. Cells partition into pre-child / post-child
+    sub-chain name. Cells partition into pre-child / post-child
     slots by priority cutoff at 100; policies (no priority) tail
     `postChildCells`. Only the directions actually present on the
     cells get `from` / `to` fields (no nulls).
 
     Invariant (set by Phase 2): every non-policy cell carries a
     resolved int `priority`; only policies are field-less.
+
+    Reading `from` / `to` off the first cell assumes the cells share
+    their zones. `placement.subChainNameOf` keeps zone pairs apart
+    from each other and from single zones (ADR-0011), but a from-only
+    and a to-only sub-chain for the same zone still share a name
+    (#20).
   */
   subChainOf =
     cells:
@@ -77,16 +83,17 @@ let
 
   /*
     Build one chain bucket from chain attrs + a list of cells
-    sharing the chain. Partitions cells per `(from, to)` sub-chain
-    key, then `subChainOf` does the slot split + sort within each.
-    The base chain itself no longer holds pre/post slots — every
-    cell lives in its sub-chain.
+    sharing the chain. Partitions cells per `(from, to)` sub-chain,
+    keyed by the sub-chain name Phase 4 emits, then `subChainOf`
+    does the slot split + sort within each. The base chain itself
+    no longer holds pre/post slots — every cell lives in its
+    sub-chain.
   */
   bucketOf =
-    chainAttrs: cells:
+    baseChainName: chainAttrs: cells:
     chainAttrs
     // {
-      subChains = lib.mapAttrs (_: subChainOf) (lib.groupBy subChainKeyOf cells);
+      subChains = lib.mapAttrs (_: subChainOf) (lib.groupBy (subChainNameOf baseChainName) cells);
     };
 
   groupCellsByChain =
@@ -140,7 +147,7 @@ let
       inherit table;
       ctx = ctx // {
         chainBuckets = lib.mapAttrs (
-          _: chainGroup: bucketOf chainGroup.attrs chainGroup.cells
+          baseChainName: chainGroup: bucketOf baseChainName chainGroup.attrs chainGroup.cells
         ) ctx.groupedByChain;
       };
     };

@@ -60,12 +60,12 @@ in
       in
       {
         inherit (bucket) hook priority;
-        subChainKeys = lib.attrNames bucket.subChains;
+        subChainNames = lib.attrNames bucket.subChains;
       };
     expected = {
       hook = "input";
       priority = "filter";
-      subChainKeys = [ "wan-to-local" ];
+      subChainNames = [ "input-at-filter__wan-TO-local" ];
     };
   };
 
@@ -89,12 +89,12 @@ in
       in
       {
         inherit (bucket) hook priority;
-        subChainKeys = lib.attrNames bucket.subChains;
+        subChainNames = lib.attrNames bucket.subChains;
       };
     expected = {
       hook = "output";
       priority = "filter";
-      subChainKeys = [ "local-to-wan" ];
+      subChainNames = [ "output-at-filter__local-TO-wan" ];
     };
   };
 
@@ -123,12 +123,12 @@ in
       in
       {
         inherit (bucket) hook priority;
-        subChainKeys = lib.attrNames bucket.subChains;
+        subChainNames = lib.attrNames bucket.subChains;
       };
     expected = {
       hook = "forward";
       priority = "filter";
-      subChainKeys = [ "lan-to-wan" ];
+      subChainNames = [ "forward-at-filter__lan-TO-wan" ];
     };
   };
 
@@ -157,12 +157,12 @@ in
       in
       {
         inherit (bucket) hook priority;
-        subChainKeys = lib.attrNames bucket.subChains;
+        subChainNames = lib.attrNames bucket.subChains;
       };
     expected = {
       hook = "postrouting";
       priority = "srcnat";
-      subChainKeys = [ "lan-to-wan" ];
+      subChainNames = [ "postrouting-at-srcnat__lan-TO-wan" ];
     };
   };
 
@@ -188,11 +188,11 @@ in
               };
             };
           }).chainBuckets."prerouting-at-dstnat";
-        subChain = bucket.subChains.wan;
+        subChain = bucket.subChains."prerouting-at-dstnat__wan";
       in
       {
         inherit (bucket) hook priority;
-        subChainKeys = lib.attrNames bucket.subChains;
+        subChainNames = lib.attrNames bucket.subChains;
         subFields = {
           inherit (subChain) from;
           hasTo = subChain ? to;
@@ -204,7 +204,7 @@ in
     expected = {
       hook = "prerouting";
       priority = "dstnat";
-      subChainKeys = [ "wan" ];
+      subChainNames = [ "prerouting-at-dstnat__wan" ];
       subFields = {
         from = "wan";
         hasTo = false;
@@ -230,7 +230,7 @@ in
               rule = [ ];
             };
           }).chainBuckets."output-at-mangle";
-        subChain = bucket.subChains.vpn;
+        subChain = bucket.subChains."output-at-mangle__vpn";
       in
       {
         inherit (bucket) hook priority;
@@ -273,12 +273,12 @@ in
       in
       {
         inherit (bucket) hook priority;
-        subChainKeys = lib.attrNames bucket.subChains;
+        subChainNames = lib.attrNames bucket.subChains;
       };
     expected = {
       hook = "prerouting";
       priority = "raw";
-      subChainKeys = [ "wan-to-local" ];
+      subChainNames = [ "prerouting-at-raw__wan-TO-local" ];
     };
   };
 
@@ -319,11 +319,11 @@ in
       in
       {
         bucketKeys = lib.attrNames buckets;
-        subKeys = lib.attrNames buckets."input-at-filter".subChains;
+        subNames = lib.attrNames buckets."input-at-filter".subChains;
       };
     expected = {
       bucketKeys = [ "input-at-filter" ];
-      subKeys = [ "wan-to-local" ];
+      subNames = [ "input-at-filter__wan-TO-local" ];
     };
   };
 
@@ -350,7 +350,7 @@ in
               rule = [ ];
               priority = "first";
             };
-          }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
+          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       {
         preChildNames = cellNames subChain.preChildCells;
@@ -385,7 +385,7 @@ in
               rule = [ ];
               priority = "last";
             };
-          }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
+          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       {
         preChildNames = cellNames subChain.preChildCells;
@@ -420,7 +420,7 @@ in
               to = [ "wan" ];
               rule = [ ];
             };
-          }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
+          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       {
         preChildNames = cellNames subChain.preChildCells;
@@ -469,7 +469,7 @@ in
               priority = 200;
             };
           };
-        }).chainBuckets."forward-at-filter".subChains."lan-to-wan".postChildCells;
+        }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan".postChildCells;
     # Sorted by priority asc, name asc within priority.
     expected = [
       "high"
@@ -503,7 +503,7 @@ in
             to = [ "wan" ];
             verdict = "drop";
           };
-        }).chainBuckets."forward-at-filter".subChains."lan-to-wan".postChildCells;
+        }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan".postChildCells;
     # Filter first (has priority); policy last (tail rule).
     expected = [
       "allow-https"
@@ -514,8 +514,8 @@ in
   # ===== dispatchAndSort — same (from, to) in two groups → two chains =====
 
   testDispatchGroupSeparation = {
-    # snat lan→wan and filter lan→wan share a sub-chain key but
-    # belong to different chains; they must not merge.
+    # snat lan→wan and filter lan→wan share their zones but belong
+    # to different chains; they must not merge.
     expr =
       let
         ctx = runDispatch {
@@ -544,13 +544,17 @@ in
         filterChainSubs = lib.attrNames ctx.chainBuckets."forward-at-filter".subChains;
         snatChainSubs = lib.attrNames ctx.chainBuckets."postrouting-at-srcnat".subChains;
         filterCellName =
-          (builtins.head ctx.chainBuckets."forward-at-filter".subChains."lan-to-wan".postChildCells).name;
+          (builtins.head
+            ctx.chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan".postChildCells
+          ).name;
         snatCellName =
-          (builtins.head ctx.chainBuckets."postrouting-at-srcnat".subChains."lan-to-wan".postChildCells).name;
+          (builtins.head
+            ctx.chainBuckets."postrouting-at-srcnat".subChains."postrouting-at-srcnat__lan-TO-wan".postChildCells
+          ).name;
       };
     expected = {
-      filterChainSubs = [ "lan-to-wan" ];
-      snatChainSubs = [ "lan-to-wan" ];
+      filterChainSubs = [ "forward-at-filter__lan-TO-wan" ];
+      snatChainSubs = [ "postrouting-at-srcnat__lan-TO-wan" ];
       filterCellName = "web";
       snatCellName = "lan-out";
     };
@@ -589,7 +593,7 @@ in
                 };
               };
             };
-          }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
+          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       lib.sort (a: b: a < b) (cellNames subChain.postChildCells);
     expected = [
@@ -631,7 +635,7 @@ in
                 priority = "last";
               };
             };
-          }).chainBuckets."forward-at-filter".subChains."lan-to-wan";
+          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       {
         preChildNames = cellNames subChain.preChildCells;
@@ -676,13 +680,13 @@ in
       in
       {
         keys = lib.sort (a: b: a < b) (lib.attrNames subChains);
-        guestCellName = (builtins.head subChains."guest-to-wan".postChildCells).name;
-        lanCellName = (builtins.head subChains."lan-to-wan".postChildCells).name;
+        guestCellName = (builtins.head subChains."forward-at-filter__guest-TO-wan".postChildCells).name;
+        lanCellName = (builtins.head subChains."forward-at-filter__lan-TO-wan".postChildCells).name;
       };
     expected = {
       keys = [
-        "guest-to-wan"
-        "lan-to-wan"
+        "forward-at-filter__guest-TO-wan"
+        "forward-at-filter__lan-TO-wan"
       ];
       guestCellName = "deny-out";
       lanCellName = "deny-out";

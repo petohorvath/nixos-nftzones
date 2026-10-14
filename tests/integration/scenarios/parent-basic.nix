@@ -44,8 +44,8 @@ in
     {
       description = "both the parent dispatcher and child sub-chain are emitted";
       expr = {
-        parent = compiled.tables.parent-basic.chains ? "input-at-filter__dmz-to-local";
-        child = compiled.tables.parent-basic.chains ? "input-at-filter__web-server-to-local";
+        parent = compiled.tables.parent-basic.chains ? "input-at-filter__dmz-TO-local";
+        child = compiled.tables.parent-basic.chains ? "input-at-filter__web-server-TO-local";
       };
       expected = {
         parent = true;

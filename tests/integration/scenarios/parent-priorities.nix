@@ -57,7 +57,7 @@ in
   assertions =
     compiled:
     let
-      dmzRules = compiled.tables.parent-priorities.chains."input-at-filter__dmz-to-local".rules;
+      dmzRules = compiled.tables.parent-priorities.chains."input-at-filter__dmz-TO-local".rules;
     in
     [
       {

@@ -36,19 +36,19 @@ in
   assertions = compiled: [
     {
       description = "parent dmz dispatcher is synthesized even with no own rules";
-      expr = compiled.tables.parent-empty-intermediate.chains ? "input-at-filter__dmz-to-local";
+      expr = compiled.tables.parent-empty-intermediate.chains ? "input-at-filter__dmz-TO-local";
       expected = true;
     }
     {
       description = "intermediate dispatcher carries exactly one rule (child-dispatch jump)";
       expr =
         builtins.length
-          compiled.tables.parent-empty-intermediate.chains."input-at-filter__dmz-to-local".rules;
+          compiled.tables.parent-empty-intermediate.chains."input-at-filter__dmz-TO-local".rules;
       expected = 1;
     }
     {
       description = "child sub-chain carries the user rule";
-      expr = compiled.tables.parent-empty-intermediate.chains ? "input-at-filter__web-server-to-local";
+      expr = compiled.tables.parent-empty-intermediate.chains ? "input-at-filter__web-server-TO-local";
       expected = true;
     }
   ];

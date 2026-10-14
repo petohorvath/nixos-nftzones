@@ -41,7 +41,7 @@ in
       expr = builtins.attrNames compiled.tables.chain-override.chains;
       expected = [
         "prerouting-at-raw"
-        "prerouting-at-raw__wan-to-wan"
+        "prerouting-at-raw__wan-TO-wan"
       ];
     }
     {

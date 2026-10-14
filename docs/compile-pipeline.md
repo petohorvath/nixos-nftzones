@@ -27,8 +27,7 @@ subChains; }`, where each sub-chain carries its own `preChildCells` /
 The same string travels from Phase 3 (as an attrset key) through to Phase 4 (as the actual nftables chain name):
 
 - **`baseChainName`** = `"<hook>-at-<priority>"` (e.g. `"forward-at-filter"`). Computed by `internal.placement.baseChainNameOf`, with family-aware canonicalization of integer and symbol priorities. Used as the bucket key in `chainBuckets` _and_ as the base chain's name in the emitted nftables output.
-- **`subChainKey`** — local key within `bucket.subChains` (e.g. `"lan-to-wan"` / `"wan"` / `"lan"`). Computed by `internal.placement.subChainKeyOf` from a cell's `from` / `to`.
-- **`subChainName`** — full sub-chain name in the nftables output, `"<baseChainName>__<subChainKey>"` (e.g. `"forward-at-filter__lan-to-wan"`). Computed by `internal.emit.subChainNameOf`.
+- **`subChainName`** — `"<baseChainName>__<from>-TO-<to>"`, `"<baseChainName>__<from>"` or `"<baseChainName>__<to>"` (e.g. `"forward-at-filter__lan-TO-wan"`). Computed by `internal.placement.subChainNameOf` from the base chain name and a cell's `from` / `to`. Used as the key in `bucket.subChains` _and_ as the sub-chain's name in the emitted nftables output.
 
 ### Two framings of `(hook, priority)`
 
@@ -249,19 +248,19 @@ Chain `policy <chainPolicy>` is declared on the chain header (filter chains only
 
 For each non-empty `(chain, from, to)` bucket, emit one chain. Inside it: sorted cells (filter / snat / dnat / sroute / droute rules) plus the tail rule from the matching policy if any.
 
-**Naming convention:** `<baseChainName>__<subChainKey>` (double-underscore separator), reusing Phase 3's `chainBuckets` keys verbatim. The `baseChainName` is the bucket key from Phase 3 (`"<hook>-at-<priority>"`); the `subChainKey` is the local key within `bucket.subChains` (`"<from>-to-<to>"`, `"<from>"`, or `"<to>"`):
+**Naming convention:** `<baseChainName>__<from>-TO-<to>`, `<baseChainName>__<from>` or `<baseChainName>__<to>` (double-underscore separator), built by `internal.placement.subChainNameOf`. Phase 3 already keys `bucket.subChains` by these names, so Phase 4 emits them verbatim. The `baseChainName` is the bucket key from Phase 3 (`"<hook>-at-<priority>"`). Zone names can't contain the uppercase `-TO-`, so no two zone pairs, and no zone pair and single zone, share a name (ADR-0011). A from-only and a to-only sub-chain for the same zone still can (#20):
 
 | Group / scenario                                     | Sub-chain name                      |
 | ---------------------------------------------------- | ----------------------------------- |
-| Filter `lan → wan` (forward)                         | `forward-at-filter__lan-to-wan`     |
-| Filter `wan → local` (input)                         | `input-at-filter__wan-to-local`     |
-| Filter `local → wan` (output)                        | `output-at-filter__local-to-wan`    |
-| Snat `lan → wan`                                     | `postrouting-at-srcnat__lan-to-wan` |
+| Filter `lan → wan` (forward)                         | `forward-at-filter__lan-TO-wan`     |
+| Filter `wan → local` (input)                         | `input-at-filter__wan-TO-local`     |
+| Filter `local → wan` (output)                        | `output-at-filter__local-TO-wan`    |
+| Snat `lan → wan`                                     | `postrouting-at-srcnat__lan-TO-wan` |
 | Dnat `wan` (single-direction `from`)                 | `prerouting-at-dstnat__wan`         |
 | Droute `vpn` (single-direction `to`)                 | `output-at-mangle__vpn`             |
-| rpfilter override `(prerouting, raw)`, `wan → local` | `prerouting-at-raw__wan-to-local`   |
+| rpfilter override `(prerouting, raw)`, `wan → local` | `prerouting-at-raw__wan-TO-local`   |
 
-Verbose but unambiguous: each name is a literal concat of `chainBuckets` keys, so the name → `(hook, priority, from, to)` mapping is mechanical and auditable in the generated JSON.
+Verbose but readable: each name joins the base chain name and the zones, so the name → `(hook, priority, from, to)` mapping is mechanical and auditable in the generated JSON.
 
 **Body:** sorted cells (per `(priority asc, name asc)` from Phase 3) followed by the policy tail rule (if any).
 
@@ -331,7 +330,7 @@ Where `<ifField>` is `iifname` (from-direction) or `oifname` (to-direction), and
 **Cartesian product across directions.** For each sub-chain, take the cartesian product of `from`-variants and `to`-variants. Each pair becomes one jump rule:
 
 ```nix
-fromVariant ++ toVariant ++ [ (jump (subChainNameOf baseChainName subChainKey)) ]
+fromVariant ++ toVariant ++ [ (jump subChainName) ]
 ```
 
 **Family-mismatch filtering.** When both directions are `(v4 + v6)` zones, the cartesian product produces `(v4-from, v6-to)` and `(v6-from, v4-to)` pairs in addition to the matched-family ones. These would be harmless at runtime (the kernel skips rules whose payload protocol doesn't match) but bloat the chain. `variantFamily` (in `internal.emit`) classifies each variant as `"ip"` / `"ip6"` / `null` (family-agnostic) by inspecting payload protocols on the variant's match statements, and `mkRootJumpRules` drops cross-family `(from, to)` pairs in the cartesian filter. Pinned by `tests/unit/internal/emit.nix`'s `testMkRootJumpRulesCartesian` — a `lan → wan` pair with both zones dual-stack emits 2 jumps, not 4.
@@ -408,7 +407,7 @@ lib/
                                (override / local-zone / default
                                selection for Phase 1 validation and
                                Phase 3 dispatch); baseChainNameOf +
-                               subChainKeyOf (shared chain naming);
+                               subChainNameOf (shared chain naming);
                                walkParents + hooksWithIifname.
 
     # Layer 1 — phase orchestrators (consume the leaves above)

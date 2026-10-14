@@ -43,9 +43,9 @@ in
       expr = builtins.attrNames compiled.tables.parent-deep-nesting.chains;
       expected = [
         "input-at-filter"
-        "input-at-filter__corp-to-local"
-        "input-at-filter__dmz-to-local"
-        "input-at-filter__web-server-to-local"
+        "input-at-filter__corp-TO-local"
+        "input-at-filter__dmz-TO-local"
+        "input-at-filter__web-server-TO-local"
       ];
     }
   ];

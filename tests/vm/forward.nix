@@ -655,7 +655,7 @@ pkgs.testers.nixosTest {
         # produce "refused" (from the server's own RST). The
         # counter rules that out.
         chain = router.succeed(
-            "nft list chain inet fw forward-at-filter__lan-to-wan"
+            "nft list chain inet fw forward-at-filter__lan-TO-wan"
         )
         m = re.search(r"counter packets (\d+)", chain)
         assert m and int(m.group(1)) >= 1, (

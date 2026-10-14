@@ -36,7 +36,7 @@ in
     compiled:
     let
       firstRule =
-        builtins.elemAt compiled.tables.log-statement.chains."input-at-filter__wan-to-local".rules
+        builtins.elemAt compiled.tables.log-statement.chains."input-at-filter__wan-TO-local".rules
           0;
       # The runner wraps rule bodies in `{ expr; comment; }`
       # when a comment is set, but rules without comments may

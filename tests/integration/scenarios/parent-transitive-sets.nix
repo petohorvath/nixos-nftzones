@@ -70,7 +70,7 @@ in
     }
     {
       description = "wildcard deny policy emits a sub-chain for the parent zone (catches descendant traffic via transitive iif set)";
-      expr = compiled.table.chains ? "forward-at-filter__lan-to-wan";
+      expr = compiled.table.chains ? "forward-at-filter__lan-TO-wan";
       expected = true;
     }
     {
@@ -79,7 +79,7 @@ in
         (inSet meta.iifname (expr.setRef "lan_iifs"))
         (inSet ip.saddr (expr.setRef "lan_v4"))
         (inSet meta.oifname (expr.setRef "wan_iifs"))
-        (jump "forward-at-filter__lan-to-wan")
+        (jump "forward-at-filter__lan-TO-wan")
       ] compiled.table.chains."forward-at-filter".rules;
       expected = true;
     }

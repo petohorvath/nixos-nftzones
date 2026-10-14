@@ -5,12 +5,12 @@
   drop-to-wan), both policies emit tail rules in their own
   sub-chains:
 
-    forward-at-filter__lan-to-wan       { ... ; accept; }
-    forward-at-filter__lan-guest-to-wan { ... ; drop;   }
+    forward-at-filter__lan-TO-wan       { ... ; accept; }
+    forward-at-filter__lan-guest-TO-wan { ... ; drop;   }
 
   Cascade at runtime: a packet on `guest0` enters
-  `__lan-to-wan` via the transitive parent dispatch jump, hits
-  the child-dispatch jump narrowing to `__lan-guest-to-wan`,
+  `__lan-TO-wan` via the transitive parent dispatch jump, hits
+  the child-dispatch jump narrowing to `__lan-guest-TO-wan`,
   and the child's `drop` fires terminally. A packet on `lan0`
   doesn't match the child's dispatch and falls to lan's tail
   `accept`. Both verdicts are terminal in nftables (`accept` /
@@ -55,8 +55,8 @@ _: {
   assertions =
     compiled:
     let
-      parentRules = compiled.table.chains."forward-at-filter__lan-to-wan".rules;
-      childRules = compiled.table.chains."forward-at-filter__lan-guest-to-wan".rules;
+      parentRules = compiled.table.chains."forward-at-filter__lan-TO-wan".rules;
+      childRules = compiled.table.chains."forward-at-filter__lan-guest-TO-wan".rules;
       lastOf = list: builtins.elemAt list (builtins.length list - 1);
     in
     [
@@ -82,14 +82,14 @@ _: {
           };
         expected = {
           childMatch = "iifname";
-          jumpTarget = "forward-at-filter__lan-guest-to-wan";
+          jumpTarget = "forward-at-filter__lan-guest-TO-wan";
         };
       }
       {
         description = "both sub-chains exist (regression guard: missing one would mean dispatch can't reach the verdict)";
         expr = {
-          parent = compiled.table.chains ? "forward-at-filter__lan-to-wan";
-          child = compiled.table.chains ? "forward-at-filter__lan-guest-to-wan";
+          parent = compiled.table.chains ? "forward-at-filter__lan-TO-wan";
+          child = compiled.table.chains ? "forward-at-filter__lan-guest-TO-wan";
         };
         expected = {
           parent = true;

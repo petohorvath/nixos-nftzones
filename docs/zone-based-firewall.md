@@ -44,6 +44,8 @@ Zones can also declare a **parent** zone, which builds a tree of zones. Traffic 
 
 A zone with only interfaces is purely topological. A zone with only networks is purely address-based and ignores which interface a packet came in on. Mixed zones combine both predicates (typically with logical AND, so a packet must satisfy both to belong).
 
+Zone names are lowercase identifiers (`[a-z][a-z0-9_-]*`). A zone pair's sub-chain name joins the two zones with an uppercase `-TO-`, which no zone name can contain, so every pair gets its own sub-chain even when zone names contain `-to-`. For example, the pairs `a-to → b` and `a → to-b` get `a-to-TO-b` and `a-TO-to-b`.
+
 ## Source and Destination Zones
 
 Every packet seen by the firewall has two zone identities:

@@ -34,10 +34,10 @@ in
       expr = builtins.attrNames compiled.tables.wildcard-expansion.chains;
       expected = [
         "input-at-filter"
-        "input-at-filter__guest-to-local"
-        "input-at-filter__lan-to-local"
-        "input-at-filter__local-to-local"
-        "input-at-filter__wan-to-local"
+        "input-at-filter__guest-TO-local"
+        "input-at-filter__lan-TO-local"
+        "input-at-filter__local-TO-local"
+        "input-at-filter__wan-TO-local"
       ];
     }
   ];

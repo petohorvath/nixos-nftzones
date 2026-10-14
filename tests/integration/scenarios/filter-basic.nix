@@ -29,18 +29,18 @@ in
 
   assertions = compiled: [
     {
-      description = "filter rule lands in forward-at-filter__lan-to-wan sub-chain";
-      expr = compiled.tables.filter-basic.chains ? "forward-at-filter__lan-to-wan";
+      description = "filter rule lands in forward-at-filter__lan-TO-wan sub-chain";
+      expr = compiled.tables.filter-basic.chains ? "forward-at-filter__lan-TO-wan";
       expected = true;
     }
     {
       description = "sub-chain carries the user rule (1 entry)";
-      expr = builtins.length compiled.tables.filter-basic.chains."forward-at-filter__lan-to-wan".rules;
+      expr = builtins.length compiled.tables.filter-basic.chains."forward-at-filter__lan-TO-wan".rules;
       expected = 1;
     }
     {
       description = "rule body is the bare statement list (no comment wrap)";
-      expr = builtins.elemAt compiled.tables.filter-basic.chains."forward-at-filter__lan-to-wan".rules 0;
+      expr = builtins.elemAt compiled.tables.filter-basic.chains."forward-at-filter__lan-TO-wan".rules 0;
       expected = [
         (eq tcp.dport 443)
         accept
