@@ -23,6 +23,10 @@
 - **Breaking:** the Darwin systems. Outputs are provided for `x86_64-linux` and `aarch64-linux`.
 - The `git-hooks` input, the `pre-commit` check, and the pre-commit and pre-push hooks installed by the development shell.
 
+### Fixed
+
+- Reject a table whose zone names make two sub-chain names equal ([#18](https://github.com/petohorvath/nixos-nftzones/issues/18)). With zones `a`, `a-to`, `b` and `to-b`, the pairs `a-to → b` and `a → to-b` shared the sub-chain `forward-at-filter__a-to-to-b` behind one jump, so one pair's rules matched the other pair's traffic. The check covers every zone pair, so zones `lan`, `wan` and `lan-to-wan` are rejected even when no entry uses `lan → wan`; rename one of the zones the error names.
+
 ### Migration
 
 Replace `inputs.nftzones.lib.${pkgs.system}` with `inputs.nftzones.lib`, for example `inherit (inputs.nftzones.lib.snippets) accept;`.

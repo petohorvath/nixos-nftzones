@@ -40,6 +40,7 @@
         ↓ checkNatBodies                ctx.errors   (appends)
         ↓ checkPolicyUniqueness         ctx.errors   (appends)
         ↓ checkSetNameCollisions        ctx.errors   (appends)
+        ↓ checkSubChainNameCollisions   ctx.errors   (appends)
         ↓ checkInterfaceOverlap         ctx.errors   (appends)
         ↓ checkCidrOverlap              ctx.errors   (appends)
         ↓ checkCrossAxisOverlap         ctx.warnings (appends)
@@ -76,6 +77,7 @@
 let
   inherit (inputs) lib libnet nftypes;
   inherit (internal.node) toZone;
+  inherit (internal.placement) subChainNameOf;
   inherit (internal.zone) directionToSide resolveMembership;
 
   /*
@@ -1097,6 +1099,55 @@ let
       };
     };
 
+  /*
+    Reject zone names that make two sub-chain names equal, such as
+    the pairs `a-to → b` and `a → to-b` (both `…__a-to-to-b`).
+    Phase 3 groups cells by sub-chain name, so the two pairs would
+    share one sub-chain and one base-chain jump. Builds the name
+    of every single zone and every ordered pair, used or not
+    (ADR-0011). Names in different base chains never collide, so a
+    placeholder base chain name stands in for all of them.
+
+    A producer describes the zones behind a name. A zone's from-only
+    and to-only names, and a zone listed twice in `allZoneNames`
+    (a local-zone shadow), describe the same producer and collapse.
+  */
+  checkSubChainNameCollisions =
+    { table, ctx }:
+    let
+      inherit (ctx) allZoneNames;
+
+      singles = lib.concatMap (zone: [
+        { from = zone; }
+        { to = zone; }
+      ]) allZoneNames;
+      pairs = lib.concatMap (from: map (to: { inherit from to; }) allZoneNames) allZoneNames;
+
+      describe =
+        directions:
+        if directions ? from && directions ? to then
+          "zone pair (${directions.from} → ${directions.to})"
+        else
+          "zone '${directions.from or directions.to}'";
+
+      collisions = lib.pipe (singles ++ pairs) [
+        (lib.groupBy (subChainNameOf "<base-chain>"))
+        (lib.mapAttrs (_: directionsList: lib.unique (map describe directionsList)))
+        (lib.filterAttrs (_: producers: builtins.length producers > 1))
+      ];
+
+      newErrors = lib.mapAttrsToList (
+        name: producers:
+        lib.nameValuePair "subChainNameCollision" "${lib.concatStringsSep " and " producers} share the sub-chain name '${name}'; rename one of the zones"
+      ) collisions;
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
   checkInterfaceOverlap =
     { table, ctx }:
     let
@@ -1390,6 +1441,7 @@ let
         checkNatBodies
         checkPolicyUniqueness
         checkSetNameCollisions
+        checkSubChainNameCollisions
         checkInterfaceOverlap
         checkCidrOverlap
         checkCrossAxisOverlap
@@ -1430,6 +1482,7 @@ in
     checkRpfilterOverride
     checkSetNameCollisions
     checkSettings
+    checkSubChainNameCollisions
     checkWildcardZoneMix
     checkZoneMatchable
     checkZoneRefs

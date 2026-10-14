@@ -39,7 +39,7 @@ let
     meta
     ;
   inherit (nftypes) chainTypeFor priorityNameOf;
-  inherit (internal.placement) baseChainNameOf;
+  inherit (internal.placement) baseChainNameOf subChainNameOf;
 
   # Boilerplate rule constants (each rule = list of statements).
   statefulRules = [
@@ -123,37 +123,11 @@ let
       stmts;
 
   /*
-    Build the full nftables sub-chain name from a base chain name
-    and a sub-chain key (Phase 3's local key within
-    `bucket.subChains`). Output is the `<base>__<sub>` form per
-    design doc §4.3 — used as the chain attribute in
-    `body.chains` for sub-chains and as the `jump` target in base
-    chains.
-  */
-  subChainNameOf = baseChainName: subChainKey: "${baseChainName}__${subChainKey}";
-
-  /*
-    Compose a sub-chain key from explicit `(fromZone, toZone)`
-    components — mirrors `placement.subChainKeyOf` but operates on
-    the unpacked pair instead of a cell. Used by
-    `buildEffectiveSubChains` to generate intermediate-parent
-    keys without re-parsing strings.
-  */
-  mkSubChainKey =
-    fromZone: toZone:
-    if fromZone != null && toZone != null then
-      "${fromZone}-to-${toZone}"
-    else if fromZone != null then
-      fromZone
-    else
-      toZone;
-
-  /*
     For one base chain bucket, compute the full set of sub-chain
     records to emit — direct cell-bearing sub-chains plus
     transparent intermediate-parent dispatchers synthesized along
     each cell-bearing sub-chain's parent chain. Returns an
-    attrset keyed by `subChainKey`.
+    attrset keyed by sub-chain name, like `bucket.subChains`.
 
     Why intermediates: only root from-zones jump from the base
     chain. A descendant zone with cells (e.g., `web-server`) is
@@ -168,11 +142,11 @@ let
     just the child-dispatch jumps.
 
     `bucket.subChains` overrides any intermediate placeholder
-    that turned out to share its key with a cell-bearing
+    that turned out to share its name with a cell-bearing
     sub-chain.
   */
   buildEffectiveSubChains =
-    bucket: zoneMembership:
+    baseChainName: bucket: zoneMembership:
     let
       mkEmptyRecord =
         fromZone: toZone:
@@ -192,13 +166,16 @@ let
         lib.foldl' (
           acc: ancestor:
           let
-            key = mkSubChainKey ancestor toZone;
+            name = subChainNameOf baseChainName {
+              from = ancestor;
+              to = toZone;
+            };
           in
-          if acc ? ${key} then acc else acc // { ${key} = mkEmptyRecord ancestor toZone; }
+          if acc ? ${name} then acc else acc // { ${name} = mkEmptyRecord ancestor toZone; }
         ) { } (zoneMembership.ancestorsOf fromZone);
 
       allIntermediates = lib.foldlAttrs (
-        acc: _subChainKey: record:
+        acc: _subChainName: record:
         acc // intermediatesOf record
       ) { } bucket.subChains;
     in
@@ -231,9 +208,12 @@ let
       mkJumpsForChild =
         childName:
         let
-          childKey = mkSubChainKey childName toZone;
+          childSubChainName = subChainNameOf baseChainName {
+            from = childName;
+            to = toZone;
+          };
         in
-        if !(effectiveSubChains ? ${childKey}) then
+        if !(effectiveSubChains ? ${childSubChainName}) then
           [ ]
         else
           let
@@ -242,7 +222,7 @@ let
               direction = "from";
               zoneName = childName;
             };
-            jumpStmt = jump (subChainNameOf baseChainName childKey);
+            jumpStmt = jump childSubChainName;
           in
           map (variant: variant ++ [ jumpStmt ]) fromVariants;
     in
@@ -290,12 +270,9 @@ let
         (map mkRuleBody subChain.preChildCells) ++ childJumps ++ (map mkRuleBody subChain.postChildCells);
     };
 
-  /*
-    Walk every base chain bucket's effective sub-chains,
-    producing one sub-chain entry per `(baseChainName,
-    subChainKey)` pair, keyed by the full sub-chain name (see
-    `subChainNameOf`).
-  */
+  # Walk every base chain bucket's effective sub-chains, producing
+  # one sub-chain entry per sub-chain, keyed by its full name (see
+  # `placement.subChainNameOf`).
   mkSubChains =
     {
       chainBuckets,
@@ -308,9 +285,9 @@ let
         effectiveSubChains = effectiveSubChainsByBucket.${baseChainName};
       in
       acc
-      // lib.mapAttrs' (
-        subChainKey: subChain:
-        lib.nameValuePair (subChainNameOf baseChainName subChainKey) (mkSubChain {
+      // lib.mapAttrs (
+        _subChainName: subChain:
+        mkSubChain {
           inherit (bucket) hook;
           inherit
             baseChainName
@@ -318,7 +295,7 @@ let
             subChain
             zoneMembership
             ;
-        })
+        }
       ) effectiveSubChains
     ) { } chainBuckets;
 
@@ -355,7 +332,6 @@ let
   mkRootJumpRules =
     {
       hook,
-      baseChainName,
       effectiveSubChains,
       zoneMembership,
     }:
@@ -366,7 +342,7 @@ let
       };
 
       mkJumpsForSubChain =
-        subChainKey: subChain:
+        subChainName: subChain:
         let
           fromZone = subChain.from or null;
           toZone = subChain.to or null;
@@ -390,7 +366,7 @@ let
                 zoneName = toZone;
               }
             );
-            jumpStmt = jump (subChainNameOf baseChainName subChainKey);
+            jumpStmt = jump subChainName;
           in
           lib.pipe
             {
@@ -412,7 +388,6 @@ let
       family,
       settings,
       bucket,
-      baseChainName,
       effectiveSubChains,
       zoneMembership,
     }:
@@ -434,11 +409,7 @@ let
 
       jumpRules = mkRootJumpRules {
         inherit (bucket) hook;
-        inherit
-          baseChainName
-          effectiveSubChains
-          zoneMembership
-          ;
+        inherit effectiveSubChains zoneMembership;
       };
 
       rules = statefulPrelude ++ loopbackPrelude ++ jumpRules;
@@ -468,7 +439,6 @@ let
         baseChainName: bucket:
         mkBaseChain {
           inherit
-            baseChainName
             bucket
             family
             settings
@@ -529,7 +499,7 @@ let
       inherit table;
       ctx = ctx // {
         effectiveSubChainsByBucket = lib.mapAttrs (
-          _baseChainName: bucket: buildEffectiveSubChains bucket ctx.zoneMembership
+          baseChainName: bucket: buildEffectiveSubChains baseChainName bucket ctx.zoneMembership
         ) ctx.chainBuckets;
       };
     };
@@ -642,8 +612,6 @@ in
     mkRootJumpRules
     mkRuleBody
     mkSubChain
-    mkSubChainKey
     mkSubChains
-    subChainNameOf
     ;
 }

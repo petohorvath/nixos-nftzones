@@ -44,6 +44,8 @@ Zones can also declare a **parent** zone, which builds a tree of zones. Traffic 
 
 A zone with only interfaces is purely topological. A zone with only networks is purely address-based and ignores which interface a packet came in on. Mixed zones combine both predicates (typically with logical AND, so a packet must satisfy both to belong).
 
+Zone names are lowercase identifiers (`[a-z][a-z0-9_-]*`). Each zone pair compiles to a sub-chain named `<from>-to-<to>` and each single zone to one named `<zone>`, so nftzones rejects a table whose zone names, including nodes and the local zone, make two of those names equal. For example, zones `a`, `a-to`, `b` and `to-b` are rejected, because the pairs `a-to → b` and `a → to-b` both name `a-to-to-b`.
+
 ## Source and Destination Zones
 
 Every packet seen by the firewall has two zone identities:

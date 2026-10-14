@@ -164,10 +164,12 @@ Per-packet:
 - `lib/internal/zone.nix`:
   - `resolveMembership` — owns hierarchy, transitive sets, own matchability,
     override resolution, hook visibility and direction variants.
+- `lib/internal/placement.nix`:
+  - `subChainNameOf` — sub-chain name from a base chain name and
+    `(from, to)`.
 - `lib/internal/dispatch.nix`:
   - `subChainOf` — partitions cells into pre/post-child slots.
 - `lib/internal/emit.nix`:
-  - `mkSubChainKey` — key composition from `(fromZone, toZone)`.
   - `buildEffectiveSubChains` — synthesize transparent
     intermediate-parent dispatchers.
   - `mkChildDispatchJumpRules` — child-dispatch jumps inside a

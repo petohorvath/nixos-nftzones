@@ -27,8 +27,7 @@ subChains; }`, where each sub-chain carries its own `preChildCells` /
 The same string travels from Phase 3 (as an attrset key) through to Phase 4 (as the actual nftables chain name):
 
 - **`baseChainName`** = `"<hook>-at-<priority>"` (e.g. `"forward-at-filter"`). Computed by `internal.placement.baseChainNameOf`, with family-aware canonicalization of integer and symbol priorities. Used as the bucket key in `chainBuckets` _and_ as the base chain's name in the emitted nftables output.
-- **`subChainKey`** — local key within `bucket.subChains` (e.g. `"lan-to-wan"` / `"wan"` / `"lan"`). Computed by `internal.placement.subChainKeyOf` from a cell's `from` / `to`.
-- **`subChainName`** — full sub-chain name in the nftables output, `"<baseChainName>__<subChainKey>"` (e.g. `"forward-at-filter__lan-to-wan"`). Computed by `internal.emit.subChainNameOf`.
+- **`subChainName`** — `"<baseChainName>__<from>-to-<to>"`, `"<baseChainName>__<from>"` or `"<baseChainName>__<to>"` (e.g. `"forward-at-filter__lan-to-wan"`). Computed by `internal.placement.subChainNameOf` from the base chain name and a cell's `from` / `to`. Used as the key in `bucket.subChains` _and_ as the sub-chain's name in the emitted nftables output.
 
 ### Two framings of `(hook, priority)`
 
@@ -148,6 +147,7 @@ Validators run after the compute phases, all in `internal/normalize.nix`. Each a
 - **`checkRpfilterOverride`** — emits a warning (not an error) when `settings.rpfilter = true` but a user chain override already claims `(prerouting, raw)`; the synthesized rpfilter chain is suppressed and the user-authored chain is used as-is.
 - **`checkPolicyUniqueness`** — at most one policy applies per `(from, to)` cell after wildcard expansion.
 - **`checkSetNameCollisions`** — user `objects.sets.<name>` must not collide with auto-generated zone-derived set names (`<zone>_iifs|v4|v6`).
+- **`checkSubChainNameCollisions`** — no two zone pairs, or a zone and a pair, may build the same sub-chain name, as `a-to → b` and `a → to-b` would (`…__a-to-to-b`). Checks every ordered pair and single zone over all zone names, whether or not an entry uses them (ADR-0011).
 - **`checkInterfaceOverlap`** — distinct zones must not claim the same interface (ambiguous dispatch); ancestor/descendant pairs are skipped (intentional sharing in a zone hierarchy), and intra-zone duplicates in the `interfaces` list are also flagged.
 - **`checkCidrOverlap`** — distinct zones must not have overlapping CIDR prefixes (ambiguous dispatch); ancestor/descendant pairs are skipped (intentional containment, e.g. a node lowered into its parent zone), and intra-zone overlapping CIDRs are also flagged. Family-aware via `libnet.cidr.overlaps` (v4 vs v6 never overlap).
 - **`checkCrossAxisOverlap`** — warning, not an error: flags pairs of unrelated zones whose effective from-side dispatch axes are strictly split — one interface-only, the other CIDR-only — since both may match the same packet and alphabetical jump order then silently shadows the loser. Effective axes are a zone's own fields plus every strict ancestor's (from-side descendant dispatch rides through ancestor sub-chains), so a CIDR-only node under an interface-bound parent is multi-axis rather than an accidental split; multi-axis zones, ancestor/descendant pairs, and zones with no own axis (empty grouping zones) are not flagged.
@@ -249,7 +249,7 @@ Chain `policy <chainPolicy>` is declared on the chain header (filter chains only
 
 For each non-empty `(chain, from, to)` bucket, emit one chain. Inside it: sorted cells (filter / snat / dnat / sroute / droute rules) plus the tail rule from the matching policy if any.
 
-**Naming convention:** `<baseChainName>__<subChainKey>` (double-underscore separator), reusing Phase 3's `chainBuckets` keys verbatim. The `baseChainName` is the bucket key from Phase 3 (`"<hook>-at-<priority>"`); the `subChainKey` is the local key within `bucket.subChains` (`"<from>-to-<to>"`, `"<from>"`, or `"<to>"`):
+**Naming convention:** `<baseChainName>__<from>-to-<to>`, `<baseChainName>__<from>` or `<baseChainName>__<to>` (double-underscore separator), built by `internal.placement.subChainNameOf`. Phase 3 already keys `bucket.subChains` by these names, so Phase 4 emits them verbatim. The `baseChainName` is the bucket key from Phase 3 (`"<hook>-at-<priority>"`). Phase 1's `checkSubChainNameCollisions` keeps the names unique (ADR-0011):
 
 | Group / scenario                                     | Sub-chain name                      |
 | ---------------------------------------------------- | ----------------------------------- |
@@ -331,7 +331,7 @@ Where `<ifField>` is `iifname` (from-direction) or `oifname` (to-direction), and
 **Cartesian product across directions.** For each sub-chain, take the cartesian product of `from`-variants and `to`-variants. Each pair becomes one jump rule:
 
 ```nix
-fromVariant ++ toVariant ++ [ (jump (subChainNameOf baseChainName subChainKey)) ]
+fromVariant ++ toVariant ++ [ (jump subChainName) ]
 ```
 
 **Family-mismatch filtering.** When both directions are `(v4 + v6)` zones, the cartesian product produces `(v4-from, v6-to)` and `(v6-from, v4-to)` pairs in addition to the matched-family ones. These would be harmless at runtime (the kernel skips rules whose payload protocol doesn't match) but bloat the chain. `variantFamily` (in `internal.emit`) classifies each variant as `"ip"` / `"ip6"` / `null` (family-agnostic) by inspecting payload protocols on the variant's match statements, and `mkRootJumpRules` drops cross-family `(from, to)` pairs in the cartesian filter. Pinned by `tests/unit/internal/emit.nix`'s `testMkRootJumpRulesCartesian` — a `lan → wan` pair with both zones dual-stack emits 2 jumps, not 4.
@@ -408,7 +408,7 @@ lib/
                                (override / local-zone / default
                                selection for Phase 1 validation and
                                Phase 3 dispatch); baseChainNameOf +
-                               subChainKeyOf (shared chain naming);
+                               subChainNameOf (shared chain naming);
                                walkParents + hooksWithIifname.
 
     # Layer 1 — phase orchestrators (consume the leaves above)
@@ -427,6 +427,7 @@ lib/
                                checkRpfilterOverride,
                                checkPolicyUniqueness,
                                checkSetNameCollisions,
+                               checkSubChainNameCollisions,
                                checkInterfaceOverlap, checkCidrOverlap,
                                checkObjectRefs).
     expand.nix               — Phase 2 orchestrator: expandTable
@@ -504,6 +505,7 @@ normalizeTable = lib.pipe (mkInitialState table) [
   checkRpfilterOverride    #  │ exception — appends to ctx.warnings
   checkPolicyUniqueness    #  │ instead, surfaced via lib.warn.
   checkSetNameCollisions   #  │
+  checkSubChainNameCollisions  #
   checkInterfaceOverlap    #  │
   checkCidrOverlap         #  │
   checkObjectRefs          # ─┘

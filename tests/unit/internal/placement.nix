@@ -13,7 +13,7 @@ let
     baseChainNameOf
     chainAttrsForCell
     chainAttrsForEntry
-    subChainKeyOf
+    subChainNameOf
     ;
 in
 {
@@ -386,35 +386,45 @@ in
     expected = "input-at-42";
   };
 
-  # ===== subChainKeyOf — bucket-local sub-chain key =====
+  # ===== subChainNameOf — `<base>__<key>` sub-chain name =====
 
-  testSubChainKeyOfBidirectional = {
-    expr = subChainKeyOf {
+  testSubChainNameOfBidirectional = {
+    expr = subChainNameOf "forward-at-filter" {
       from = "lan";
       to = "wan";
     };
-    expected = "lan-to-wan";
+    expected = "forward-at-filter__lan-to-wan";
   };
 
-  testSubChainKeyOfFromOnly = {
-    expr = subChainKeyOf { from = "lan"; };
-    expected = "lan";
+  testSubChainNameOfFromOnly = {
+    expr = subChainNameOf "prerouting-at-dstnat" { from = "wan"; };
+    expected = "prerouting-at-dstnat__wan";
   };
 
-  testSubChainKeyOfToOnly = {
-    expr = subChainKeyOf { to = "wan"; };
-    expected = "wan";
+  testSubChainNameOfToOnly = {
+    expr = subChainNameOf "output-at-mangle" { to = "vpn"; };
+    expected = "output-at-mangle__vpn";
+  };
+
+  # A null direction counts as absent, so callers can pass an
+  # optional zone without building the attrset conditionally.
+  testSubChainNameOfNullDirection = {
+    expr = subChainNameOf "forward-at-filter" {
+      from = "lan";
+      to = null;
+    };
+    expected = "forward-at-filter__lan";
   };
 
   # Extra fields (rule, priority, etc.) are ignored — works on
   # cell-shaped inputs directly.
-  testSubChainKeyOfIgnoresExtraFields = {
-    expr = subChainKeyOf {
+  testSubChainNameOfIgnoresExtraFields = {
+    expr = subChainNameOf "forward-at-filter" {
       from = "lan";
       to = "wan";
       rule = [ ];
       priority = "default";
     };
-    expected = "lan-to-wan";
+    expected = "forward-at-filter__lan-to-wan";
   };
 }

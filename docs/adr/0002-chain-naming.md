@@ -10,3 +10,5 @@ security) and doubles as the Phase 3 bucket key, so one string travels
 unchanged from dispatch to the emitted ruleset.
 
 Generated chain names are not a stable public surface.
+
+ADR-0011 rejects tables whose zone names make two sub-chain names equal.

@@ -25,12 +25,13 @@
                                   via `nftypes.priorityNameOf` so
                                   int and symbol forms of the same
                                   value collapse to one key.
-    - `subChainKeyOf`           — `{ from?; to?; ... } →
-                                  "<from>-to-<to>"` / `"<from>"` /
-                                  `"<to>"`. The local sub-chain
-                                  key inside a bucket; accepts
-                                  cell-shaped attrsets (extra
-                                  fields ignored).
+    - `subChainNameOf`          — `baseChainName → { from?; to?;
+                                  ... } → "<base>__<from>-to-<to>"`
+                                  / `"<base>__<from>"` /
+                                  `"<base>__<to>"`. The one
+                                  sub-chain naming function;
+                                  accepts cell-shaped attrsets
+                                  (extra fields ignored).
 
   Wired into the surface from `lib/internal/default.nix` as a
   layer-0 leaf with no inter-module dependencies.
@@ -139,36 +140,48 @@ let
     family: chainAttrs: "${chainAttrs.hook}-at-${toString (priorityNameOf family chainAttrs.priority)}";
 
   /*
-    Sub-chain key for a cell within its chain bucket —
-    `"<from>-to-<to>"` for bidirectional cells, bare `"<from>"`
-    or `"<to>"` for single-direction. Accepts any attrset with
-    optional `from` / `to` keys (other fields ignored), so it
-    works on cells, sub-chains, or hand-built attrsets alike.
+    Sub-chain name for a cell in a base chain —
+    `"<baseChainName>__<from>-to-<to>"` for bidirectional cells,
+    `"<baseChainName>__<from>"` or `"<baseChainName>__<to>"` for
+    single-direction ones. Accepts any attrset with optional
+    `from` / `to` keys (other fields ignored, null counts as
+    absent), so it works on cells, sub-chains, or hand-built
+    attrsets alike.
 
-    Throws if neither key is present, since the resulting key
-    would be empty — a sub-chain must be reachable by at least
-    one of from/to.
+    Single source of truth for the sub-chain name format: Phase 3
+    keys sub-chains by it, Phase 4 emits and jumps to those keys,
+    and Phase 1's `checkSubChainNameCollisions` rejects zone names
+    that make two names equal (ADR-0011).
+
+    Throws if neither key is present, since the name would have no
+    zone part — a sub-chain must be reachable by at least one of
+    from/to.
   */
-  subChainKeyOf =
+  subChainNameOf =
+    baseChainName:
     {
       from ? null,
       to ? null,
       ...
     }:
-    if from != null && to != null then
-      "${from}-to-${to}"
-    else if from != null then
-      from
-    else if to != null then
-      to
-    else
-      throw "internal.placement.subChainKeyOf: at least one of `from` / `to` must be non-null";
+    let
+      subChainKey =
+        if from != null && to != null then
+          "${from}-to-${to}"
+        else if from != null then
+          from
+        else if to != null then
+          to
+        else
+          throw "internal.placement.subChainNameOf: at least one of `from` / `to` must be non-null";
+    in
+    "${baseChainName}__${subChainKey}";
 in
 {
   inherit
     baseChainNameOf
     chainAttrsForCell
     chainAttrsForEntry
-    subChainKeyOf
+    subChainNameOf
     ;
 }

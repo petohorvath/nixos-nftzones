@@ -28,6 +28,7 @@ let
     checkRpfilterOverride
     checkSetNameCollisions
     checkSettings
+    checkSubChainNameCollisions
     checkWildcardZoneMix
     checkZoneMatchable
     checkZoneRefs
@@ -2725,6 +2726,165 @@ in
             type = "ipv4_addr";
           };
         }
+      ).errors;
+    expected = [ ];
+  };
+
+  # ===== checkSubChainNameCollisions — two zone pairs share a name =====
+
+  testCheckSubChainNameCollisionsPairs = {
+    # `a-to → b` and `a → to-b` both build `…__a-to-to-b`. No entry
+    # uses either pair: the check covers every possible pair.
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+          checkSubChainNameCollisions
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              a.interfaces = [ "eth-a" ];
+              a-to.interfaces = [ "eth-ato" ];
+              b.interfaces = [ "eth-b" ];
+              to-b.interfaces = [ "eth-tob" ];
+            };
+          }
+        )
+      ).errors;
+    expected = [
+      {
+        name = "subChainNameCollision";
+        value = "zone pair (a → to-b) and zone pair (a-to → b) share the sub-chain name '<base-chain>__a-to-to-b'; rename one of the zones";
+      }
+    ];
+  };
+
+  # ===== checkSubChainNameCollisions — a zone and a pair share a name =====
+
+  testCheckSubChainNameCollisionsZoneAndPair = {
+    # A single-direction sub-chain for zone `lan-to-wan` (a dnat
+    # from it, say) has the name of the `lan → wan` pair's.
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+          checkSubChainNameCollisions
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              lan.interfaces = [ "lan0" ];
+              lan-to-wan.interfaces = [ "tun0" ];
+              wan.interfaces = [ "wan0" ];
+            };
+          }
+        )
+      ).errors;
+    expected = [
+      {
+        name = "subChainNameCollision";
+        value = "zone 'lan-to-wan' and zone pair (lan → wan) share the sub-chain name '<base-chain>__lan-to-wan'; rename one of the zones";
+      }
+    ];
+  };
+
+  # ===== checkSubChainNameCollisions — the local zone takes part =====
+
+  testCheckSubChainNameCollisionsLocalZone = {
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+          checkSubChainNameCollisions
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              local-to.interfaces = [ "tun0" ];
+              to-wan.interfaces = [ "tun1" ];
+              wan.interfaces = [ "wan0" ];
+            };
+          }
+        )
+      ).errors;
+    expected = [
+      {
+        name = "subChainNameCollision";
+        value = "zone pair (local-to → wan) and zone pair (local → to-wan) share the sub-chain name '<base-chain>__local-to-to-wan'; rename one of the zones";
+      }
+    ];
+  };
+
+  # ===== checkSubChainNameCollisions — nodes take part =====
+
+  testCheckSubChainNameCollisionsNode = {
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+          checkSubChainNameCollisions
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              a.interfaces = [ "eth-a" ];
+              a-to.interfaces = [ "eth-ato" ];
+              b.interfaces = [ "eth-b" ];
+            };
+            nodes.to-b = {
+              name = "to-b";
+              zone = "b";
+              address.ipv4 = "10.0.0.5";
+            };
+          }
+        )
+      ).errors;
+    expected = [
+      {
+        name = "subChainNameCollision";
+        value = "zone pair (a → to-b) and zone pair (a-to → b) share the sub-chain name '<base-chain>__a-to-to-b'; rename one of the zones";
+      }
+    ];
+  };
+
+  # ===== checkSubChainNameCollisions — ordinary names pass =====
+
+  testCheckSubChainNameCollisionsNone = {
+    # Covers names with `-` that never form `-to-` across a split,
+    # and a zone shadowing the local zone, which `checkSettings`
+    # reports; listed twice, it must not collide with itself.
+    expr =
+      (runPipeline
+        [
+          convertNodesToZones
+          collectAllZoneNames
+          checkSubChainNameCollisions
+        ]
+        (
+          emptyTable
+          // {
+            zones = {
+              lan.interfaces = [ "lan0" ];
+              local.interfaces = [ "lo0" ];
+              tor-exit.interfaces = [ "tun0" ];
+              wan.interfaces = [ "wan0" ];
+            };
+            nodes.web-server = {
+              name = "web-server";
+              zone = "lan";
+              address.ipv4 = "10.0.0.5";
+            };
+          }
+        )
       ).errors;
     expected = [ ];
   };
