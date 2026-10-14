@@ -5,7 +5,7 @@ Sub-chain names join zone names with `-to-` (ADR-0002), and zone names may conta
 ## Considered options
 
 - **Injective names, such as `a-TO-b`.** Uppercase is the one bare-identifier character zone names can't contain, and quoted chain names are risky. Rejected: it uglifies every chain name and amends ADR-0002.
-- **Forbid zone names that end in `-to` or start with `to-`.** Rejected: it breaks existing tables and is hard to explain.
+- **Forbid zone names that end in `-to` or start with `to-`.** Rejected: it breaks tables whose names never collide, and the rule is hard to explain.
 
 ## Consequences
 

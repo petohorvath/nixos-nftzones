@@ -53,9 +53,9 @@ let
     Invariant (set by Phase 2): every non-policy cell carries a
     resolved int `priority`; only policies are field-less.
 
-    Reading `from` / `to` off the first cell is safe because Phase 1's
-    `checkSubChainNameCollisions` guarantees that cells sharing a name
-    share their zones.
+    Reading `from` / `to` off the first cell relies on Phase 1's
+    `checkSubChainNameCollisions`, which rejects zone names that let
+    two zone pairs, or a zone and a pair, share a sub-chain name.
   */
   subChainOf =
     cells:

@@ -514,8 +514,8 @@ in
   # ===== dispatchAndSort — same (from, to) in two groups → two chains =====
 
   testDispatchGroupSeparation = {
-    # snat lan→wan and filter lan→wan share a sub-chain key but
-    # belong to different chains; they must not merge.
+    # snat lan→wan and filter lan→wan share their zones but belong
+    # to different chains; they must not merge.
     expr =
       let
         ctx = runDispatch {

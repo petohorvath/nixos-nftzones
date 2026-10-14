@@ -2757,7 +2757,7 @@ in
     expected = [
       {
         name = "subChainNameCollision";
-        value = "zone pair (a → to-b) and zone pair (a-to → b) share the sub-chain name '<base-chain>__a-to-to-b'; rename one of the zones";
+        value = "zone pair (a → to-b) and zone pair (a-to → b) share sub-chain names ending in '__a-to-to-b'; rename one of the zones";
       }
     ];
   };
@@ -2788,7 +2788,7 @@ in
     expected = [
       {
         name = "subChainNameCollision";
-        value = "zone 'lan-to-wan' and zone pair (lan → wan) share the sub-chain name '<base-chain>__lan-to-wan'; rename one of the zones";
+        value = "zone 'lan-to-wan' and zone pair (lan → wan) share sub-chain names ending in '__lan-to-wan'; rename one of the zones";
       }
     ];
   };
@@ -2817,7 +2817,7 @@ in
     expected = [
       {
         name = "subChainNameCollision";
-        value = "zone pair (local-to → wan) and zone pair (local → to-wan) share the sub-chain name '<base-chain>__local-to-to-wan'; rename one of the zones";
+        value = "zone pair (local-to → wan) and zone pair (local → to-wan) share sub-chain names ending in '__local-to-to-wan'; rename one of the zones";
       }
     ];
   };
@@ -2851,7 +2851,7 @@ in
     expected = [
       {
         name = "subChainNameCollision";
-        value = "zone pair (a → to-b) and zone pair (a-to → b) share the sub-chain name '<base-chain>__a-to-to-b'; rename one of the zones";
+        value = "zone pair (a → to-b) and zone pair (a-to → b) share sub-chain names ending in '__a-to-to-b'; rename one of the zones";
       }
     ];
   };
