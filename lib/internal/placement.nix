@@ -20,8 +20,8 @@
                                   policies, then group defaults.
     - `baseChainNameOf`         — `family → { hook; priority; } →
                                   "<hook>-at-<priority>"`. The
-                                  bucket-key / base-chain-name
-                                  format. Priority is canonicalized
+                                  dispatch-tree key and
+                                  base-chain-name format. Priority is canonicalized
                                   via `nftypes.priorityNameOf` so
                                   int and symbol forms of the same
                                   value collapse to one key.
@@ -127,12 +127,12 @@ let
     separately so Phase 4 reads fields, not parsed strings.
 
     Priority is canonicalized via `nftypes.priorityNameOf` so int
-    and symbol forms of the same value share one bucket
+    and symbol forms of the same value share one dispatch tree
     (`chain.priority = 0` and the default `"filter"` collapse into
     `"input-at-filter"`). The lookup is family-aware — bridge's
     `filter = -200` canonicalizes correctly.
 
-    Single source of truth for the bucket-key format; consumers
+    Single source of truth for the base-chain-name format; consumers
     that synthesize a chain placement (e.g. Phase 4's rpfilter
     collision check) must build the same key by calling this.
   */

@@ -441,7 +441,7 @@ in
     expected = { };
   };
 
-  testMkBaseChainsPerBucket = {
+  testMkBaseChainsPerTree = {
     expr = lib.sort (a: b: a < b) (
       builtins.attrNames (mkBaseChains {
         family = "inet";

@@ -145,12 +145,12 @@ let
     }:
     let
       mkChildJumps =
-        childName:
-        map (variant: variant ++ [ (jump childName) ]) (
+        childSubChainName:
+        map (variant: variant ++ [ (jump childSubChainName) ]) (
           zoneMembership.directionVariants {
             inherit hook;
             direction = "from";
-            zoneName = subChains.${childName}.from;
+            zoneName = subChains.${childSubChainName}.from;
           }
         );
     in

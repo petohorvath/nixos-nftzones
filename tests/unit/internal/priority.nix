@@ -60,8 +60,8 @@ in
   # ===== entryPriorities — canonical symbol → int table for Phase 3 =====
 
   testEntryPrioritiesShape = {
-    # Phase 3's `bucketOf` reads `entryPriorities.postDispatch` as
-    # the cutoff between sub-chain and post-dispatch slots. A
+    # Phase 3 reads `entryPriorities.postDispatch` as the cutoff
+    # between the pre-child and post-child slots. A
     # silent rename here would break dispatch in subtle ways; pin
     # the full canonical table.
     expr = entryPriorities;

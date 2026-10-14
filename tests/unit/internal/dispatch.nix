@@ -17,11 +17,8 @@ let
 
   inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
 
-  /*
-    Run Phase 1 + Phase 2 + Phase 3 against an evalModules-produced
-    table and return the final `ctx`. Tests inspect
-    `ctx.dispatchTrees`.
-  */
+  # Run Phase 1 + Phase 2 + Phase 3 against an evalModules-produced
+  # table and return the final `ctx`. Tests inspect `ctx.dispatchTrees`.
   runDispatch =
     body:
     (lib.pipe (evalTable body) [
@@ -45,7 +42,7 @@ in
   testDispatchFilterToLocal = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones.wan = {
@@ -59,8 +56,8 @@ in
           }).dispatchTrees."input-at-filter";
       in
       {
-        inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        inherit (tree) hook priority;
+        subChainNames = lib.attrNames tree.subChains;
       };
     expected = {
       hook = "input";
@@ -74,7 +71,7 @@ in
   testDispatchFilterFromLocal = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones.wan = {
@@ -88,8 +85,8 @@ in
           }).dispatchTrees."output-at-filter";
       in
       {
-        inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        inherit (tree) hook priority;
+        subChainNames = lib.attrNames tree.subChains;
       };
     expected = {
       hook = "output";
@@ -103,7 +100,7 @@ in
   testDispatchFilterForward = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones = {
@@ -122,8 +119,8 @@ in
           }).dispatchTrees."forward-at-filter";
       in
       {
-        inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        inherit (tree) hook priority;
+        subChainNames = lib.attrNames tree.subChains;
       };
     expected = {
       hook = "forward";
@@ -137,7 +134,7 @@ in
   testDispatchSnat = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones = {
@@ -156,8 +153,8 @@ in
           }).dispatchTrees."postrouting-at-srcnat";
       in
       {
-        inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        inherit (tree) hook priority;
+        subChainNames = lib.attrNames tree.subChains;
       };
     expected = {
       hook = "postrouting";
@@ -171,7 +168,7 @@ in
   testDispatchDnat = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones.wan = {
@@ -188,11 +185,11 @@ in
               };
             };
           }).dispatchTrees."prerouting-at-dstnat";
-        subChain = bucket.subChains."prerouting-at-dstnat__wan";
+        subChain = tree.subChains."prerouting-at-dstnat__wan";
       in
       {
-        inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        inherit (tree) hook priority;
+        subChainNames = lib.attrNames tree.subChains;
         subFields = {
           inherit (subChain) from;
           hasTo = subChain ? to;
@@ -219,7 +216,7 @@ in
   testDispatchDroute = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones.vpn = {
@@ -230,10 +227,10 @@ in
               rule = [ ];
             };
           }).dispatchTrees."output-at-mangle";
-        subChain = bucket.subChains."output-at-mangle__vpn";
+        subChain = tree.subChains."output-at-mangle__vpn";
       in
       {
-        inherit (bucket) hook priority;
+        inherit (tree) hook priority;
         subFields = {
           inherit (subChain) to;
           hasFrom = subChain ? from;
@@ -254,7 +251,7 @@ in
   testDispatchChainOverride = {
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones.wan = {
@@ -272,8 +269,8 @@ in
           }).dispatchTrees."prerouting-at-raw";
       in
       {
-        inherit (bucket) hook priority;
-        subChainNames = lib.attrNames bucket.subChains;
+        inherit (tree) hook priority;
+        subChainNames = lib.attrNames tree.subChains;
       };
     expected = {
       hook = "prerouting";
@@ -283,7 +280,7 @@ in
   };
 
   # ===== dispatchAndSort — int priority on chain override collapses
-  # into the same bucket as the symbol-form default =====
+  # into the same tree as the symbol-form default =====
 
   testDispatchIntPriorityCanonicalizes = {
     # `chain.priority = 0` is the int form of `"filter"`; the
@@ -293,7 +290,7 @@ in
     # different names.
     expr =
       let
-        buckets =
+        trees =
           (runDispatch {
             name = "fw";
             zones.wan = {
@@ -318,11 +315,11 @@ in
           }).dispatchTrees;
       in
       {
-        bucketKeys = lib.attrNames buckets;
-        subNames = lib.attrNames buckets."input-at-filter".subChains;
+        baseChainNames = lib.attrNames trees;
+        subNames = lib.attrNames trees."input-at-filter".subChains;
       };
     expected = {
-      bucketKeys = [ "input-at-filter" ];
+      baseChainNames = [ "input-at-filter" ];
       subNames = [ "input-at-filter__wan-TO-local" ];
     };
   };
@@ -560,9 +557,9 @@ in
     };
   };
 
-  # ===== dispatchAndSort — chain override + default land in same bucket =====
+  # ===== dispatchAndSort — chain override + default land in same tree =====
   # An explicit chain override like `{ hook = "forward"; priority =
-  # "filter"; }` must merge into the existing default-chain bucket
+  # "filter"; }` must merge into the existing default-chain tree
   # rather than creating a duplicate. Documented in dispatch.nix.
 
   testDispatchOverrideMergesWithDefault = {
@@ -693,14 +690,14 @@ in
     };
   };
 
-  # ===== dispatchAndSort — bucket carries hook + priority as fields =====
+  # ===== dispatchAndSort — tree carries hook + priority as fields =====
 
-  testDispatchBucketFields = {
+  testDispatchTreeFields = {
     # Verify Phase 4 doesn't have to parse the chain key — the
-    # bucket exposes hook and priority directly.
+    # tree exposes hook and priority directly.
     expr =
       let
-        bucket =
+        tree =
           (runDispatch {
             name = "fw";
             zones = {
@@ -719,12 +716,12 @@ in
           }).dispatchTrees."forward-at-filter";
       in
       {
-        inherit (bucket) hook priority;
-        hasSubChains = bucket ? subChains;
+        inherit (tree) hook priority;
+        hasSubChains = tree ? subChains;
         # Base chain no longer carries pre/post slots — every cell
         # lives in a sub-chain now.
-        hasPreDispatch = bucket ? preDispatch;
-        hasPostDispatch = bucket ? postDispatch;
+        hasPreDispatch = tree ? preDispatch;
+        hasPostDispatch = tree ? postDispatch;
       };
     expected = {
       hook = "forward";

@@ -346,7 +346,7 @@ in
     ];
   };
 
-  # ===== baseChainNameOf — bucket-key / chain-name format =====
+  # ===== baseChainNameOf — dispatch-tree key / chain-name format =====
 
   testBaseChainNameOfSymbol = {
     expr = baseChainNameOf "inet" {

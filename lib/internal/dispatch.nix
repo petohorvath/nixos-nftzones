@@ -113,7 +113,7 @@ let
         through, even without cells of its own. Cell-bearing
         sub-chains win over these transparent dispatchers.
       */
-      transparentDispatcherOf =
+      mkTransparentDispatcher =
         ancestor: toZone:
         lib.optionalAttrs (toZone != null) { to = toZone; }
         // {
@@ -122,7 +122,7 @@ let
           postChildCells = [ ];
         };
 
-      transparentDispatchersFor =
+      transparentDispatchersAbove =
         subChain:
         let
           toZone = subChain.to or null;
@@ -133,13 +133,13 @@ let
             lib.nameValuePair (subChainNameOf baseChainName {
               from = ancestor;
               to = toZone;
-            }) (transparentDispatcherOf ancestor toZone)
+            }) (mkTransparentDispatcher ancestor toZone)
           ) (zoneMembership.ancestorsOf (subChain.from or null))
         );
 
       transparentDispatchers = lib.foldlAttrs (
         acc: _: subChain:
-        acc // transparentDispatchersFor subChain
+        acc // transparentDispatchersAbove subChain
       ) { } cellSubChains;
 
       slottedSubChains = transparentDispatchers // cellSubChains;
