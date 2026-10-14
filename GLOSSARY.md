@@ -106,3 +106,7 @@ A jump inside a parent's sub-chain into a child's sub-chain.
 **Transparent dispatcher**:
 A sub-chain for an intermediate parent with no cells of its own, holding
 only child-dispatch jumps.
+
+**Dispatch tree**:
+For one base chain, its jumps to root-zone sub-chains and every
+sub-chain they reach, each with its slots and child-dispatch jumps.

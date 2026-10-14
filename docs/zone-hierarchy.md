@@ -24,11 +24,11 @@ both sides; this initial implementation keeps the model
 asymmetric.
 
 Terms such as root zone, child zone, subtree, slot and transparent
-dispatcher are defined in [`GLOSSARY.md`](../GLOSSARY.md). An **effective
-sub-chain** (`buildEffectiveSubChains` in `lib/internal/emit.nix`) is
-one of the sub-chains that must exist in a base chain bucket: the
-sub-chains that carry cells, plus the transparent dispatchers
-synthesized for intermediate parents along each one's parent path. The rationale
+dispatcher are defined in [`GLOSSARY.md`](../GLOSSARY.md), as is the
+**dispatch tree** that Phase 3 (`lib/internal/dispatch.nix`) builds per
+base chain: the sub-chains that carry cells, plus the transparent
+dispatchers for intermediate parents along each one's parent path, with
+the base chain's root jumps and each parent's children. The rationale
 and rejected alternatives are recorded in
 [ADR-0006](adr/0006-hierarchical-from-side-dispatch.md),
 [ADR-0007](adr/0007-from-wildcard-expands-to-roots.md) and
@@ -169,12 +169,12 @@ Per-packet:
     `(from, to)`.
 - `lib/internal/dispatch.nix`:
   - `subChainOf` — partitions cells into pre/post-child slots.
+  - `dispatchTreeOf` — builds the dispatch tree: transparent
+    dispatchers, roots and children.
 - `lib/internal/emit.nix`:
-  - `buildEffectiveSubChains` — synthesize transparent
-    intermediate-parent dispatchers.
-  - `mkChildDispatchJumpRules` — child-dispatch jumps inside a
-    parent sub-chain.
-  - `mkRootJumpRules` — base-chain jumps for root zones only.
+  - `mkSubChain` — renders a sub-chain's slots around its
+    child-dispatch jumps.
+  - `mkRootJumpRules` — renders base-chain jumps to the tree's roots.
 - `tests/integration/scenarios/parent-*.nix` — end-to-end
   scenarios covering basic, priorities, deep nesting, and empty
   intermediates.

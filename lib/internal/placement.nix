@@ -120,11 +120,11 @@ let
 
   /*
     Base chain name — `"<hook>-at-<priority>"` (e.g.
-    `"input-at-filter"`). Used as the bucket key in
-    `dispatch.chainBuckets` and as the chain name Phase 4 emits in
-    the nftables output. The format is a naming convention; bucket
-    carries the structured `{ hook; priority; }` separately so
-    Phase 4 reads fields, not parsed strings.
+    `"input-at-filter"`). Used as the key in
+    `dispatch.dispatchTrees` and as the chain name Phase 4 emits in
+    the nftables output. The format is a naming convention; each
+    dispatch tree carries the structured `{ hook; priority; }`
+    separately so Phase 4 reads fields, not parsed strings.
 
     Priority is canonicalized via `nftypes.priorityNameOf` so int
     and symbol forms of the same value share one bucket

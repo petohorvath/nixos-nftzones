@@ -16,6 +16,7 @@
 - Run the unit tests with nix-unit, one evaluator per test file.
 - **Breaking (development interface):** move the VM tests from `checks.<system>.vm` to one check per test, `checks.<system>.vm-<name>`, and the examples check from `examples/default.nix` to `tests/examples.nix`.
 - **Breaking (CI statuses):** replace the `CI` workflow with shared policy `v0.6`. It builds the checks with the locked, stable, and unstable nixpkgs revisions, and the VM tests in separate jobs with the same revisions.
+- **`internal` only:** Phase 3 builds one dispatch tree per base chain in `ctx.dispatchTrees`, replacing `ctx.chainBuckets` and `ctx.effectiveSubChainsByBucket`. `internal.emit` drops `buildEffectiveSubChains`, `computeEffectiveSubChains` and `mkChildDispatchJumpRules`, and `mkRootJumpRules`, `mkSubChain`, `mkBaseChain` and `mkBaseChains` take the tree instead of a bucket. The generated ruleset is unchanged.
 
 ### Removed
 

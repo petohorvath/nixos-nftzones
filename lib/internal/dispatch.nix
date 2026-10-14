@@ -2,11 +2,26 @@
   internal/dispatch — Phase 3 of the compile pipeline, exposed
   under `nftzones.internal.dispatch`.
 
-  Buckets each cell from Phase 2 by `(chain, sub-chain, sub-slot)`
-  ready for Phase 4 to emit. Every cell lives in exactly one
-  sub-chain; within the sub-chain, cells split into pre-child and
-  post-child slots around the eventual child-dispatch jump
-  position. Policies (no priority) trail as tail rules.
+  Builds one dispatch tree per base chain from the Phase 2 cells,
+  ready for Phase 4 to render:
+
+      ctx.dispatchTrees.<baseChainName> = {
+        hook; priority;
+        roots = [ <sub-chain name> … ];
+        subChains.<sub-chain name> = {
+          from?; to?;
+          preChildCells; postChildCells;
+          children = [ <sub-chain name> … ];
+        };
+      }
+
+  Every cell lives in exactly one sub-chain; within it, cells split
+  into pre-child and post-child slots around the child-dispatch
+  jumps (ADR-0008). Policies (no priority) trail as tail rules.
+  From-side dispatch is hierarchical (ADR-0006): `roots` are the
+  sub-chains the base chain jumps to, `children` the sub-chains a
+  parent jumps to, and parents without cells of their own appear
+  as transparent dispatchers with empty slots.
 
   Pipeline pattern: each phase takes `{ table; ctx }` and returns
   the same shape, mirroring `internal.normalize` / `internal.expand`.
@@ -15,7 +30,7 @@
 
       { table; ctx (post-Phase 2) }
         ↓ groupCellsByChain    ctx.groupedByChain
-        ↓ buildChainBuckets    ctx.chainBuckets
+        ↓ buildDispatchTrees   ctx.dispatchTrees
       { table; ctx }
 */
 { inputs, internal }:
@@ -82,18 +97,81 @@ let
     };
 
   /*
-    Build one chain bucket from chain attrs + a list of cells
-    sharing the chain. Partitions cells per `(from, to)` sub-chain,
-    keyed by the sub-chain name Phase 4 emits, then `subChainOf`
-    does the slot split + sort within each. The base chain itself
-    no longer holds pre/post slots — every cell lives in its
-    sub-chain.
+    Build one base chain's dispatch tree from its chain attrs and
+    the cells placed in it. Partitions cells per `(from, to)`
+    sub-chain, keyed by the sub-chain name Phase 4 emits, then
+    `subChainOf` does the slot split + sort within each.
   */
-  bucketOf =
-    baseChainName: chainAttrs: cells:
+  dispatchTreeOf =
+    zoneMembership: baseChainName: chainAttrs: cells:
+    let
+      cellSubChains = lib.mapAttrs (_: subChainOf) (lib.groupBy (subChainNameOf baseChainName) cells);
+
+      /*
+        Only root zones jump from the base chain, so every ancestor
+        of a cell-bearing sub-chain needs a sub-chain to dispatch
+        through, even without cells of its own. Cell-bearing
+        sub-chains win over these transparent dispatchers.
+      */
+      transparentDispatcherOf =
+        ancestor: toZone:
+        lib.optionalAttrs (toZone != null) { to = toZone; }
+        // {
+          from = ancestor;
+          preChildCells = [ ];
+          postChildCells = [ ];
+        };
+
+      transparentDispatchersFor =
+        subChain:
+        let
+          toZone = subChain.to or null;
+        in
+        lib.listToAttrs (
+          map (
+            ancestor:
+            lib.nameValuePair (subChainNameOf baseChainName {
+              from = ancestor;
+              to = toZone;
+            }) (transparentDispatcherOf ancestor toZone)
+          ) (zoneMembership.ancestorsOf (subChain.from or null))
+        );
+
+      transparentDispatchers = lib.foldlAttrs (
+        acc: _: subChain:
+        acc // transparentDispatchersFor subChain
+      ) { } cellSubChains;
+
+      slottedSubChains = transparentDispatchers // cellSubChains;
+
+      # A child-dispatch jump keeps the parent's to-zone, so it
+      # targets a child only where that child's subtree has a
+      # sub-chain for the same to-zone.
+      childrenFor =
+        subChain:
+        lib.pipe (zoneMembership.childrenOf.${subChain.from} or [ ]) [
+          (map (
+            child:
+            subChainNameOf baseChainName {
+              from = child;
+              to = subChain.to or null;
+            }
+          ))
+          (builtins.filter (name: slottedSubChains ? ${name}))
+        ];
+
+      subChains = lib.mapAttrs (
+        _: subChain: subChain // { children = lib.optionals (subChain ? from) (childrenFor subChain); }
+      ) slottedSubChains;
+
+      # Hierarchy is from-side only (ADR-0006): sub-chains without
+      # a `from` dispatch straight from the base chain.
+      isRoot = subChain: !(subChain ? from) || builtins.elem subChain.from zoneMembership.rootZoneNames;
+    in
     chainAttrs
     // {
-      subChains = lib.mapAttrs (_: subChainOf) (lib.groupBy (subChainNameOf baseChainName) cells);
+      inherit subChains;
+      roots = builtins.filter (name: isRoot subChains.${name}) (builtins.attrNames subChains);
     };
 
   groupCellsByChain =
@@ -110,7 +188,7 @@ let
           → groupBy baseChainName : { <chain> = [ { attrs; cell } … ]; … }
           → coalesce             : { <chain> = { attrs; cells }; … }
         `attrs` ({ hook; priority; }) is computed once per cell and
-        carried through so `buildChainBuckets` doesn't recompute it.
+        carried through so `buildDispatchTrees` doesn't recompute it.
       */
       pairWithChain = lib.mapAttrs (
         group:
@@ -141,13 +219,14 @@ let
       };
     };
 
-  buildChainBuckets =
+  buildDispatchTrees =
     { table, ctx }:
     {
       inherit table;
       ctx = ctx // {
-        chainBuckets = lib.mapAttrs (
-          baseChainName: chainGroup: bucketOf baseChainName chainGroup.attrs chainGroup.cells
+        dispatchTrees = lib.mapAttrs (
+          baseChainName: chainGroup:
+          dispatchTreeOf ctx.zoneMembership baseChainName chainGroup.attrs chainGroup.cells
         ) ctx.groupedByChain;
       };
     };
@@ -156,12 +235,12 @@ let
     state:
     lib.pipe state [
       groupCellsByChain
-      buildChainBuckets
+      buildDispatchTrees
     ];
 in
 {
   inherit
-    buildChainBuckets
+    buildDispatchTrees
     dispatchAndSort
     groupCellsByChain
     ;
