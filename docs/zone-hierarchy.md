@@ -43,9 +43,9 @@ A child zone is a **refinement** of its parent: anything that matches the child 
 For each base chain (`<hook>-at-<priority>`):
 
 1. The base chain emits boilerplate (stateful, loopback, rpfilter) plus jumps to root from-zones. Each root's match set (`@<root>_iifs` / `@<root>_v4` / `@<root>_v6`) is the transitive union of the root's subtree.
-2. Each parent sub-chain `__<parent>-to-<to>` contains:
+2. Each parent sub-chain `__<parent>-TO-<to>` contains:
    1. Pre-child cells (priority < 100), sorted by `(priority asc, name asc)`.
-   2. Child-dispatch jumps to `__<child>-to-<to>` for each direct child whose subtree has content. The match clause re-uses the child's auto-generated `_iifs` / `_v4` / `_v6` (same set refs as everywhere else; sets are transitive). The narrowing is "anywhere in the parent's subtree → anywhere in this specific child's subtree" — both transitive, with the child's being a subset. The child's sub-chain then runs its own child-dispatch to narrow further into grandchildren.
+   2. Child-dispatch jumps to `__<child>-TO-<to>` for each direct child whose subtree has content. The match clause re-uses the child's auto-generated `_iifs` / `_v4` / `_v6` (same set refs as everywhere else; sets are transitive). The narrowing is "anywhere in the parent's subtree → anywhere in this specific child's subtree" — both transitive, with the child's being a subset. The child's sub-chain then runs its own child-dispatch to narrow further into grandchildren.
    3. Post-child cells (priority >= 100, plus policies as tail rules), sorted by `(priority asc, name asc)` then policies by name.
 3. Leaf sub-chains (zones with no children) carry just `preChildCells ++ postChildCells`.
 4. Intermediate parents with no own cells but with content-bearing descendants emit as transparent dispatchers — just child-jumps.

@@ -248,7 +248,7 @@ Chain `policy <chainPolicy>` is declared on the chain header (filter chains only
 
 For each non-empty `(chain, from, to)` bucket, emit one chain. Inside it: sorted cells (filter / snat / dnat / sroute / droute rules) plus the tail rule from the matching policy if any.
 
-**Naming convention:** `<baseChainName>__<from>-TO-<to>`, `<baseChainName>__<from>` or `<baseChainName>__<to>` (double-underscore separator), built by `internal.placement.subChainNameOf`. Phase 3 already keys `bucket.subChains` by these names, so Phase 4 emits them verbatim. The `baseChainName` is the bucket key from Phase 3 (`"<hook>-at-<priority>"`). Zone names can't contain the uppercase `-TO-`, so the names are unique (ADR-0011):
+**Naming convention:** `<baseChainName>__<from>-TO-<to>`, `<baseChainName>__<from>` or `<baseChainName>__<to>` (double-underscore separator), built by `internal.placement.subChainNameOf`. Phase 3 already keys `bucket.subChains` by these names, so Phase 4 emits them verbatim. The `baseChainName` is the bucket key from Phase 3 (`"<hook>-at-<priority>"`). Zone names can't contain the uppercase `-TO-`, so no two zone pairs, and no zone pair and single zone, share a name (ADR-0011). A from-only and a to-only sub-chain for the same zone still can (#20):
 
 | Group / scenario                                     | Sub-chain name                      |
 | ---------------------------------------------------- | ----------------------------------- |
@@ -260,7 +260,7 @@ For each non-empty `(chain, from, to)` bucket, emit one chain. Inside it: sorted
 | Droute `vpn` (single-direction `to`)                 | `output-at-mangle__vpn`             |
 | rpfilter override `(prerouting, raw)`, `wan → local` | `prerouting-at-raw__wan-TO-local`   |
 
-Verbose but unambiguous: each name is a literal concat of `chainBuckets` keys, so the name → `(hook, priority, from, to)` mapping is mechanical and auditable in the generated JSON.
+Verbose but readable: each name joins the base chain name and the zones, so the name → `(hook, priority, from, to)` mapping is mechanical and auditable in the generated JSON.
 
 **Body:** sorted cells (per `(priority asc, name asc)` from Phase 3) followed by the policy tail rule (if any).
 

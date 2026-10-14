@@ -166,12 +166,12 @@ let
         lib.foldl' (
           acc: ancestor:
           let
-            name = subChainNameOf baseChainName {
+            subChainName = subChainNameOf baseChainName {
               from = ancestor;
               to = toZone;
             };
           in
-          if acc ? ${name} then acc else acc // { ${name} = mkEmptyRecord ancestor toZone; }
+          if acc ? ${subChainName} then acc else acc // { ${subChainName} = mkEmptyRecord ancestor toZone; }
         ) { } (zoneMembership.ancestorsOf fromZone);
 
       allIntermediates = lib.foldlAttrs (
@@ -188,7 +188,7 @@ let
     variant of the child's match.
 
     To-side is implicit: by the time we're inside a
-    `__<parent>-to-<to>` sub-chain, traffic already matched the
+    `__<parent>-TO-<to>` sub-chain, traffic already matched the
     to-side at the chain-jump point. Child-dispatch only re-checks
     the from-side, narrowing into the more specific child match.
   */

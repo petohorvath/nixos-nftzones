@@ -400,18 +400,18 @@ in
   # separator keeps these two pairs apart (issue #18).
   testSubChainNameOfZoneNamesContainingTo = {
     expr = {
-      aToB = subChainNameOf "forward-at-filter" {
+      "a-to → b" = subChainNameOf "forward-at-filter" {
         from = "a-to";
         to = "b";
       };
-      aToToB = subChainNameOf "forward-at-filter" {
+      "a → to-b" = subChainNameOf "forward-at-filter" {
         from = "a";
         to = "to-b";
       };
     };
     expected = {
-      aToB = "forward-at-filter__a-to-TO-b";
-      aToToB = "forward-at-filter__a-TO-to-b";
+      "a-to → b" = "forward-at-filter__a-to-TO-b";
+      "a → to-b" = "forward-at-filter__a-TO-to-b";
     };
   };
 

@@ -53,9 +53,11 @@ let
     Invariant (set by Phase 2): every non-policy cell carries a
     resolved int `priority`; only policies are field-less.
 
-    Reading `from` / `to` off the first cell relies on
-    `placement.subChainNameOf` giving distinct zone pairs, and a zone
-    pair and a single zone, distinct names (ADR-0011).
+    Reading `from` / `to` off the first cell assumes the cells share
+    their zones. `placement.subChainNameOf` keeps zone pairs apart
+    from each other and from single zones (ADR-0011), but a from-only
+    and a to-only sub-chain for the same zone still share a name
+    (#20).
   */
   subChainOf =
     cells:

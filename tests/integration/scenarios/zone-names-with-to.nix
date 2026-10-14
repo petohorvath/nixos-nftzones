@@ -1,9 +1,10 @@
 /*
-  Zone names may contain `-to-` (issue #18). The pairs `a-to → b`
-  and `a → to-b` would both build `…__a-to-to-b` with a lowercase
-  separator and share one sub-chain behind one jump. The uppercase
-  `-TO-` separator, which no zone name can contain, gives each pair
-  its own sub-chain and its own base-chain jump.
+  Regression scenario for issue #18 — zone names may contain `-to-`.
+  The pairs `a-to → b` and `a → to-b` would both build
+  `…__a-to-to-b` with a lowercase separator and share one sub-chain
+  behind one jump. The uppercase `-TO-` separator, which no zone
+  name can contain, gives each pair its own sub-chain and its own
+  base-chain jump.
 */
 { nftypes, ... }:
 let
@@ -73,17 +74,17 @@ in
     {
       description = "each sub-chain holds only its own filter";
       expr = {
-        aToToB = compiled.table.chains."forward-at-filter__a-TO-to-b".rules;
-        aToB = compiled.table.chains."forward-at-filter__a-to-TO-b".rules;
+        "a → to-b" = compiled.table.chains."forward-at-filter__a-TO-to-b".rules;
+        "a-to → b" = compiled.table.chains."forward-at-filter__a-to-TO-b".rules;
       };
       expected = {
-        aToToB = [
+        "a → to-b" = [
           {
             expr = [ accept ];
             comment = "y";
           }
         ];
-        aToB = [
+        "a-to → b" = [
           {
             expr = [ accept ];
             comment = "x";
