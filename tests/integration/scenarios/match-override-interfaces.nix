@@ -48,7 +48,7 @@ in
     }
     {
       description = "lan-to-vlans sub-chain emits with the user rule";
-      expr = compiled.table.chains ? "forward-at-filter__lan-to-vlans";
+      expr = compiled.table.chains ? "forward-at-filter__lan-TO-vlans";
       expected = true;
     }
   ];

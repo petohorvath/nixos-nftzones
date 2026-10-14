@@ -3,7 +3,7 @@
 Base chains are named `<hook>-at-<priority>` (for example
 `forward-at-filter`), and sub-chains are named
 `<baseChainName>__<subChainKey>` (for example
-`forward-at-filter__lan-to-wan`). The original sketch used per-hook
+`forward-at-filter__lan-TO-wan`). The original sketch used per-hook
 names like `fwd-<from>-to-<to>`. The `<hook>-at-<priority>` form covers
 every chain type and priority (filter, nat, route, mangle, raw and
 security) and doubles as the Phase 3 bucket key, so one string travels
@@ -11,4 +11,4 @@ unchanged from dispatch to the emitted ruleset.
 
 Generated chain names are not a stable public surface.
 
-ADR-0011 rejects tables whose zone names make two sub-chain names equal.
+ADR-0011 separates the zones of a pair with an uppercase `-TO-`.

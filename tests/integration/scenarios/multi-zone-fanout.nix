@@ -35,10 +35,10 @@ in
       expr = builtins.attrNames compiled.tables.multi-zone-fanout.chains;
       expected = [
         "forward-at-filter"
-        "forward-at-filter__guest-to-vpn"
-        "forward-at-filter__guest-to-wan"
-        "forward-at-filter__lan-to-vpn"
-        "forward-at-filter__lan-to-wan"
+        "forward-at-filter__guest-TO-vpn"
+        "forward-at-filter__guest-TO-wan"
+        "forward-at-filter__lan-TO-vpn"
+        "forward-at-filter__lan-TO-wan"
       ];
     }
   ];

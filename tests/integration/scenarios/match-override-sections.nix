@@ -48,7 +48,7 @@ in
     }
     {
       description = "lan-to-custom sub-chain emits with the user rule";
-      expr = compiled.tables.match-override-sections.chains ? "forward-at-filter__lan-to-custom";
+      expr = compiled.tables.match-override-sections.chains ? "forward-at-filter__lan-TO-custom";
       expected = true;
     }
   ];

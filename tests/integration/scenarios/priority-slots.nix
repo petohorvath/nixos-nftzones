@@ -49,7 +49,7 @@ in
     }
     {
       description = "all three priority-slotted entries land in the sub-chain";
-      expr = builtins.length compiled.tables.priority-slots.chains."forward-at-filter__lan-to-wan".rules;
+      expr = builtins.length compiled.tables.priority-slots.chains."forward-at-filter__lan-TO-wan".rules;
       expected = 3;
     }
   ];

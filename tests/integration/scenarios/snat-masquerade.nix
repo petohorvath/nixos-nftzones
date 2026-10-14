@@ -24,7 +24,7 @@ in
   assertions = compiled: [
     {
       description = "snat rule lands at postrouting-at-srcnat (nat-family base chain)";
-      expr = compiled.tables.snat-masquerade.chains ? "postrouting-at-srcnat__lan-to-wan";
+      expr = compiled.tables.snat-masquerade.chains ? "postrouting-at-srcnat__lan-TO-wan";
       expected = true;
     }
     {
@@ -35,7 +35,7 @@ in
     {
       description = "rule body is the bare masquerade statement";
       expr =
-        builtins.elemAt compiled.tables.snat-masquerade.chains."postrouting-at-srcnat__lan-to-wan".rules
+        builtins.elemAt compiled.tables.snat-masquerade.chains."postrouting-at-srcnat__lan-TO-wan".rules
           0;
       expected = [ (masquerade { }) ];
     }

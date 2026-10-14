@@ -119,15 +119,15 @@ chain input-at-filter {
   ct state established,related accept
   ct state invalid drop
   iif lo accept
-  iifname @dmz_iifs ip saddr @dmz_v4 jump input-at-filter__dmz-to-local
+  iifname @dmz_iifs ip saddr @dmz_v4 jump input-at-filter__dmz-TO-local
 }
 
-chain input-at-filter__dmz-to-local {
-  ip saddr @web-server_v4 jump input-at-filter__web-server-to-local
+chain input-at-filter__dmz-TO-local {
+  ip saddr @web-server_v4 jump input-at-filter__web-server-TO-local
   tcp dport 22 limit rate 100/second accept
 }
 
-chain input-at-filter__web-server-to-local {
+chain input-at-filter__web-server-TO-local {
   tcp dport 80 accept
 }
 ```

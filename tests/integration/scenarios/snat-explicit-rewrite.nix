@@ -36,12 +36,12 @@ in
   assertions = compiled: [
     {
       description = "lan→wan sub-chain present";
-      expr = compiled.tables.snat-explicit-rewrite.chains ? "postrouting-at-srcnat__lan-to-wan";
+      expr = compiled.tables.snat-explicit-rewrite.chains ? "postrouting-at-srcnat__lan-TO-wan";
       expected = true;
     }
     {
       description = "guest→wan sub-chain present";
-      expr = compiled.tables.snat-explicit-rewrite.chains ? "postrouting-at-srcnat__guest-to-wan";
+      expr = compiled.tables.snat-explicit-rewrite.chains ? "postrouting-at-srcnat__guest-TO-wan";
       expected = true;
     }
     {
@@ -53,7 +53,7 @@ in
       description = "lan→wan rule body is the snat statement";
       expr =
         builtins.elemAt
-          compiled.tables.snat-explicit-rewrite.chains."postrouting-at-srcnat__lan-to-wan".rules
+          compiled.tables.snat-explicit-rewrite.chains."postrouting-at-srcnat__lan-TO-wan".rules
           0;
       expected = [
         (snat {
@@ -66,7 +66,7 @@ in
       description = "guest→wan rule body matches lan→wan (shared rule)";
       expr =
         builtins.elemAt
-          compiled.tables.snat-explicit-rewrite.chains."postrouting-at-srcnat__guest-to-wan".rules
+          compiled.tables.snat-explicit-rewrite.chains."postrouting-at-srcnat__guest-TO-wan".rules
           0;
       expected = [
         (snat {

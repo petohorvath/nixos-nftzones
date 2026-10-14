@@ -70,7 +70,7 @@ in
       expected = [
         [
           (inSet meta.iifname (expr.setRef "lan_iifs"))
-          (jump "input-at-filter__lan-to-local")
+          (jump "input-at-filter__lan-TO-local")
         ]
       ];
     }
@@ -78,14 +78,14 @@ in
       description = "node refines inside the parent's pair chain: child-dispatch jump on the node's own v4 set";
       expr = builtins.elem [
         (inSet ip.saddr (expr.setRef "web_v4"))
-        (jump "input-at-filter__web-to-local")
-      ] compiled.table.chains."input-at-filter__lan-to-local".rules;
+        (jump "input-at-filter__web-TO-local")
+      ] compiled.table.chains."input-at-filter__lan-TO-local".rules;
       expected = true;
     }
     {
       description = "child sub-chain and its own v4 set are emitted";
       expr = {
-        chain = compiled.table.chains ? "input-at-filter__web-to-local";
+        chain = compiled.table.chains ? "input-at-filter__web-TO-local";
         set = compiled.table.sets ? "web_v4";
       };
       expected = {

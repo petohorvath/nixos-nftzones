@@ -69,11 +69,11 @@ in
       expected = [
         [
           (inSet ip.saddr (expr.setRef "lan_v4"))
-          (jump "input-at-filter__lan-to-local")
+          (jump "input-at-filter__lan-TO-local")
         ]
         [
           (inSet meta.iifname (expr.setRef "lan_iifs"))
-          (jump "input-at-filter__lan-to-local")
+          (jump "input-at-filter__lan-TO-local")
         ]
       ];
     }
@@ -81,8 +81,8 @@ in
       description = "child refines inside the parent's pair chain via its own interface set";
       expr = builtins.elem [
         (inSet meta.iifname (expr.setRef "lan-guest_iifs"))
-        (jump "input-at-filter__lan-guest-to-local")
-      ] compiled.table.chains."input-at-filter__lan-to-local".rules;
+        (jump "input-at-filter__lan-guest-TO-local")
+      ] compiled.table.chains."input-at-filter__lan-TO-local".rules;
       expected = true;
     }
   ];

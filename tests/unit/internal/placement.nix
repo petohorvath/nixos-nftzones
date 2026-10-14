@@ -393,7 +393,26 @@ in
       from = "lan";
       to = "wan";
     };
-    expected = "forward-at-filter__lan-to-wan";
+    expected = "forward-at-filter__lan-TO-wan";
+  };
+
+  # Zone names can contain `-to-` but no uppercase, so the `-TO-`
+  # separator keeps these two pairs apart (issue #18).
+  testSubChainNameOfZoneNamesContainingTo = {
+    expr = {
+      aToB = subChainNameOf "forward-at-filter" {
+        from = "a-to";
+        to = "b";
+      };
+      aToToB = subChainNameOf "forward-at-filter" {
+        from = "a";
+        to = "to-b";
+      };
+    };
+    expected = {
+      aToB = "forward-at-filter__a-to-TO-b";
+      aToToB = "forward-at-filter__a-TO-to-b";
+    };
   };
 
   testSubChainNameOfFromOnly = {
@@ -425,6 +444,6 @@ in
       rule = [ ];
       priority = "default";
     };
-    expected = "forward-at-filter__lan-to-wan";
+    expected = "forward-at-filter__lan-TO-wan";
   };
 }

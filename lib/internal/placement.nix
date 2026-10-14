@@ -26,7 +26,7 @@
                                   int and symbol forms of the same
                                   value collapse to one key.
     - `subChainNameOf`          — `baseChainName → { from?; to?;
-                                  ... } → "<base>__<from>-to-<to>"`
+                                  ... } → "<base>__<from>-TO-<to>"`
                                   / `"<base>__<from>"` /
                                   `"<base>__<to>"`. The one
                                   sub-chain naming function;
@@ -141,7 +141,7 @@ let
 
   /*
     Sub-chain name for a cell in a base chain —
-    `"<baseChainName>__<from>-to-<to>"` for bidirectional cells,
+    `"<baseChainName>__<from>-TO-<to>"` for bidirectional cells,
     `"<baseChainName>__<from>"` or `"<baseChainName>__<to>"` for
     single-direction ones. Accepts any attrset with optional
     `from` / `to` keys (other fields ignored, null counts as
@@ -149,9 +149,10 @@ let
     attrsets alike.
 
     Single source of truth for the sub-chain name format: Phase 3
-    keys sub-chains by it, Phase 4 emits and jumps to those keys,
-    and Phase 1's `checkSubChainNameCollisions` rejects zone names
-    that make two names equal (ADR-0011).
+    keys sub-chains by it, and Phase 4 emits and jumps to those
+    keys. Zone names can contain `-to-` but no uppercase, so the
+    `-TO-` separator keeps every pair's name distinct from every
+    other pair's and every single zone's (ADR-0011).
 
     Throws if neither key is present, since the name would have no
     zone part — a sub-chain must be reachable by at least one of
@@ -167,7 +168,7 @@ let
     let
       subChainKey =
         if from != null && to != null then
-          "${from}-to-${to}"
+          "${from}-TO-${to}"
         else if from != null then
           from
         else if to != null then

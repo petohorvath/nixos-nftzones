@@ -25,13 +25,15 @@
 
 ### Fixed
 
-- Reject a table whose zone names make two sub-chain names equal ([#18](https://github.com/petohorvath/nixos-nftzones/issues/18)). With zones `a`, `a-to`, `b` and `to-b`, the pairs `a-to → b` and `a → to-b` shared the sub-chain `forward-at-filter__a-to-to-b` behind one jump, so one pair's rules matched the other pair's traffic. The check covers every zone pair, so zones `lan`, `wan` and `lan-to-wan` are rejected even when no entry uses `lan → wan`; rename one of the zones the error names.
+- **Breaking:** separate the zones in a zone pair's sub-chain name with an uppercase `-TO-`, for example `forward-at-filter__lan-TO-wan` ([#18](https://github.com/petohorvath/nixos-nftzones/issues/18)). With the lowercase `-to-`, zones `a`, `a-to`, `b` and `to-b` made the pairs `a-to → b` and `a → to-b` share the sub-chain `forward-at-filter__a-to-to-b` behind one jump, so one pair's rules matched the other pair's traffic. Single-zone sub-chains keep their names.
 
 ### Migration
 
 Replace `inputs.nftzones.lib.${pkgs.system}` with `inputs.nftzones.lib`, for example `inherit (inputs.nftzones.lib.snippets) accept;`.
 
 Remove `follows` or overrides for the `nftzones` inputs `nixpkgs-unstable` and `git-hooks`. Keep `nftzones.inputs.nixpkgs.follows`; the `nftypes` input name is unchanged.
+
+Update anything that names a zone pair's sub-chain, such as `nft list chain` commands, counters, or monitoring, from `<base>__<from>-to-<to>` to `<base>__<from>-TO-<to>`.
 
 Replace `nix build .#checks.<system>.vm.entries.<name>` with `nix build .#checks.<system>.vm-<name>`. Replace `.#checks.<system>.<tier>-unstable` with the matching check under a native override:
 

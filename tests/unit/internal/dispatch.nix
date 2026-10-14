@@ -65,7 +65,7 @@ in
     expected = {
       hook = "input";
       priority = "filter";
-      subChainNames = [ "input-at-filter__wan-to-local" ];
+      subChainNames = [ "input-at-filter__wan-TO-local" ];
     };
   };
 
@@ -94,7 +94,7 @@ in
     expected = {
       hook = "output";
       priority = "filter";
-      subChainNames = [ "output-at-filter__local-to-wan" ];
+      subChainNames = [ "output-at-filter__local-TO-wan" ];
     };
   };
 
@@ -128,7 +128,7 @@ in
     expected = {
       hook = "forward";
       priority = "filter";
-      subChainNames = [ "forward-at-filter__lan-to-wan" ];
+      subChainNames = [ "forward-at-filter__lan-TO-wan" ];
     };
   };
 
@@ -162,7 +162,7 @@ in
     expected = {
       hook = "postrouting";
       priority = "srcnat";
-      subChainNames = [ "postrouting-at-srcnat__lan-to-wan" ];
+      subChainNames = [ "postrouting-at-srcnat__lan-TO-wan" ];
     };
   };
 
@@ -278,7 +278,7 @@ in
     expected = {
       hook = "prerouting";
       priority = "raw";
-      subChainNames = [ "prerouting-at-raw__wan-to-local" ];
+      subChainNames = [ "prerouting-at-raw__wan-TO-local" ];
     };
   };
 
@@ -323,7 +323,7 @@ in
       };
     expected = {
       bucketKeys = [ "input-at-filter" ];
-      subNames = [ "input-at-filter__wan-to-local" ];
+      subNames = [ "input-at-filter__wan-TO-local" ];
     };
   };
 
@@ -350,7 +350,7 @@ in
               rule = [ ];
               priority = "first";
             };
-          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-to-wan";
+          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       {
         preChildNames = cellNames subChain.preChildCells;
@@ -385,7 +385,7 @@ in
               rule = [ ];
               priority = "last";
             };
-          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-to-wan";
+          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       {
         preChildNames = cellNames subChain.preChildCells;
@@ -420,7 +420,7 @@ in
               to = [ "wan" ];
               rule = [ ];
             };
-          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-to-wan";
+          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       {
         preChildNames = cellNames subChain.preChildCells;
@@ -469,7 +469,7 @@ in
               priority = 200;
             };
           };
-        }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-to-wan".postChildCells;
+        }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan".postChildCells;
     # Sorted by priority asc, name asc within priority.
     expected = [
       "high"
@@ -503,7 +503,7 @@ in
             to = [ "wan" ];
             verdict = "drop";
           };
-        }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-to-wan".postChildCells;
+        }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan".postChildCells;
     # Filter first (has priority); policy last (tail rule).
     expected = [
       "allow-https"
@@ -545,16 +545,16 @@ in
         snatChainSubs = lib.attrNames ctx.chainBuckets."postrouting-at-srcnat".subChains;
         filterCellName =
           (builtins.head
-            ctx.chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-to-wan".postChildCells
+            ctx.chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan".postChildCells
           ).name;
         snatCellName =
           (builtins.head
-            ctx.chainBuckets."postrouting-at-srcnat".subChains."postrouting-at-srcnat__lan-to-wan".postChildCells
+            ctx.chainBuckets."postrouting-at-srcnat".subChains."postrouting-at-srcnat__lan-TO-wan".postChildCells
           ).name;
       };
     expected = {
-      filterChainSubs = [ "forward-at-filter__lan-to-wan" ];
-      snatChainSubs = [ "postrouting-at-srcnat__lan-to-wan" ];
+      filterChainSubs = [ "forward-at-filter__lan-TO-wan" ];
+      snatChainSubs = [ "postrouting-at-srcnat__lan-TO-wan" ];
       filterCellName = "web";
       snatCellName = "lan-out";
     };
@@ -593,7 +593,7 @@ in
                 };
               };
             };
-          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-to-wan";
+          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       lib.sort (a: b: a < b) (cellNames subChain.postChildCells);
     expected = [
@@ -635,7 +635,7 @@ in
                 priority = "last";
               };
             };
-          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-to-wan";
+          }).chainBuckets."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
       {
         preChildNames = cellNames subChain.preChildCells;
@@ -680,13 +680,13 @@ in
       in
       {
         keys = lib.sort (a: b: a < b) (lib.attrNames subChains);
-        guestCellName = (builtins.head subChains."forward-at-filter__guest-to-wan".postChildCells).name;
-        lanCellName = (builtins.head subChains."forward-at-filter__lan-to-wan".postChildCells).name;
+        guestCellName = (builtins.head subChains."forward-at-filter__guest-TO-wan".postChildCells).name;
+        lanCellName = (builtins.head subChains."forward-at-filter__lan-TO-wan".postChildCells).name;
       };
     expected = {
       keys = [
-        "forward-at-filter__guest-to-wan"
-        "forward-at-filter__lan-to-wan"
+        "forward-at-filter__guest-TO-wan"
+        "forward-at-filter__lan-TO-wan"
       ];
       guestCellName = "deny-out";
       lanCellName = "deny-out";

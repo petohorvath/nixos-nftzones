@@ -35,13 +35,13 @@ in
   assertions = compiled: [
     {
       description = "filter and policy share the same lan-to-wan sub-chain (2 rules total)";
-      expr = builtins.length compiled.tables.policy-default.chains."forward-at-filter__lan-to-wan".rules;
+      expr = builtins.length compiled.tables.policy-default.chains."forward-at-filter__lan-TO-wan".rules;
       expected = 2;
     }
     {
       description = "filter rule is first (preDispatch-priority precedes policy)";
       expr =
-        builtins.elemAt compiled.tables.policy-default.chains."forward-at-filter__lan-to-wan".rules
+        builtins.elemAt compiled.tables.policy-default.chains."forward-at-filter__lan-TO-wan".rules
           0;
       expected = [
         (eq tcp.dport 443)
@@ -51,7 +51,7 @@ in
     {
       description = "policy is the tail rule (last entry — sort contract)";
       expr =
-        builtins.elemAt compiled.tables.policy-default.chains."forward-at-filter__lan-to-wan".rules
+        builtins.elemAt compiled.tables.policy-default.chains."forward-at-filter__lan-TO-wan".rules
           1;
       expected = [ drop ];
     }

@@ -316,7 +316,7 @@ in
       );
     expected = [
       "forward-at-filter"
-      "forward-at-filter__lan-to-wan"
+      "forward-at-filter__lan-TO-wan"
     ];
   };
 }

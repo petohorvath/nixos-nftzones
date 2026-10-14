@@ -40,7 +40,6 @@
         ↓ checkNatBodies                ctx.errors   (appends)
         ↓ checkPolicyUniqueness         ctx.errors   (appends)
         ↓ checkSetNameCollisions        ctx.errors   (appends)
-        ↓ checkSubChainNameCollisions   ctx.errors   (appends)
         ↓ checkInterfaceOverlap         ctx.errors   (appends)
         ↓ checkCidrOverlap              ctx.errors   (appends)
         ↓ checkCrossAxisOverlap         ctx.warnings (appends)
@@ -77,7 +76,6 @@
 let
   inherit (inputs) lib libnet nftypes;
   inherit (internal.node) toZone;
-  inherit (internal.placement) subChainNameOf;
   inherit (internal.zone) directionToSide resolveMembership;
 
   /*
@@ -1099,73 +1097,6 @@ let
       };
     };
 
-  /*
-    Reject zone names that make two sub-chain names equal, such as
-    the pairs `a-to → b` and `a → to-b` (both `…__a-to-to-b`).
-    Phase 3 groups cells by sub-chain name, so the two pairs would
-    share one sub-chain and one base-chain jump. Builds the name
-    of every single zone and every ordered pair, used or not
-    (ADR-0011). Names in different base chains never collide, so
-    the names are built with an empty base chain name, leaving the
-    `__<key>` suffix every base chain shares.
-
-    Owners are compared by zones, not directions: a zone's from-only
-    and to-only names, and a zone listed twice in `allZoneNames` (a
-    local-zone shadow), belong to the same owner.
-  */
-  checkSubChainNameCollisions =
-    { table, ctx }:
-    let
-      inherit (ctx) allZoneNames;
-
-      zoneSubChains = lib.concatMap (zone: [
-        {
-          directions.from = zone;
-          owner = [ zone ];
-        }
-        {
-          directions.to = zone;
-          owner = [ zone ];
-        }
-      ]) allZoneNames;
-      pairSubChains = lib.concatMap (
-        from:
-        map (to: {
-          directions = { inherit from to; };
-          owner = [
-            from
-            to
-          ];
-        }) allZoneNames
-      ) allZoneNames;
-
-      describeOwner =
-        owner:
-        if builtins.length owner == 1 then
-          "zone '${builtins.head owner}'"
-        else
-          "zone pair (${builtins.elemAt owner 0} → ${builtins.elemAt owner 1})";
-
-      collisions = lib.pipe (zoneSubChains ++ pairSubChains) [
-        (lib.groupBy (subChain: subChainNameOf "" subChain.directions))
-        (lib.mapAttrs (_: subChains: lib.unique (map (subChain: subChain.owner) subChains)))
-        (lib.filterAttrs (_: owners: builtins.length owners > 1))
-      ];
-
-      newErrors = lib.mapAttrsToList (
-        nameSuffix: owners:
-        lib.nameValuePair "subChainNameCollision" "${
-          lib.concatMapStringsSep " and " describeOwner owners
-        } share sub-chain names ending in '${nameSuffix}'; rename one of the zones"
-      ) collisions;
-    in
-    {
-      inherit table;
-      ctx = ctx // {
-        errors = ctx.errors ++ newErrors;
-      };
-    };
-
   checkInterfaceOverlap =
     { table, ctx }:
     let
@@ -1459,7 +1390,6 @@ let
         checkNatBodies
         checkPolicyUniqueness
         checkSetNameCollisions
-        checkSubChainNameCollisions
         checkInterfaceOverlap
         checkCidrOverlap
         checkCrossAxisOverlap
@@ -1500,7 +1430,6 @@ in
     checkRpfilterOverride
     checkSetNameCollisions
     checkSettings
-    checkSubChainNameCollisions
     checkWildcardZoneMix
     checkZoneMatchable
     checkZoneRefs

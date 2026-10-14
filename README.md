@@ -94,12 +94,12 @@ add chain inet fw forward-at-filter {
   type filter hook forward priority 0;
   policy drop;
 }
-add chain inet fw forward-at-filter__lan-to-wan
+add chain inet fw forward-at-filter__lan-TO-wan
 add chain inet fw input-at-filter {
   type filter hook input priority 0;
   policy drop;
 }
-add chain inet fw input-at-filter__lan-to-local
+add chain inet fw input-at-filter__lan-TO-local
 add set inet fw lan_iifs {
   type ifname;
   elements = { eth1 };
@@ -110,13 +110,13 @@ add set inet fw wan_iifs {
 }
 add rule inet fw forward-at-filter ct state { established, related } accept
 add rule inet fw forward-at-filter ct state invalid drop
-add rule inet fw forward-at-filter meta iifname @lan_iifs meta oifname @wan_iifs jump forward-at-filter__lan-to-wan
-add rule inet fw forward-at-filter__lan-to-wan accept
+add rule inet fw forward-at-filter meta iifname @lan_iifs meta oifname @wan_iifs jump forward-at-filter__lan-TO-wan
+add rule inet fw forward-at-filter__lan-TO-wan accept
 add rule inet fw input-at-filter ct state { established, related } accept
 add rule inet fw input-at-filter ct state invalid drop
 add rule inet fw input-at-filter meta iif lo accept
-add rule inet fw input-at-filter meta iifname @lan_iifs jump input-at-filter__lan-to-local
-add rule inet fw input-at-filter__lan-to-local tcp dport 22 accept
+add rule inet fw input-at-filter meta iifname @lan_iifs jump input-at-filter__lan-TO-local
+add rule inet fw input-at-filter__lan-TO-local tcp dport 22 accept
 ```
 
 The connection-tracking, loopback, and `policy drop` lines come from the table's default `settings`. Load the text with `nft -f`, or render with `nftypes.lib.toJson` and load the JSON with `nft -j -f`.

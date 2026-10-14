@@ -46,7 +46,7 @@ in
     }
     {
       description = "filter sub-chain to the override zone is emitted";
-      expr = compiled.tables.match-override.chains ? "forward-at-filter__lan-to-marked";
+      expr = compiled.tables.match-override.chains ? "forward-at-filter__lan-TO-marked";
       expected = true;
     }
   ];
