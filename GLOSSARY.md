@@ -89,7 +89,8 @@ child-dispatch jumps (pre-child) or after them (post-child).
 A chain attached to a netfilter hook, named `<hook>-at-<priority>`.
 
 **Sub-chain**:
-A chain reachable only by jump, holding the cells of one zone pair.
+A chain reachable only by jump, holding the cells of one zone pair, or of
+one zone for entries with a single direction.
 
 **Chain placement**:
 The `(hook, chain priority)` pair that pins an entry to a base chain.
