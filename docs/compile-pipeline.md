@@ -44,12 +44,12 @@ Same concept, different framings.
 - `chainAttrsForEntry group localZone entry` returns validation candidates as a list of chain attrs. The entry's directions must already be wildcard-expanded and deduplicated. It inspects the direction lists without materializing their Cartesian product.
 - `chainAttrsForCell group localZone cell` returns one concrete cell's chain attrs, with scalar directions. An override wins; otherwise filters and policies prefer input when `to == localZone`, then output when `from == localZone`, then forward. Other groups use their defaults.
 
-Entry analysis preserves conservative validation: fixed group placements and overrides are checked even for empty direction lists, and a local-zone reference contributes its hook independently of the opposite direction. A local-to-local entry therefore checks both input and output, while its cell dispatches to input. `normalize.checkChainPlacement` adds entry names and aggregates compatibility errors; `dispatch` groups cells by their selected attrs. Priority values keep their original integer or symbol form until `baseChainNameOf` canonicalizes the name.
+Entry analysis preserves conservative validation: fixed group placements and overrides are checked even for empty direction lists, and a local-zone reference contributes its hook independently of the opposite direction. A local-to-local entry therefore checks both input and output, while its cell dispatches to input. Phase 1 reports each incompatible candidate as an `invalidChainPlacement` error on its entry; `dispatch` groups cells by their selected attrs. Priority values keep their original integer or symbol form until `baseChainNameOf` canonicalizes the name.
 
-The Group / Entry / Direction trio shows up directly in `internal/normalize.nix`'s helpers:
+The Group / Entry / Direction trio shows up directly in `internal/normalize.nix`'s private helpers:
 
 ```
-expandWildcardZones          # table -> table
+expandWildcardZones          # fills ctx.expandedGroups
   └─ expandGroup             # one group's collection
        └─ expandEntry        # one entry, multiple directions
             └─ expandDirection  # one direction's zone list
@@ -86,7 +86,24 @@ Each phase has clear input and output shapes. Testable phase-by-phase.
 
 ## Phase 1: normalize
 
-Three sub-steps, in order: lower nodes → resolve wildcards → validate.
+Phase 1 lowers nodes, resolves zone membership, wildcards and priorities, and validates the table. `internal.normalize` exports two functions over an evaluated `nftzones.types.table`, and both share one private pipeline run:
+
+- `diagnose table` returns every Diagnostic as data, as `{ errors; warnings; }`. It never throws or warns.
+- `normalizeTable table` is the throwing adapter the compile orchestrator calls. With errors, it throws once with all of them. With only warnings, it emits each through `lib.warn`. Otherwise it returns `{ table; ctx; }` for Phase 2.
+
+Every compute step and validator is private, so steps can be reordered, merged or split without touching a test. Unit and integration tests assert the `{ tag; path; }` projection of `diagnose`'s lists ([ADR-0009](adr/0009-cross-zone-validation-in-phase-1.md)).
+
+### Output for later phases
+
+`normalizeTable` returns the input `table` untouched, and a `ctx` with exactly the three keys later phases read:
+
+| Key                  | Holds                                                                                | Read by        |
+| -------------------- | ------------------------------------------------------------------------------------ | -------------- |
+| `zoneMembership`     | The zone interpretation from `internal.zone.resolveMembership`                       | Phases 3 and 4 |
+| `expandedGroups`     | Each entry's wildcard-expanded `from` / `to` lists, as `<group>.<entry>.<direction>` | Phase 2        |
+| `resolvedPriorities` | Each entry's priority as an integer, as `<group>.<entry>`                            | Phase 2        |
+
+The merged zone namespace, the in-scope zone names, the collected zone references and the raw diagnostic lists are scratch values. They stay inside the pipeline run.
 
 ### 1.1 Node lowering
 
@@ -99,15 +116,11 @@ Three sub-steps, in order: lower nodes → resolve wildcards → validate.
 { parent = "dmz"; interfaces = [ ]; cidrs = [ "10.0.0.5/32" ]; }
 ```
 
-Lowered zones merge into `table.zones`; `table.nodes` is cleared. After this step the rest of the pipeline operates on a single zone namespace.
+Lowered nodes merge with the declared zones into one zone namespace, which the rest of Phase 1 reads. `table.zones` and `table.nodes` are left as declared.
 
 ### Zone membership
 
-After node lowering, `computeZoneMembership` calls
-`internal.zone.resolveMembership { zones = ctx.mergedZones; localZone; }`
-once. The resulting `ctx.zoneMembership` is the shared interface used by
-validation and emission. Callers supply zone names, sides or dispatch
-contexts; they never pair declarations with separately fabricated sets.
+After node lowering, Phase 1 calls `internal.zone.resolveMembership { zones; localZone; }` once over the merged namespace. The resulting `ctx.zoneMembership` is the shared interface used by validation and emission. Callers supply zone names, sides or dispatch contexts; they never pair declarations with separately fabricated sets.
 
 - `sets` and `setOwners` describe generated transitive sets and their provenance.
 - `childrenOf`, `rootZoneNames`, `ancestorsOf` and `related` answer hierarchy questions.
@@ -116,42 +129,79 @@ contexts; they never pair declarations with separately fabricated sets.
 - `directionVariants` produces dispatch clauses with hook visibility and own/descendant composition handled internally.
 - `crossAxisPairs` identifies unrelated, anchored zones split across effective from-side axes. It retains the warning's accepted to-side and sibling residuals, ignores overrides, and excludes unanchored grouping zones.
 
-Own, descendant and ancestor meanings stay distinct: an empty grouping
-zone can carry a synthetic dispatcher and transitive sets while remaining
-invalid as a direct rule reference. Ancestor gates affect the from-side
-path; ancestor content is never copied down into a child's sets.
+Own, descendant and ancestor meanings stay distinct: an empty grouping zone can carry a synthetic dispatcher and transitive sets while remaining invalid as a direct rule reference. Ancestor gates affect the from-side path; ancestor content is never copied down into a child's sets.
 
 ### 1.2 Wildcard resolution
 
-Phase 1 substitutes the wildcard zone (default `"all"`) in every entry's `from` / `to` list with the full set of in-scope zones (declared zones plus `settings.localZone`). The substitution + dedup is inlined inside `internal.normalize.expandWildcardZones` since it has no other consumer:
+Phase 1 substitutes the wildcard zone (default `"all"`) in every entry's `from` / `to` list and deduplicates the result. A from-side wildcard expands to the root zones only, because descendants receive traffic through their parent's sub-chain ([ADR-0007](adr/0007-from-wildcard-expands-to-roots.md)). A to-side wildcard expands to every in-scope zone: declared zones, lowered nodes and `settings.localZone`.
 
 ```
 wildcard = "all"
 allZones = [ "lan" "wan" "dmz" "local" ]
-[ "lan" "all" "guest" ]  →  [ "lan" "wan" "dmz" "local" "guest" ]
+to = [ "lan" "all" "guest" ]  →  [ "lan" "wan" "dmz" "local" "guest" ]
 ```
 
-`allZones` is computed once per table after node lowering, so nodes-as-zones are included.
+The result lands in `ctx.expandedGroups`; `table` keeps the lists as written.
 
 ### 1.3 Validation
 
-Validators run after the compute phases, all in `internal/normalize.nix`. Each appends `lib.nameValuePair "<errorTag>" <message>` records to `ctx.errors` (or warning strings to `ctx.warnings`); the orchestrator aggregates errors and throws a single message listing every one, so users see all problems in one pass.
+Validators run after the compute steps. Each appends Diagnostics to an error or a warning list, and none short-circuits, so a user sees every problem in one pass.
 
-- **`checkParentRefs`** — every non-null `zone.parent` must resolve to a zone in `ctx.mergedZones` and must not equal `settings.localZone`.
-- **`checkParentCycles`** — the parent chain must be acyclic.
-- **`checkNameCollisions`** — node names must not collide with zone names (lowering would silently overwrite).
-- **`checkSettings`** — `settings.localZone` and `settings.wildcardZone` must differ from each other and from any declared zone / node name.
-- **`checkZoneRefs`** — every zone reference (in `from`, `to`, `node.zone`) must resolve to a known zone or `settings.localZone`.
-- **`checkZoneMatchable`** — every direction-bound zone ref (`from` → ingress, `to` → egress) must point at a zone with its own interfaces, CIDRs or active override on the relevant side. Descendant sets do not make an empty grouping zone directly referenceable.
-- **`checkChainOverridePlacement`** — entries with a `chain` override must land at a hook where their `from` / `to` zones are actually matchable (interface fields aren't valid at every hook).
-- **`checkChainPlacement`** — every entry's resolved `(family, chainType, hook)` triple must be one the kernel accepts (via `nftypes.validChainPlacement`); rejects bridge nat, bridge sroute / droute (no `mangle` on bridge), route at non-output hooks, etc.
-- **`checkRpfilterOverride`** — emits a warning (not an error) when `settings.rpfilter = true` but a user chain override already claims `(prerouting, raw)`; the synthesized rpfilter chain is suppressed and the user-authored chain is used as-is.
-- **`checkPolicyUniqueness`** — at most one policy applies per `(from, to)` cell after wildcard expansion.
-- **`checkSetNameCollisions`** — user `objects.sets.<name>` must not collide with auto-generated zone-derived set names (`<zone>_iifs|v4|v6`).
-- **`checkInterfaceOverlap`** — distinct zones must not claim the same interface (ambiguous dispatch); ancestor/descendant pairs are skipped (intentional sharing in a zone hierarchy), and intra-zone duplicates in the `interfaces` list are also flagged.
-- **`checkCidrOverlap`** — distinct zones must not have overlapping CIDR prefixes (ambiguous dispatch); ancestor/descendant pairs are skipped (intentional containment, e.g. a node lowered into its parent zone), and intra-zone overlapping CIDRs are also flagged. Family-aware via `libnet.cidr.overlaps` (v4 vs v6 never overlap).
-- **`checkCrossAxisOverlap`** — warning, not an error: flags pairs of unrelated zones whose effective from-side dispatch axes are strictly split — one interface-only, the other CIDR-only — since both may match the same packet and alphabetical jump order then silently shadows the loser. Effective axes are a zone's own fields plus every strict ancestor's (from-side descendant dispatch rides through ancestor sub-chains), so a CIDR-only node under an interface-bound parent is multi-axis rather than an accidental split; multi-axis zones, ancestor/descendant pairs, and zones with no own axis (empty grouping zones) are not flagged.
-- **`checkObjectRefs`** — every named-object reference in entry rule bodies, zone matchOverride content, and object bodies must resolve to a key in `table.objects.<kind>` (or — for `kind == "sets"` — a zone-derived set name). The walker lives in `internal/refs.nix`.
+A **Diagnostic** is a record `{ tag; path; message; }`:
+
+- `tag` is a camelCase string naming the kind of problem, in `<subject><problem>` form, such as `zoneParentUnknown` or `cidrOverlap`. Give a new validator's tags the same form.
+- `path` is a list of strings naming the one declaration the diagnostic concerns: attribute names, and list indices as strings, such as `[ "filters" "ssh" "from" "0" ]`.
+- `message` is human prose. It never repeats the path.
+
+A diagnostic about several declarations, such as an overlap, a collision or a cycle, carries one path and names the others in its message. The path is the lexically first declaration involved, unless one is clearly the one to edit: a zone/node name collision blames the node, and a parent cycle blames the `parent` of its lexically smallest zone. Diagnostics about a zone lowered from a node use a path under the lowered zone, `zones.<node>`, which the user never wrote.
+
+`diagnose` sorts both lists by path, then tag; the order is part of the interface. Path elements, list indices included, are strings and sort as text, so `extra.10` sorts before `extra.2`. `normalizeTable` renders each diagnostic as `[tag] path.joined.with.dots: message`:
+
+```text
+nftzones.normalize: validation failed:
+  - [invalidZoneRef] filters.f.from.0: references unknown zone 'nowhere' (known: lan, local)
+  - [zoneParentUnknown] zones.lan.parent: references unknown zone 'ghost'
+```
+
+Warnings go through `lib.warn` as `nftzones.normalize: [tag] path: message`.
+
+Checks enforced by the table type fail during module evaluation, before Phase 1 runs, and are not diagnostics.
+
+#### Errors
+
+| Tag                        | Path                                                                                             | Rejects                                                                                                                                                                                        |
+| -------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zoneParentUnknown`        | `zones.<zone>.parent`                                                                            | A `parent` that names no zone or node.                                                                                                                                                         |
+| `zoneParentLocalZone`      | `zones.<zone>.parent`                                                                            | A `parent` equal to `settings.localZone`.                                                                                                                                                      |
+| `zoneParentCycle`          | `zones.<zone>.parent`                                                                            | A cycle in the parent chain.                                                                                                                                                                   |
+| `zoneNameCollision`        | `nodes.<node>`                                                                                   | A node named like a zone; lowering would overwrite the zone.                                                                                                                                   |
+| `nameKeyMismatch`          | `<group>.<key>.name`                                                                             | An explicit `name` that differs from its attribute key, in `zones`, `nodes` or a rule group.                                                                                                   |
+| `settingsConflict`         | `settings.localZone`, or the `zones.<zone>` or `nodes.<node>` that shadows a setting             | `localZone` equal to `wildcardZone`, or a zone or node named like either one.                                                                                                                  |
+| `invalidZoneRef`           | `<group>.<entry>.<direction>.<index>` or `nodes.<node>.zone`                                     | A zone reference that names no zone, node or `settings.localZone`.                                                                                                                             |
+| `zoneNotMatchable`         | `<group>.<entry>.<direction>.<index>`                                                            | A `from` / `to` reference to a zone with no interfaces, CIDRs or active override of its own on that side. Descendant sets do not make an empty grouping zone directly referenceable.           |
+| `chainOverrideUnreachable` | `<group>.<entry>.<direction>`                                                                    | A `chain` override at a hook where a referenced zone has no usable match, because interface fields are unavailable there.                                                                      |
+| `invalidChainPlacement`    | `<group>.<entry>`                                                                                | A `(family, chain type, hook)` triple the kernel refuses (via `nftypes.validChainPlacement`), such as bridge nat, bridge sroute / droute (no `mangle` priority) or route at a non-output hook. |
+| `nodeAddressMissing`       | `nodes.<node>`                                                                                   | A node with neither `address.ipv4` nor `address.ipv6`.                                                                                                                                         |
+| `natBodyMissingAddr`       | `snats.<entry>` or `dnats.<entry>`                                                               | A `snat` / `dnat` body without `addr`.                                                                                                                                                         |
+| `policyConflict`           | `policies.<entry>`                                                                               | Two policies for the same `(from, to)` cell after wildcard expansion.                                                                                                                          |
+| `setNameCollision`         | `objects.sets.<name>`                                                                            | A user set named like a zone-derived set (`<zone>_iifs`, `_v4`, `_v6`).                                                                                                                        |
+| `interfaceOverlap`         | `zones.<zone>.interfaces`                                                                        | An interface claimed twice by one zone, or by two zones without an ancestor/descendant relationship.                                                                                           |
+| `cidrOverlap`              | `zones.<zone>.cidrs`                                                                             | Overlapping CIDRs in one zone, or in two zones without an ancestor/descendant relationship. Family-aware via `libnet.cidr.overlaps`.                                                           |
+| `objectRefUnknown`         | `<group>.<entry>.rule`, `zones.<zone>.matchOverride.<side>.<section>` or `objects.<kind>.<name>` | A named-object reference that resolves to no `table.objects.<kind>` key, or for sets, to no zone-derived set. The walker lives in `internal/refs.nix`.                                         |
+
+Overlap checks skip ancestor/descendant pairs, because that sharing is intentional in a zone hierarchy.
+
+#### Warnings
+
+| Tag                          | Path                                              | Flags                                                                                                                                                                                                                                               |
+| ---------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rpfilterChainSuppressed`    | `settings.rpfilter`                               | `settings.rpfilter = true` while a user chain override claims `(prerouting, raw)`; the synthesized rpfilter chain is suppressed.                                                                                                                    |
+| `filterAtPostrouting`        | `filters.<entry>.chain`                           | A filter at the postrouting hook, where `iifname` may not reflect the `from` zone.                                                                                                                                                                  |
+| `dnatAtOutput`               | `dnats.<entry>.chain`                             | A dnat at the output hook, which rewrites locally-originated traffic.                                                                                                                                                                               |
+| `snatOffSrcnat`              | `snats.<entry>.chain`                             | A snat at a priority other than `srcnat`, where conntrack misses the translation.                                                                                                                                                                   |
+| `extraSectionInterfaceMatch` | `zones.<zone>.matchOverride.<side>.extra.<index>` | An interface `meta` match in the hook-agnostic `extra` section; it belongs in `interfaces`.                                                                                                                                                         |
+| `wildcardZoneMixed`          | `<group>.<entry>.<direction>`                     | A `from` / `to` list that mixes the wildcard zone with explicit zones.                                                                                                                                                                              |
+| `crossAxisOverlap`           | `zones.<zone>`                                    | Two unrelated zones whose effective from-side axes are strictly split, one interface-only and the other CIDR-only, so alphabetical jump order may shadow one. Multi-axis zones, ancestor/descendant pairs and empty grouping zones are not flagged. |
 
 ## Phase 2: expand
 
@@ -293,7 +343,7 @@ In each base chain, emit one or more jumps per sub-chain in its dispatch tree's 
 
 A section "contributes" when it's non-null AND non-empty. Empty list (`[ ]`) and `null` are equivalent — both mean "no constraint here" and let the auto path take over.
 
-The `interfaces` section is **hook-gated**: dropped when the relevant `iifname` / `oifname` field isn't valid at the hook (defense; `checkChainOverridePlacement` should have caught it). The other sections are hook-agnostic.
+The `interfaces` section is **hook-gated**: dropped when the relevant `iifname` / `oifname` field isn't valid at the hook (defense; Phase 1's `chainOverrideUnreachable` check should have caught it). The other sections are hook-agnostic.
 
 **Own-ness.** The auto-path sets are transitive unions (§4.1), so each section is additionally classified as **own** (anchored by the zone's raw `interfaces` / `cidrs` as classified privately by the zone module, or by an active override — overrides are own by definition) vs **inherited** (present in the union set only through descendants). Only own sections AND together. An inherited section ANDed into the gate would narrow the ancestor's dispatch to just the descendant's traffic — e.g. an address-only node under an interface-only zone would turn the zone's `iifname @<zone>_iifs` gate into `iifname @<zone>_iifs ip saddr @<zone>_v4`, cutting off every other host in the zone. Inherited sections widen the gate instead: inherited v4/v6 each become one extra OR variant behind the own prefix (unless the own gate is interface/extra-only, which is family-agnostic and already covers the subtree), and inherited interfaces become one standalone family-agnostic variant. Pinned by the `parent-mixed-sections` / `parent-mixed-sections-mirror` integration scenarios.
 
@@ -313,7 +363,7 @@ result    = if ownFams ≠ [ ] then ownFams ++ inhFams ++ inhIfs
             else inhFams ++ inhIfs
 ```
 
-The reachable cases (auto-path only — section-resolution simplified to "no override anywhere"; "inh" = inherited, i.e. present in the union set only through descendants; the empty-zone case below is unreachable in practice because `checkZoneMatchable` rejects it in Phase 1):
+The reachable cases (auto-path only — section-resolution simplified to "no override anywhere"; "inh" = inherited, i.e. present in the union set only through descendants; the empty-zone case below is unreachable in practice because Phase 1 rejects it with `zoneNotMatchable`):
 
 | Zone has                      | Variants emitted (per direction)                                          |
 | ----------------------------- | ------------------------------------------------------------------------- |
@@ -328,7 +378,7 @@ The reachable cases (auto-path only — section-resolution simplified to "no ove
 | own v4 + inh v6               | 2 variants — v4, v6 (no cross-AND)                                        |
 | own v4 + inh iface            | 2 variants — v4; standalone iface (family-agnostic)                       |
 | all inherited (grouping zone) | 1 standalone variant per present section                                  |
-| empty _(unreachable)_         | `[ ]` — defense only; `checkZoneMatchable` rejects empty zones at Phase 1 |
+| empty _(unreachable)_         | `[ ]` — defense only; Phase 1 rejects empty zones with `zoneNotMatchable` |
 
 Where `<ifField>` is `iifname` (from-direction) or `oifname` (to-direction), and `<addrField>` is `saddr` / `daddr` likewise. With overrides in play, every cell can be replaced by user content; `extra` adds an extra family-agnostic prefix to every variant (e.g. `meta mark @<zone>_marks` for fwmark-defined zone membership).
 
@@ -350,14 +400,15 @@ fromVariant ++ toVariant ++ [ (jump subChainName) ]
 | `output`      | ✗                | ✓                |
 | `postrouting` | ✓                | ✓                |
 
-When the hook makes the only available field unavailable AND the zone has no addr sets, the direction produces 0 variants. This case shouldn't reach Phase 4 because `checkChainOverridePlacement` (Phase 1) flags it; if it does (defense), the empty cartesian product drops the entire jump for that sub-chain — sub-chain becomes unreachable rather than over-permissive.
+When the hook makes the only available field unavailable AND the zone has no addr sets, the direction produces 0 variants. This case shouldn't reach Phase 4 because Phase 1 flags it with `chainOverrideUnreachable`; if it does (defense), the empty cartesian product drops the entire jump for that sub-chain — sub-chain becomes unreachable rather than over-permissive.
 
-**localZone references.** Phase 4 emits no match clauses for the `localZone` direction (it's a sentinel — never has a `mergedZones` entry, never has zone sets). The chain dispatch already used `localZone` for chain selection; once dispatched, the sentinel direction adds no further constraint. Single-direction sub-chains (dnat / sroute have no `to`; droute has no `from`) get the same wildcard treatment for the missing direction.
+**localZone references.** Phase 4 emits no match clauses for the `localZone` direction (it's a sentinel — never a declared zone, never has zone sets). The chain dispatch already used `localZone` for chain selection; once dispatched, the sentinel direction adds no further constraint. Single-direction sub-chains (dnat / sroute have no `to`; droute has no `from`) get the same wildcard treatment for the missing direction.
 
 Helper signatures:
 
 ```nix
-zoneMembership = internal.zone.resolveMembership { zones = mergedZones; localZone; };
+zoneMembership = internal.zone.resolveMembership { zones; localZone; };
+  # zones: declared zones plus lowered nodes
 zoneMembership.directionVariants { hook; direction; zoneName; }
   # -> list of DSL statement lists; null/localZone -> [ [ ] ]
 
@@ -406,32 +457,19 @@ lib/
     refs.nix                 — extractRefs (recursive walker that
                                extracts named-object refs from any
                                rule body or expression; consumed by
-                               Phase 1's checkObjectRefs).
+                               Phase 1's objectRefUnknown check).
     placement.nix            — chainAttrsForEntry + chainAttrsForCell
                                (override / local-zone / default
                                selection for Phase 1 validation and
                                Phase 3 dispatch); baseChainNameOf +
-                               subChainNameOf (shared chain naming);
-                               walkParents + hooksWithIifname.
+                               subChainNameOf (shared chain naming).
 
     # Layer 1 — phase orchestrators (consume the leaves above)
-    normalize.nix            — Phase 1 orchestrator: pipes compute
-                               phases (convertNodesToZones,
-                               computeZoneMembership,
-                               collectAllZoneNames,
-                               expandWildcardZones, resolvePriorities,
-                               collectZoneRefs) followed by
-                               validators (checkParentRefs,
-                               checkParentCycles, checkNameCollisions,
-                               checkSettings, checkZoneRefs,
-                               checkZoneMatchable,
-                               checkChainOverridePlacement,
-                               checkChainPlacement,
-                               checkRpfilterOverride,
-                               checkPolicyUniqueness,
-                               checkSetNameCollisions,
-                               checkInterfaceOverlap, checkCidrOverlap,
-                               checkObjectRefs).
+    normalize.nix            — Phase 1: exports diagnose (every
+                               Diagnostic as data) and
+                               normalizeTable (throwing adapter for
+                               the compile pipeline); compute steps
+                               and validators are private.
     expand.nix               — Phase 2 orchestrator: expandTable
                                (cartesian product per entry into cells).
     dispatch.nix             — Phase 3 orchestrator: dispatchAndSort
@@ -490,28 +528,12 @@ compile = table:
   ];
 
 # Phase 1 — internal/normalize.nix
-normalizeTable = lib.pipe (mkInitialState table) [
-  convertNodesToZones      # ctx.mergedZones
-  computeZoneMembership    # ctx.zoneMembership (consumed in P1 + P4)
-  collectAllZoneNames      # ctx.allZoneNames
-  expandWildcardZones      # ctx.expandedGroups
-  resolvePriorities        # ctx.resolvedPriorities
-  collectZoneRefs          # ctx.zoneRefs
-  checkParentRefs          # ─┐
-  checkParentCycles        #  │
-  checkNameCollisions      #  │
-  checkSettings            #  │
-  checkZoneRefs            #  │
-  checkZoneMatchable       #  │ all append to ctx.errors;
-  checkChainOverridePlacement  # orchestrator throws if non-empty.
-  checkChainPlacement      #  │ checkRpfilterOverride is the one
-  checkRpfilterOverride    #  │ exception — appends to ctx.warnings
-  checkPolicyUniqueness    #  │ instead, surfaced via lib.warn.
-  checkSetNameCollisions   #  │
-  checkInterfaceOverlap    #  │
-  checkCidrOverlap         #  │
-  checkObjectRefs          # ─┘
-];
+normalizeTable = table:      # throws on errors, lib.warn per warning
+  { inherit table;
+    ctx = { zoneMembership; expandedGroups; resolvedPriorities; };
+  };
+diagnose = table:            # same pipeline run, as data
+  { errors = [ { tag; path; message; } … ]; warnings = [ … ]; };
 
 # Phase 3 — internal/dispatch.nix
 dispatchAndSort = lib.pipe state [

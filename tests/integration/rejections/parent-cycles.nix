@@ -1,10 +1,21 @@
 /*
-  Rejection scenario for `checkParentCycles` — three-zone cycle
+  Rejection scenario for `zoneParentCycle` — three-zone cycle
   a → b → c → a in the parent chain. Without rejection, ancestor
   walks would loop indefinitely in downstream phases.
 */
 _: {
-  description = "checkParentCycles: three-zone parent cycle";
+  description = "zoneParentCycle: three-zone parent cycle";
+
+  errors = [
+    {
+      tag = "zoneParentCycle";
+      path = [
+        "zones"
+        "a"
+        "parent"
+      ];
+    }
+  ];
 
   body = {
     zones = {

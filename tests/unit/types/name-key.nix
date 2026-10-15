@@ -14,7 +14,7 @@
 
     2. Invariant preserved: for the keyed object types, an explicit
        `name` that differs from the enclosing key is rejected by
-       `internal.normalize.checkNameKeyMismatch`. The table's name is
+       Phase 1's `nameKeyMismatch` diagnostic. The table's name is
        instead a projection of its real attr key, derived at the
        module / `mkTable` boundary — a divergent `name` is overridden
        by the key, not rejected, so a facade can forward a whole
@@ -167,7 +167,7 @@ in
 
   # ===== invariant: keyed object types reject explicit name != key =====
 
-  # Keyed object types — caught by `checkNameKeyMismatch` in Phase 1.
+  # Keyed object types — caught by Phase 1's `nameKeyMismatch` check.
   testNameKeyMismatchZoneThrows = {
     expr = evalFails (
       nftzones.mkTable "fw" {

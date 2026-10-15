@@ -302,7 +302,7 @@ in
 
   testMembershipSetsCidrDedup = {
     # Parent and child both write `10.0.0.0/24` (silly but legal —
-    # `checkCidrOverlap` skips ancestor/descendant pairs).
+    # the `cidrOverlap` check skips ancestor/descendant pairs).
     # `libnet.cidr.summarize` collapses the duplicate at compile
     # time so the rendered set carries one element, not two.
     expr =
@@ -400,13 +400,12 @@ in
   # ===== membership sets — cycle in zone parents doesn't stack-overflow =====
 
   testMembershipSetsCycleGuard = {
-    # `computeZoneMembership` runs before `checkParentCycles` in the
-    # validator pipeline, so cyclic parent declarations would otherwise
-    # exhaust Nix's max-call-depth before the dedicated cycle
-    # check reports the error. The `descendantsOf` walker's
-    # `visited` guard short-circuits the revisit; the eventual
-    # `checkParentCycles` then reports a clean error. This test
-    # pins the defense.
+    # Phase 1 resolves membership before its validators run, so
+    # cyclic parent declarations would otherwise exhaust Nix's
+    # max-call-depth before the cycle check reports the error. The
+    # `descendantsOf` walker's `visited` guard short-circuits the
+    # revisit; Phase 1 then reports a clean `zoneParentCycle` error.
+    # This test pins the defense.
     expr =
       let
         sets = setsFor "a" {

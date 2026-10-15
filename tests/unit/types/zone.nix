@@ -62,7 +62,7 @@ in
   # `name` is no longer `readOnly`, so the type accepts an explicit
   # value (this is what keeps evaluated zones copy-safe). The
   # `name == key` invariant is enforced at compile time by
-  # `internal.normalize.checkNameKeyMismatch`, exercised in
+  # Phase 1's `nameKeyMismatch` diagnostic, exercised in
   # `tests/unit/types/name-key.nix`.
   testZoneNameAcceptsExplicitKey = {
     expr =

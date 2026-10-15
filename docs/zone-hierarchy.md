@@ -73,14 +73,14 @@ Before transitive sets, a wildcard `from = [ "all" ]` policy combined with `chai
 
 ### Validation
 
-Two Phase 1 validators (`internal.normalize.checkParentRefs` and
-`checkParentCycles`) enforce:
+Phase 1 enforces these rules, reporting each violation as an error
+Diagnostic at `zones.<zone>.parent`:
 
-- Every non-null `zone.parent` resolves to a zone in
-  `mergedZones` (declared zones + lowered nodes).
+- Every non-null `zone.parent` resolves to a declared zone or a
+  lowered node (`zoneParentUnknown`).
 - `zone.parent != localZone` — the localZone sentinel cannot be a
-  parent.
-- No cycles in the parent chain.
+  parent (`zoneParentLocalZone`).
+- No cycles in the parent chain (`zoneParentCycle`).
 
 ## Worked example
 
@@ -156,11 +156,11 @@ Per-packet:
 ## Implementation references
 
 - `lib/types/zone.nix` — `parent` option declaration.
-- `lib/internal/normalize.nix`:
-  - `checkParentRefs` — resolution validator.
-  - `checkParentCycles` — cycle validator.
-  - `computeZoneMembership` — resolves the shared zone interpretation.
-  - `expandWildcardZones` — from-side wildcard expands to roots.
+- `lib/internal/normalize.nix` (Phase 1; its steps are private and
+  tested through `diagnose` and `normalizeTable`):
+  - parent resolution and cycle validators.
+  - zone membership resolution, through `resolveMembership`.
+  - wildcard expansion: the from-side wildcard expands to roots.
 - `lib/internal/zone.nix`:
   - `resolveMembership` — owns hierarchy, transitive sets, own matchability,
     override resolution, hook visibility and direction variants.

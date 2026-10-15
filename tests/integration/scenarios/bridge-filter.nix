@@ -5,7 +5,7 @@
   name lands in `"forward-at-filter"`, not `"forward-at-(-200)"`)
   and chain-type derivation (`chainTypeFor "bridge" "forward"
   "filter" == "filter"`). Bridge `nat` and `route` chain types
-  are rejected upstream by `checkChainPlacement`, so this
+  are rejected upstream as `invalidChainPlacement`, so this
   scenario stays L2-pure.
 */
 { nftypes, ... }:

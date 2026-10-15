@@ -1,5 +1,5 @@
 /*
-  Rejection scenario for `checkZoneMatchable` — a filter
+  Rejection scenario for `zoneNotMatchable` — a filter
   references a zone that has no matchable content (no
   interfaces, no CIDRs, no matchOverride). The dispatcher would
   emit an empty match set, producing rules that match nothing.
@@ -9,7 +9,19 @@ let
   inherit (nftypes.dsl) accept;
 in
 {
-  description = "checkZoneMatchable: filter.from points to zone with no match content";
+  description = "zoneNotMatchable: filter.from points to zone with no match content";
+
+  errors = [
+    {
+      tag = "zoneNotMatchable";
+      path = [
+        "filters"
+        "f"
+        "from"
+        "0"
+      ];
+    }
+  ];
 
   body = {
     zones = {

@@ -1,9 +1,9 @@
 /*
-  Rejection scenario for `checkObjectRefs` — an
+  Rejection scenario for `objectRefUnknown` — an
   `objects.sets.<name>.elem` entry uses `dsl.expr.elem { val;
   stmt; }` whose stateful statement references an undeclared
   counter. Set / map elements may carry per-element statements
-  (counters, limits, …); the validator must walk them just
+  (counters, limits, …); Phase 1 must walk them just
   like rule bodies. The complementary case (rule body refs)
   is covered by object-refs.nix.
 */
@@ -13,7 +13,18 @@ let
   inherit (nftypes.dsl.expr) elem;
 in
 {
-  description = "checkObjectRefs: set element-attached stmt references unknown counter";
+  description = "objectRefUnknown: set element-attached stmt references unknown counter";
+
+  errors = [
+    {
+      tag = "objectRefUnknown";
+      path = [
+        "objects"
+        "sets"
+        "tracker"
+      ];
+    }
+  ];
 
   body = {
     zones.lan.interfaces = [ "lan0" ];

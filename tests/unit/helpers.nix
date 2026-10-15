@@ -1,9 +1,11 @@
 /*
   Shared helpers for the per-module unit-test files. Each
   `tests/unit/internal/<module>.nix` and `tests/unit/types/<module>.nix`
-  imports this file instead of repeating evaluation boilerplate.
+  imports this file instead of repeating evaluation boilerplate. The
+  integration runner reuses `diagnosticsFor`.
 
-  Exports `evalTable`, `membershipFor`, `evalType`, and `evalFails`.
+  Exports `evalTable`, `diagnosticsFor`, `membershipFor`, `evalType`,
+  and `evalFails`.
 */
 { pkgs, nftzones }:
 let
@@ -29,23 +31,42 @@ in
   inherit evalTable;
 
   /*
-    Resolve real declarations through node lowering and the same zone
-    interface used by normalization. Deliberately stop before validation
-    so grouping zones and malformed hierarchy can be exercised too.
+    Run Phase 1 validation on a table body evaluated through the table
+    type, for tests that pin which diagnostics fire. Messages are
+    dropped so tests never depend on their prose.
+
+    Takes a table body and returns `{ errors; warnings; }`, each a list
+    of `{ tag; path; }` in `diagnose` order.
+  */
+  diagnosticsFor =
+    body:
+    let
+      diagnostics = nftzones.internal.normalize.diagnose (evalTable body);
+      project = map (diagnostic: {
+        inherit (diagnostic) path tag;
+      });
+    in
+    {
+      errors = project diagnostics.errors;
+      warnings = project diagnostics.warnings;
+    };
+
+  /*
+    Resolve zone membership straight from real declarations: the
+    evaluated zones plus each node lowered by `internal.node.toZone`.
+    Bypassing Phase 1 means malformed hierarchy, such as parent
+    cycles, reaches membership instead of failing validation.
 
     Takes a table body and returns the zone membership interface.
   */
   membershipFor =
     body:
     let
-      state = nftzones.internal.normalize.convertNodesToZones {
-        table = evalTable body;
-        ctx = { };
-      };
+      table = evalTable body;
     in
     nftzones.internal.zone.resolveMembership {
-      zones = state.ctx.mergedZones;
-      inherit (state.table.settings) localZone;
+      zones = table.zones // lib.mapAttrs (_: nftzones.internal.node.toZone) table.nodes;
+      inherit (table.settings) localZone;
     };
 
   /*

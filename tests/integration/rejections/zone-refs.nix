@@ -1,6 +1,6 @@
 /*
-  Rejection scenario for `checkZoneRefs` — a filter references a
-  `from` zone that doesn't exist in `mergedZones`. Without
+  Rejection scenario for `invalidZoneRef` — a filter references a
+  `from` zone that is neither declared nor lowered from a node. Without
   rejection, downstream emit would either crash on missing zone
   data or silently emit a chain referencing a non-existent set.
 */
@@ -9,7 +9,19 @@ let
   inherit (nftypes.dsl) accept;
 in
 {
-  description = "checkZoneRefs: filter.from points to undeclared zone";
+  description = "invalidZoneRef: filter.from points to undeclared zone";
+
+  errors = [
+    {
+      tag = "invalidZoneRef";
+      path = [
+        "filters"
+        "f"
+        "from"
+        "0"
+      ];
+    }
+  ];
 
   body = {
     zones.lan.interfaces = [ "eth1" ];

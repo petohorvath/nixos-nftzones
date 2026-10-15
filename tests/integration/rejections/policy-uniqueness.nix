@@ -1,11 +1,21 @@
 /*
-  Rejection scenario for `checkPolicyUniqueness` — two policy
+  Rejection scenario for `policyConflict` — two policy
   entries claim the same `(from, to)` pair. The compile would
   emit two tail rules in the same sub-chain with conflicting
-  verdicts; the validator must reject the ambiguity.
+  verdicts; Phase 1 must reject the ambiguity.
 */
 _: {
-  description = "checkPolicyUniqueness: two policies for same (from, to)";
+  description = "policyConflict: two policies for same (from, to)";
+
+  errors = [
+    {
+      tag = "policyConflict";
+      path = [
+        "policies"
+        "a"
+      ];
+    }
+  ];
 
   body = {
     zones = {

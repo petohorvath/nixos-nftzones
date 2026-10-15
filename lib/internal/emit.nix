@@ -303,8 +303,8 @@ let
       # rpfilter chain lives entirely here so user overrides at
       # `(prerouting, raw)` aren't silently mutated. Synthesized
       # only when the user hasn't already claimed the slot —
-      # Phase 1's `checkRpfilterOverride` warns when both are
-      # set so the user knows their override took precedence.
+      # Phase 1's `rpfilterChainSuppressed` warning fires when both
+      # are set so the user knows their override took precedence.
       # The key is built via `baseChainNameOf` (same helper Phase 3
       # uses) so int and symbol priority forms collapse to the same
       # key regardless of which form the user wrote.
@@ -381,9 +381,9 @@ let
       allChains = ctx.baseChains // ctx.subChains;
 
       # User-defined sets merge with the auto-generated zone sets
-      # under one `body.sets` field. Collisions are rejected
-      # upstream by `internal.normalize.checkSetNameCollisions`,
-      # so this merge is always safe — `//` semantics don't matter.
+      # under one `body.sets` field. Phase 1 rejects collisions
+      # upstream with a `setNameCollision` diagnostic, so this
+      # merge is always safe — `//` semantics don't matter.
       allSets = ctx.zoneMembership.sets // (ctx.userObjects.sets or { });
 
       # Other user-object kinds pass through as their own body

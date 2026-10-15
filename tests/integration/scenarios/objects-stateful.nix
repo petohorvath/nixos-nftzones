@@ -3,8 +3,8 @@
   counters + sets covered by `named-objects.nix`. Declares one
   of each common stateful kind (limit, quota, ctHelper,
   ctTimeout, map) so `emitUserObjects` passthrough and
-  `checkObjectRefs` resolution touch every kind's nftypes body
-  shape.
+  Phase 1's object-reference resolution touch every kind's
+  nftypes body shape.
 */
 { nftypes, ... }:
 let

@@ -6,8 +6,10 @@
                         via `nftzones.mkRuleset`, renders to
                         libnftables-JSON, and pipes through `nft -j
                         --check` (LKL+libredirect-shimmed for the
-                        Nix sandbox). Optional structured assertions
-                        verify specific properties of the compiled
+                        Nix sandbox). Each asserts its exact
+                        Phase 1 warnings (none by default);
+                        optional structured assertions verify
+                        specific properties of the compiled
                         output. See `runner.nix` for the three
                         scenario forms.
 
@@ -15,11 +17,10 @@
                         misconfiguration; the build succeeds iff
                         `mkRuleset` *throws*. Pins that Phase 1
                         validators are wired into the live
-                        pipeline. Unit tests in
-                        `tests/unit/internal/normalize.nix` cover
-                        each validator in isolation; only these
-                        integration rejections prove the
-                        orchestrator still calls them.
+                        pipeline. A scenario that Phase 1 rejects
+                        also lists its exact errors; one that the
+                        table type rejects only asserts the
+                        throw.
 
   Both flavors are passed `{ inherit nftypes; }` so they can use
   the DSL directly.

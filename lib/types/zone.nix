@@ -26,7 +26,7 @@
                             rejects verdicts and side-effecting
                             statements at evalModules time — those
                             would silently change dispatch semantics.
-                            Consumed by Phase 1's `checkZoneMatchable`
+                            Consumed by Phase 1's matchability checks
                             and Phase 4's `mkDirectionVariants`.
 
   Consumers wire the zone type as `lib.mkOption { type =
@@ -35,8 +35,8 @@
   `zoneName` only validates string shape; cross-cutting concerns —
   that a `parent` reference resolves to an existing zone, or that
   names do not collide with `settings.localZone` /
-  `settings.wildcardZone` — are enforced by Phase 1's
-  `checkNameCollisions` and `checkSettings` validators.
+  `settings.wildcardZone` — are enforced by Phase 1, which reports
+  `zoneParentUnknown` and `settingsConflict` diagnostics.
 
   Example:
     options.zones = lib.mkOption {
@@ -205,9 +205,9 @@ let
             The referenced zone must exist in the same `zones`
             attrset (or as a node, which lowers to a zone). The
             `localZone` sentinel may not be a parent. Cycles are
-            rejected. These checks live in
-            `internal.normalize.checkParentRefs` /
-            `checkParentCycles`.
+            rejected. Phase 1 reports these as
+            `zoneParentUnknown`, `zoneParentLocalZone` and
+            `zoneParentCycle` diagnostics.
 
             Hierarchy applies to the **from**-side only; the
             to-side stays a flat per-pair match. Setting

@@ -22,66 +22,40 @@ in
   # ===== compile — runs all four phases, ctx carries every artifact =====
 
   testCompileFullCtx = {
-    # Shape, not just presence: a regression that set, e.g.,
-    # `errors = "broken"` (string instead of list) would pass a
-    # bare `ctx ? errors` check. Asserting on the type of each
-    # value catches structural regressions while still being cheap
-    # — the actual content is exercised by the per-phase tests in
+    # The exact key set and the type of each value: a regression that
+    # dropped a key, leaked a scratch key, or set, e.g., `cells` to a
+    # list fails here. Content is exercised by the per-phase tests in
     # `tests/unit/internal/<phase>.nix`.
     expr =
-      let
-        ctx =
-          (compile (evalTable {
-            zones.lan = {
-              interfaces = [ "lan0" ];
-            };
-          })).ctx;
-      in
-      {
-        # Phase 1 artifacts
-        mergedZones = builtins.isAttrs ctx.mergedZones;
-        allZoneNames = builtins.isList ctx.allZoneNames;
-        expandedGroups = builtins.isAttrs ctx.expandedGroups;
-        resolvedPriorities = builtins.isAttrs ctx.resolvedPriorities;
-        zoneRefs = builtins.isList ctx.zoneRefs;
-        errors = builtins.isList ctx.errors;
-        warnings = builtins.isList ctx.warnings;
-        # Phase 2 artifact
-        cells = builtins.isAttrs ctx.cells;
-        # Phase 3 artifacts
-        groupedByChain = builtins.isAttrs ctx.groupedByChain;
-        dispatchTrees = builtins.isAttrs ctx.dispatchTrees;
-        # Phase 4 artifacts
-        zoneMembership = builtins.isAttrs ctx.zoneMembership;
-        baseChains = builtins.isAttrs ctx.baseChains;
-        subChains = builtins.isAttrs ctx.subChains;
-        userObjects = builtins.isAttrs ctx.userObjects;
-        output = builtins.isAttrs ctx.output;
-      };
+      builtins.mapAttrs (_: builtins.typeOf)
+        (compile (evalTable {
+          zones.lan = {
+            interfaces = [ "lan0" ];
+          };
+        })).ctx;
     expected = {
-      mergedZones = true;
-      allZoneNames = true;
-      expandedGroups = true;
-      resolvedPriorities = true;
-      zoneRefs = true;
-      errors = true;
-      warnings = true;
-      cells = true;
-      groupedByChain = true;
-      dispatchTrees = true;
-      zoneMembership = true;
-      baseChains = true;
-      subChains = true;
-      userObjects = true;
-      output = true;
+      # Phase 1 artifacts
+      expandedGroups = "set";
+      resolvedPriorities = "set";
+      zoneMembership = "set";
+      # Phase 2 artifact
+      cells = "set";
+      # Phase 3 artifacts
+      groupedByChain = "set";
+      dispatchTrees = "set";
+      # Phase 4 artifacts
+      baseChains = "set";
+      subChains = "set";
+      userObjects = "set";
+      output = "set";
     };
   };
 
   # ===== compile — Phase 1 errors propagate as a thrown message =====
 
   testCompileThrowsOnPhase1Error = {
-    # `from = [ "missing" ]` references an unknown zone — Phase 1's
-    # `checkZoneRefs` flags it; `normalizeTable` aggregates errors
+    # `from = [ "missing" ]` references an unknown zone — Phase 1
+    # reports `invalidZoneRef`; `normalizeTable` aggregates errors
     # and throws.
     expr =
       let

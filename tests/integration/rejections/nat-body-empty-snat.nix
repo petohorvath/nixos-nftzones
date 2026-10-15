@@ -1,12 +1,22 @@
 /*
-  Rejection scenario for `checkNatBodies` — `rule.snat = { }`
+  Rejection scenario for `natBodyMissingAddr` — `rule.snat = { }`
   selects the `snat` tag with an all-null body. Type accepts it
   (every nftypes `natBody` field is nullable); nft rejects the
-  resulting `snat to;` statement at activation. The validator
+  resulting `snat to;` statement at activation. Phase 1
   catches it early with a clear error.
 */
 _: {
-  description = "checkNatBodies: rule.snat with null addr";
+  description = "natBodyMissingAddr: rule.snat with null addr";
+
+  errors = [
+    {
+      tag = "natBodyMissingAddr";
+      path = [
+        "snats"
+        "outbound"
+      ];
+    }
+  ];
 
   body = {
     zones = {

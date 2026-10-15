@@ -1,14 +1,23 @@
 /*
-  Rejection scenario for `checkPolicyUniqueness` — one
+  Rejection scenario for `policyConflict` — one
   explicit policy and one wildcard-from policy collide on the
   same `(from, to)` cell after wildcard expansion. The
   complementary case (two explicit policies on the same pair)
   is covered by policy-uniqueness.nix; this one pins that the
-  validator runs *after* `expandWildcardZones` in the live
-  pipeline.
+  policy check sees the wildcard-expanded lists.
 */
 _: {
-  description = "checkPolicyUniqueness: explicit + wildcard collide on (lan → wan)";
+  description = "policyConflict: explicit + wildcard collide on (lan → wan)";
+
+  errors = [
+    {
+      tag = "policyConflict";
+      path = [
+        "policies"
+        "broad"
+      ];
+    }
+  ];
 
   body = {
     zones = {
