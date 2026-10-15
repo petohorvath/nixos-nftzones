@@ -366,8 +366,12 @@ in
       )).errors;
     expected = [
       {
-        name = "zoneNameCollision";
-        value = "name collision: 'web' is declared as both a zone and a node";
+        message = "name collision: 'web' is also declared as zones.web";
+        path = [
+          "nodes"
+          "web"
+        ];
+        tag = "zoneNameCollision";
       }
     ];
   };
@@ -398,12 +402,20 @@ in
       )).errors;
     expected = [
       {
-        name = "zoneNameCollision";
-        value = "name collision: 'a' is declared as both a zone and a node";
+        message = "name collision: 'a' is also declared as zones.a";
+        path = [
+          "nodes"
+          "a"
+        ];
+        tag = "zoneNameCollision";
       }
       {
-        name = "zoneNameCollision";
-        value = "name collision: 'c' is declared as both a zone and a node";
+        message = "name collision: 'c' is also declared as zones.c";
+        path = [
+          "nodes"
+          "c"
+        ];
+        tag = "zoneNameCollision";
       }
     ];
   };
@@ -529,8 +541,12 @@ in
       ).errors;
     expected = [
       {
-        name = "invalidChainPlacement";
-        value = "snats.masq would emit a base chain at (family=bridge, hook=postrouting, priority=srcnat) — kernel rejects chain type 'nat' on hook 'postrouting' for family 'bridge'";
+        message = "would emit a base chain at (family=bridge, hook=postrouting, priority=srcnat) — kernel rejects chain type 'nat' on hook 'postrouting' for family 'bridge'";
+        path = [
+          "snats"
+          "masq"
+        ];
+        tag = "invalidChainPlacement";
       }
     ];
   };
@@ -560,8 +576,12 @@ in
       ).errors;
     expected = [
       {
-        name = "invalidChainPlacement";
-        value = "sroutes.mark would emit a base chain at (family=bridge, hook=prerouting, priority=mangle) — priority symbol 'mangle' has no value in family 'bridge'";
+        message = "would emit a base chain at (family=bridge, hook=prerouting, priority=mangle) — priority symbol 'mangle' has no value in family 'bridge'";
+        path = [
+          "sroutes"
+          "mark"
+        ];
+        tag = "invalidChainPlacement";
       }
     ];
   };
@@ -644,16 +664,28 @@ in
         value = "kept";
       }
       {
-        name = "invalidChainPlacement";
-        value = "droutes.mark would emit a base chain at (family=bridge, hook=output, priority=mangle) — priority symbol 'mangle' has no value in family 'bridge'";
+        message = "would emit a base chain at (family=bridge, hook=output, priority=mangle) — priority symbol 'mangle' has no value in family 'bridge'";
+        path = [
+          "droutes"
+          "mark"
+        ];
+        tag = "invalidChainPlacement";
       }
       {
-        name = "invalidChainPlacement";
-        value = "filters.early would emit a base chain at (family=bridge, hook=prerouting, priority=mangle) — priority symbol 'mangle' has no value in family 'bridge'";
+        message = "would emit a base chain at (family=bridge, hook=prerouting, priority=mangle) — priority symbol 'mangle' has no value in family 'bridge'";
+        path = [
+          "filters"
+          "early"
+        ];
+        tag = "invalidChainPlacement";
       }
       {
-        name = "invalidChainPlacement";
-        value = "snats.masq would emit a base chain at (family=bridge, hook=postrouting, priority=srcnat) — kernel rejects chain type 'nat' on hook 'postrouting' for family 'bridge'";
+        message = "would emit a base chain at (family=bridge, hook=postrouting, priority=srcnat) — kernel rejects chain type 'nat' on hook 'postrouting' for family 'bridge'";
+        path = [
+          "snats"
+          "masq"
+        ];
+        tag = "invalidChainPlacement";
       }
     ];
   };
@@ -709,7 +741,14 @@ in
         };
       }).warnings;
     expected = [
-      "settings.rpfilter is enabled but a user chain override already claims (prerouting, raw); the synthesized rpfilter chain is suppressed and the user-authored chain is used as-is. Add `fib saddr . iif oif eq 0 drop` to the override manually if you want rpfilter behavior in that chain."
+      {
+        message = "is enabled but a user chain override already claims (prerouting, raw); the synthesized rpfilter chain is suppressed and the user-authored chain is used as-is. Add `fib saddr . iif oif eq 0 drop` to the override manually if you want rpfilter behavior in that chain.";
+        path = [
+          "settings"
+          "rpfilter"
+        ];
+        tag = "rpfilterChainSuppressed";
+      }
     ];
   };
 
@@ -733,7 +772,14 @@ in
         };
       }).warnings;
     expected = [
-      "settings.rpfilter is enabled but a user chain override already claims (prerouting, raw); the synthesized rpfilter chain is suppressed and the user-authored chain is used as-is. Add `fib saddr . iif oif eq 0 drop` to the override manually if you want rpfilter behavior in that chain."
+      {
+        message = "is enabled but a user chain override already claims (prerouting, raw); the synthesized rpfilter chain is suppressed and the user-authored chain is used as-is. Add `fib saddr . iif oif eq 0 drop` to the override manually if you want rpfilter behavior in that chain.";
+        path = [
+          "settings"
+          "rpfilter"
+        ];
+        tag = "rpfilterChainSuppressed";
+      }
     ];
   };
 
@@ -778,8 +824,12 @@ in
       }).errors;
     expected = [
       {
-        name = "nodeAddressMissing";
-        value = "nodes.web: address must set at least one of `ipv4` / `ipv6` — a node with no address contributes no CIDR to its lowered zone.";
+        message = "address must set at least one of `ipv4` / `ipv6` — a node with no address contributes no CIDR to its lowered zone.";
+        path = [
+          "nodes"
+          "web"
+        ];
+        tag = "nodeAddressMissing";
       }
     ];
   };
@@ -858,8 +908,12 @@ in
       }).errors;
     expected = [
       {
-        name = "natBodyMissingAddr";
-        value = "snats.outbound: rule.snat.addr is null — `snat` requires a target address. Use `rule.masquerade = { }` for auto-target via the outgoing interface, or set `rule.snat.addr` explicitly.";
+        message = "rule.snat.addr is null — `snat` requires a target address. Use `rule.masquerade = { }` for auto-target via the outgoing interface, or set `rule.snat.addr` explicitly.";
+        path = [
+          "snats"
+          "outbound"
+        ];
+        tag = "natBodyMissingAddr";
       }
     ];
   };
@@ -917,8 +971,12 @@ in
       }).errors;
     expected = [
       {
-        name = "natBodyMissingAddr";
-        value = "dnats.bad-fwd: rule.action.dnat.addr is null — `dnat` requires a target address. Use `rule.action.redirect = { port = N; }` for redirect-to-localhost, or set `rule.action.dnat.addr` explicitly.";
+        message = "rule.action.dnat.addr is null — `dnat` requires a target address. Use `rule.action.redirect = { port = N; }` for redirect-to-localhost, or set `rule.action.dnat.addr` explicitly.";
+        path = [
+          "dnats"
+          "bad-fwd"
+        ];
+        tag = "natBodyMissingAddr";
       }
     ];
   };
@@ -995,8 +1053,12 @@ in
       ).errors;
     expected = [
       {
-        name = "settingsConflict";
-        value = "settings.wildcardZone and settings.localZone are both 'any' — they must differ";
+        message = "'any' equals settings.wildcardZone — they must differ";
+        path = [
+          "settings"
+          "localZone"
+        ];
+        tag = "settingsConflict";
       }
     ];
   };
@@ -1021,8 +1083,12 @@ in
       ).errors;
     expected = [
       {
-        name = "settingsConflict";
-        value = "settings.wildcardZone 'all' collides with a declared zone or node";
+        message = "'all' collides with a declared zone or node";
+        path = [
+          "settings"
+          "wildcardZone"
+        ];
+        tag = "settingsConflict";
       }
     ];
   };
@@ -1050,8 +1116,12 @@ in
       ).errors;
     expected = [
       {
-        name = "settingsConflict";
-        value = "settings.localZone 'local' collides with a declared zone or node";
+        message = "'local' collides with a declared zone or node";
+        path = [
+          "settings"
+          "localZone"
+        ];
+        tag = "settingsConflict";
       }
     ];
   };
@@ -1183,8 +1253,12 @@ in
       ).errors;
     expected = [
       {
-        name = "policyConflict";
-        value = "duplicate policy for (lan → wan): allow, deny";
+        message = "duplicate policy for (lan → wan), also declared by policies.deny";
+        path = [
+          "policies"
+          "allow"
+        ];
+        tag = "policyConflict";
       }
     ];
   };
@@ -1230,8 +1304,12 @@ in
       ).errors;
     expected = [
       {
-        name = "policyConflict";
-        value = "duplicate policy for (lan → wan): broad, specific";
+        message = "duplicate policy for (lan → wan), also declared by policies.specific";
+        path = [
+          "policies"
+          "broad"
+        ];
+        tag = "policyConflict";
       }
     ];
   };
@@ -1553,19 +1631,34 @@ in
       )).zoneRefs;
     expected = [
       {
+        direction = "from";
+        path = [
+          "filters"
+          "web-out"
+          "from"
+          "0"
+        ];
         zone = "lan";
-        direction = "from";
-        path = "filters.web-out.from[0]";
       }
       {
+        direction = "from";
+        path = [
+          "filters"
+          "web-out"
+          "from"
+          "1"
+        ];
         zone = "guest";
-        direction = "from";
-        path = "filters.web-out.from[1]";
       }
       {
-        zone = "wan";
         direction = "to";
-        path = "filters.web-out.to[0]";
+        path = [
+          "filters"
+          "web-out"
+          "to"
+          "0"
+        ];
+        zone = "wan";
       }
     ];
   };
@@ -1590,19 +1683,34 @@ in
       )).zoneRefs;
     expected = [
       {
+        direction = "from";
+        path = [
+          "dnats"
+          "d"
+          "from"
+          "0"
+        ];
         zone = "wan";
-        direction = "from";
-        path = "dnats.d.from[0]";
       }
       {
+        direction = "from";
+        path = [
+          "sroutes"
+          "s"
+          "from"
+          "0"
+        ];
         zone = "guest";
-        direction = "from";
-        path = "sroutes.s.from[0]";
       }
       {
-        zone = "vpn";
         direction = "to";
-        path = "droutes.dr.to[0]";
+        path = [
+          "droutes"
+          "dr"
+          "to"
+          "0"
+        ];
+        zone = "vpn";
       }
     ];
   };
@@ -1628,12 +1736,20 @@ in
       )).zoneRefs;
     expected = [
       {
+        path = [
+          "nodes"
+          "api"
+          "zone"
+        ];
         zone = "dmz";
-        path = "nodes.api.zone";
       }
       {
+        path = [
+          "nodes"
+          "web"
+          "zone"
+        ];
         zone = "dmz";
-        path = "nodes.web.zone";
       }
     ];
   };
@@ -1674,16 +1790,65 @@ in
           }
         )).zoneRefs;
     expected = [
-      "filters.f.from[0]"
-      "filters.f.to[0]"
-      "policies.p.from[0]"
-      "policies.p.to[0]"
-      "snats.sn.from[0]"
-      "snats.sn.to[0]"
-      "dnats.d.from[0]"
-      "sroutes.sr.from[0]"
-      "droutes.dr.to[0]"
-      "nodes.n.zone"
+      [
+        "filters"
+        "f"
+        "from"
+        "0"
+      ]
+      [
+        "filters"
+        "f"
+        "to"
+        "0"
+      ]
+      [
+        "policies"
+        "p"
+        "from"
+        "0"
+      ]
+      [
+        "policies"
+        "p"
+        "to"
+        "0"
+      ]
+      [
+        "snats"
+        "sn"
+        "from"
+        "0"
+      ]
+      [
+        "snats"
+        "sn"
+        "to"
+        "0"
+      ]
+      [
+        "dnats"
+        "d"
+        "from"
+        "0"
+      ]
+      [
+        "sroutes"
+        "sr"
+        "from"
+        "0"
+      ]
+      [
+        "droutes"
+        "dr"
+        "to"
+        "0"
+      ]
+      [
+        "nodes"
+        "n"
+        "zone"
+      ]
     ];
   };
 
@@ -1709,14 +1874,24 @@ in
       )).zoneRefs;
     expected = [
       {
-        zone = "lan";
         direction = "from";
-        path = "filters.f.from[0]";
+        path = [
+          "filters"
+          "f"
+          "from"
+          "0"
+        ];
+        zone = "lan";
       }
       {
-        zone = "wan";
         direction = "from";
-        path = "filters.f.from[2]";
+        path = [
+          "filters"
+          "f"
+          "from"
+          "2"
+        ];
+        zone = "wan";
       }
     ];
   };
@@ -1783,8 +1958,14 @@ in
       ).errors;
     expected = [
       {
-        name = "invalidZoneRef";
-        value = "filters.f.to[0] references unknown zone 'missing' (known: lan, local)";
+        message = "references unknown zone 'missing' (known: lan, local)";
+        path = [
+          "filters"
+          "f"
+          "to"
+          "0"
+        ];
+        tag = "invalidZoneRef";
       }
     ];
   };
@@ -1910,8 +2091,14 @@ in
       ).errors;
     expected = [
       {
-        name = "zoneNotMatchable";
-        value = "filters.f.from[0] references zone 'empty' which has no ingress match (no interfaces, no CIDRs, and no matchOverride sections set on the ingress side)";
+        message = "references zone 'empty' which has no ingress match (no interfaces, no CIDRs, and no matchOverride sections set on the ingress side)";
+        path = [
+          "filters"
+          "f"
+          "from"
+          "0"
+        ];
+        tag = "zoneNotMatchable";
       }
     ];
   };
@@ -1944,8 +2131,14 @@ in
       ).errors;
     expected = [
       {
-        name = "zoneNotMatchable";
-        value = "filters.f.to[0] references zone 'empty' which has no egress match (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
+        message = "references zone 'empty' which has no egress match (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
+        path = [
+          "filters"
+          "f"
+          "to"
+          "0"
+        ];
+        tag = "zoneNotMatchable";
       }
     ];
   };
@@ -1977,8 +2170,14 @@ in
       ).errors;
     expected = [
       {
-        name = "zoneNotMatchable";
-        value = "filters.from-ok.to[0] references zone 'partial' which has no egress match (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
+        message = "references zone 'partial' which has no egress match (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
+        path = [
+          "filters"
+          "from-ok"
+          "to"
+          "0"
+        ];
+        tag = "zoneNotMatchable";
       }
     ];
   };
@@ -2014,12 +2213,24 @@ in
     # errors: ingress (mapped from `from`) and egress (mapped from `to`).
     expected = [
       {
-        name = "zoneNotMatchable";
-        value = "filters.f.from[0] references zone 'empty-section' which has no ingress match (no interfaces, no CIDRs, and no matchOverride sections set on the ingress side)";
+        message = "references zone 'empty-section' which has no ingress match (no interfaces, no CIDRs, and no matchOverride sections set on the ingress side)";
+        path = [
+          "filters"
+          "f"
+          "from"
+          "0"
+        ];
+        tag = "zoneNotMatchable";
       }
       {
-        name = "zoneNotMatchable";
-        value = "filters.f.to[0] references zone 'empty-section' which has no egress match (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
+        message = "references zone 'empty-section' which has no egress match (no interfaces, no CIDRs, and no matchOverride sections set on the egress side)";
+        path = [
+          "filters"
+          "f"
+          "to"
+          "0"
+        ];
+        tag = "zoneNotMatchable";
       }
     ];
   };
@@ -2254,8 +2465,13 @@ in
       ).errors;
     expected = [
       {
-        name = "chainOverrideUnreachable";
-        value = "filters.early-drop.to references zone 'host' which has no egress match expressible at chain (hook=prerouting, priority=raw) — zone has no daddr CIDRs and no hook-agnostic matchOverride.egress sections (ipv4 / ipv6 / extra) set, and oifname is unavailable in prerouting";
+        message = "references zone 'host' which has no egress match expressible at chain (hook=prerouting, priority=raw) — zone has no daddr CIDRs and no hook-agnostic matchOverride.egress sections (ipv4 / ipv6 / extra) set, and oifname is unavailable in prerouting";
+        path = [
+          "filters"
+          "early-drop"
+          "to"
+        ];
+        tag = "chainOverrideUnreachable";
       }
     ];
   };
@@ -2370,8 +2586,13 @@ in
       ).errors;
     expected = [
       {
-        name = "chainOverrideUnreachable";
-        value = "filters.f.to references zone 'host' which has no egress match expressible at chain (hook=prerouting, priority=raw) — zone has no daddr CIDRs and no hook-agnostic matchOverride.egress sections (ipv4 / ipv6 / extra) set, and oifname is unavailable in prerouting";
+        message = "references zone 'host' which has no egress match expressible at chain (hook=prerouting, priority=raw) — zone has no daddr CIDRs and no hook-agnostic matchOverride.egress sections (ipv4 / ipv6 / extra) set, and oifname is unavailable in prerouting";
+        path = [
+          "filters"
+          "f"
+          "to"
+        ];
+        tag = "chainOverrideUnreachable";
       }
     ];
   };
@@ -2652,15 +2873,20 @@ in
       in
       {
         count = builtins.length errors;
-        name = (builtins.head errors).name;
-        mentionsName = lib.hasInfix "lan_v4" (builtins.head errors).value;
-        zone = lib.hasInfix "zone 'lan'" (builtins.head errors).value;
-        suffix = lib.hasInfix "suffix 'v4'" (builtins.head errors).value;
+        tag = (builtins.head errors).tag;
+        path =
+          (builtins.head errors).path == [
+            "objects"
+            "sets"
+            "lan_v4"
+          ];
+        zone = lib.hasInfix "zone 'lan'" (builtins.head errors).message;
+        suffix = lib.hasInfix "suffix 'v4'" (builtins.head errors).message;
       };
     expected = {
       count = 1;
-      name = "setNameCollision";
-      mentionsName = true;
+      tag = "setNameCollision";
+      path = true;
       zone = true;
       suffix = true;
     };
@@ -2694,8 +2920,8 @@ in
           ).errors;
       in
       {
-        zone = lib.hasInfix "zone 'web_app'" (builtins.head errors).value;
-        suffix = lib.hasInfix "suffix 'v4'" (builtins.head errors).value;
+        zone = lib.hasInfix "zone 'web_app'" (builtins.head errors).message;
+        suffix = lib.hasInfix "suffix 'v4'" (builtins.head errors).message;
       };
     expected = {
       zone = true;
@@ -2810,14 +3036,19 @@ in
       in
       {
         count = builtins.length errors;
-        name = (builtins.head errors).name;
-        path = lib.hasInfix "filters.f.rule" (builtins.head errors).value;
-        kind = lib.hasInfix "counters" (builtins.head errors).value;
-        mentionsName = lib.hasInfix "missing-counter" (builtins.head errors).value;
+        tag = (builtins.head errors).tag;
+        path =
+          (builtins.head errors).path == [
+            "filters"
+            "f"
+            "rule"
+          ];
+        kind = lib.hasInfix "counters" (builtins.head errors).message;
+        mentionsName = lib.hasInfix "missing-counter" (builtins.head errors).message;
       };
     expected = {
       count = 1;
-      name = "objectRefUnknown";
+      tag = "objectRefUnknown";
       path = true;
       kind = true;
       mentionsName = true;
@@ -2869,7 +3100,7 @@ in
       {
         count = builtins.length errors;
         kinds = lib.sort (a: b: a < b) (
-          map (e: builtins.head (lib.match ".* unknown ([a-zA-Z]+) object .*" e.value)) errors
+          map (e: builtins.head (lib.match ".* unknown ([a-zA-Z]+) object .*" e.message)) errors
         );
       };
     expected = {
@@ -2976,9 +3207,16 @@ in
       in
       {
         count = builtins.length errors;
-        path = lib.hasInfix "zones.lan.matchOverride.ingress.ipv4" (builtins.head errors).value;
-        kind = lib.hasInfix "sets" (builtins.head errors).value;
-        mentionsName = lib.hasInfix "ghost-set" (builtins.head errors).value;
+        path =
+          (builtins.head errors).path == [
+            "zones"
+            "lan"
+            "matchOverride"
+            "ingress"
+            "ipv4"
+          ];
+        kind = lib.hasInfix "sets" (builtins.head errors).message;
+        mentionsName = lib.hasInfix "ghost-set" (builtins.head errors).message;
       };
     expected = {
       count = 1;
@@ -3056,9 +3294,14 @@ in
       in
       {
         count = builtins.length errors;
-        path = lib.hasInfix "objects.sets.tracker" (builtins.head errors).value;
-        kind = lib.hasInfix "counters" (builtins.head errors).value;
-        mentionsName = lib.hasInfix "ghost-counter" (builtins.head errors).value;
+        path =
+          (builtins.head errors).path == [
+            "objects"
+            "sets"
+            "tracker"
+          ];
+        kind = lib.hasInfix "counters" (builtins.head errors).message;
+        mentionsName = lib.hasInfix "ghost-counter" (builtins.head errors).message;
       };
     expected = {
       count = 1;
@@ -3290,8 +3533,13 @@ in
       ).errors;
     expected = [
       {
-        name = "zoneParentUnknown";
-        value = "zones.web.parent references unknown zone 'ghost'";
+        message = "references unknown zone 'ghost'";
+        path = [
+          "zones"
+          "web"
+          "parent"
+        ];
+        tag = "zoneParentUnknown";
       }
     ];
   };
@@ -3318,8 +3566,13 @@ in
       ).errors;
     expected = [
       {
-        name = "zoneParentLocalZone";
-        value = "zones.web.parent is 'local' (the localZone sentinel) — localZone cannot be a parent";
+        message = "is 'local' (the localZone sentinel) — localZone cannot be a parent";
+        path = [
+          "zones"
+          "web"
+          "parent"
+        ];
+        tag = "zoneParentLocalZone";
       }
     ];
   };
@@ -3352,8 +3605,13 @@ in
       ).errors;
     expected = [
       {
-        name = "zoneParentUnknown";
-        value = "zones.web.parent references unknown zone 'ghost'";
+        message = "references unknown zone 'ghost'";
+        path = [
+          "zones"
+          "web"
+          "parent"
+        ];
+        tag = "zoneParentUnknown";
       }
     ];
   };
@@ -3412,8 +3670,13 @@ in
       ).errors;
     expected = [
       {
-        name = "zoneParentCycle";
-        value = "zone parent cycle: a → b → a";
+        message = "closes a zone parent cycle: a → b → a";
+        path = [
+          "zones"
+          "a"
+          "parent"
+        ];
+        tag = "zoneParentCycle";
       }
     ];
   };
@@ -3451,8 +3714,13 @@ in
       ).errors;
     expected = [
       {
-        name = "zoneParentCycle";
-        value = "zone parent cycle: a → c → b → a";
+        message = "closes a zone parent cycle: a → c → b → a";
+        path = [
+          "zones"
+          "a"
+          "parent"
+        ];
+        tag = "zoneParentCycle";
       }
     ];
   };
@@ -3492,8 +3760,13 @@ in
       ).errors;
     expected = [
       {
-        name = "zoneParentCycle";
-        value = "zone parent cycle: a → b → c → a";
+        message = "closes a zone parent cycle: a → b → c → a";
+        path = [
+          "zones"
+          "a"
+          "parent"
+        ];
+        tag = "zoneParentCycle";
       }
     ];
   };
@@ -3557,8 +3830,13 @@ in
       ).errors;
     expected = [
       {
-        name = "interfaceOverlap";
-        value = "interface 'eth1' is claimed by zones 'guest' and 'lan' (no ancestor/descendant relationship)";
+        message = "interface 'eth1' is also claimed by zones.lan.interfaces (no ancestor/descendant relationship)";
+        path = [
+          "zones"
+          "guest"
+          "interfaces"
+        ];
+        tag = "interfaceOverlap";
       }
     ];
   };
@@ -3610,8 +3888,13 @@ in
       ).errors;
     expected = [
       {
-        name = "interfaceOverlap";
-        value = "zone 'lan' lists interface 'eth1' more than once";
+        message = "lists interface 'eth1' more than once";
+        path = [
+          "zones"
+          "lan"
+          "interfaces"
+        ];
+        tag = "interfaceOverlap";
       }
     ];
   };
@@ -3704,8 +3987,13 @@ in
       ).errors;
     expected = [
       {
-        name = "cidrOverlap";
-        value = "zone 'lan' CIDR '10.0.0.0/24' overlaps zone 'mgmt' CIDR '10.0.0.0/28' (no ancestor/descendant relationship)";
+        message = "CIDR '10.0.0.0/24' overlaps zones.mgmt.cidrs CIDR '10.0.0.0/28' (no ancestor/descendant relationship)";
+        path = [
+          "zones"
+          "lan"
+          "cidrs"
+        ];
+        tag = "cidrOverlap";
       }
     ];
   };
@@ -3766,8 +4054,13 @@ in
     # but a and b are siblings without ancestor relation → flagged.
     expected = [
       {
-        name = "cidrOverlap";
-        value = "zone 'a' CIDR '10.0.0.0/28' overlaps zone 'b' CIDR '10.0.0.0/29' (no ancestor/descendant relationship)";
+        message = "CIDR '10.0.0.0/28' overlaps zones.b.cidrs CIDR '10.0.0.0/29' (no ancestor/descendant relationship)";
+        path = [
+          "zones"
+          "a"
+          "cidrs"
+        ];
+        tag = "cidrOverlap";
       }
     ];
   };
@@ -3817,8 +4110,13 @@ in
       ).errors;
     expected = [
       {
-        name = "cidrOverlap";
-        value = "zone 'lan' has overlapping CIDRs '10.0.0.0/24' and '10.0.0.0/28'";
+        message = "has overlapping CIDRs '10.0.0.0/24' and '10.0.0.0/28'";
+        path = [
+          "zones"
+          "lan"
+          "cidrs"
+        ];
+        tag = "cidrOverlap";
       }
     ];
   };
@@ -3910,8 +4208,15 @@ in
       in
       {
         count = lib.length warnings;
-        mentionsHook = lib.any (w: lib.hasInfix "hook=postrouting" w) warnings;
-        mentionsEntry = lib.any (w: lib.hasInfix "filters.late.chain" w) warnings;
+        mentionsHook = lib.any (w: lib.hasInfix "hook=postrouting" w.message) warnings;
+        mentionsEntry = lib.any (
+          w:
+          w.path == [
+            "filters"
+            "late"
+            "chain"
+          ]
+        ) warnings;
       };
     expected = {
       count = 1;
@@ -3950,7 +4255,7 @@ in
       in
       {
         count = lib.length warnings;
-        mentionsHook = lib.any (w: lib.hasInfix "hook=output" w) warnings;
+        mentionsHook = lib.any (w: lib.hasInfix "hook=output" w.message) warnings;
       };
     expected = {
       count = 1;
@@ -3983,7 +4288,9 @@ in
       in
       {
         count = lib.length warnings;
-        mentionsPriority = lib.any (w: lib.hasInfix "mangle" w && lib.hasInfix "srcnat" w) warnings;
+        mentionsPriority = lib.any (
+          w: lib.hasInfix "mangle" w.message && lib.hasInfix "srcnat" w.message
+        ) warnings;
       };
     expected = {
       count = 1;
@@ -4117,9 +4424,21 @@ in
       in
       {
         count = lib.length warnings;
-        path = lib.any (w: lib.hasInfix "zones.lan.matchOverride.ingress.extra[0]" w) warnings;
-        field = lib.any (w: lib.hasInfix "meta.iif" w) warnings;
-        recommendsInterfaces = lib.any (w: lib.hasInfix "matchOverride.ingress.interfaces" w) warnings;
+        path = lib.any (
+          w:
+          w.path == [
+            "zones"
+            "lan"
+            "matchOverride"
+            "ingress"
+            "extra"
+            "0"
+          ]
+        ) warnings;
+        field = lib.any (w: lib.hasInfix "meta.iif" w.message) warnings;
+        recommendsInterfaces = lib.any (
+          w: lib.hasInfix "matchOverride.ingress.interfaces" w.message
+        ) warnings;
       };
     expected = {
       count = 1;
@@ -4148,7 +4467,7 @@ in
       in
       {
         count = lib.length warnings;
-        field = lib.any (w: lib.hasInfix "meta.oifname" w) warnings;
+        field = lib.any (w: lib.hasInfix "meta.oifname" w.message) warnings;
       };
     expected = {
       count = 1;
@@ -4203,8 +4522,26 @@ in
       in
       {
         count = lib.length warnings;
-        lan = lib.any (lib.hasInfix "zones.lan.matchOverride.ingress.extra") warnings;
-        wan = lib.any (lib.hasInfix "zones.wan.matchOverride.egress.extra") warnings;
+        lan = lib.any (
+          w:
+          lib.take 5 w.path == [
+            "zones"
+            "lan"
+            "matchOverride"
+            "ingress"
+            "extra"
+          ]
+        ) warnings;
+        wan = lib.any (
+          w:
+          lib.take 5 w.path == [
+            "zones"
+            "wan"
+            "matchOverride"
+            "egress"
+            "extra"
+          ]
+        ) warnings;
       };
     expected = {
       count = 2;
@@ -4272,9 +4609,16 @@ in
       in
       {
         count = lib.length warnings;
-        mentionsPath = lib.any (w: lib.hasInfix "policies.confused.from" w) warnings;
-        mentionsWildcard = lib.any (w: lib.hasInfix "'all'" w) warnings;
-        mentionsExplicit = lib.any (w: lib.hasInfix "'wan'" w) warnings;
+        mentionsPath = lib.any (
+          w:
+          w.path == [
+            "policies"
+            "confused"
+            "from"
+          ]
+        ) warnings;
+        mentionsWildcard = lib.any (w: lib.hasInfix "'all'" w.message) warnings;
+        mentionsExplicit = lib.any (w: lib.hasInfix "'wan'" w.message) warnings;
       };
     expected = {
       count = 1;
@@ -4386,7 +4730,14 @@ in
       in
       {
         count = lib.length warnings;
-        mentionsBothZones = lib.any (w: lib.hasInfix "lan-iface" w && lib.hasInfix "lan-cidr" w) warnings;
+        mentionsBothZones = lib.any (
+          w:
+          w.path == [
+            "zones"
+            "lan-cidr"
+          ]
+          && lib.hasInfix "lan-iface" w.message
+        ) warnings;
       };
     expected = {
       count = 1;
@@ -4568,8 +4919,17 @@ in
       in
       {
         count = lib.length warnings;
-        flagsRoots = lib.any (w: lib.hasInfix "lan" w && lib.hasInfix "raw-cidr" w) warnings;
-        flagsGroupingZone = lib.any (w: lib.hasInfix "apps" w) warnings;
+        flagsRoots = lib.any (
+          w:
+          w.path == [
+            "zones"
+            "lan"
+          ]
+          && lib.hasInfix "raw-cidr" w.message
+        ) warnings;
+        flagsGroupingZone = lib.any (
+          w: builtins.elem "apps" w.path || lib.hasInfix "apps" w.message
+        ) warnings;
       };
     expected = {
       count = 1;

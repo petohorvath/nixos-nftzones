@@ -3,7 +3,8 @@
   `tests/unit/internal/<module>.nix` and `tests/unit/types/<module>.nix`
   imports this file instead of repeating evaluation boilerplate.
 
-  Exports `evalTable`, `membershipFor`, `evalType`, and `evalFails`.
+  Exports `evalTable`, `diagnosticsFor`, `membershipFor`, `evalType`,
+  and `evalFails`.
 */
 { pkgs, nftzones }:
 let
@@ -27,6 +28,27 @@ let
 in
 {
   inherit evalTable;
+
+  /*
+    Run Phase 1 validation on a table body evaluated through the table
+    type, for tests that pin which diagnostics fire. Messages are
+    dropped so tests never depend on their prose.
+
+    Takes a table body and returns `{ errors; warnings; }`, each a list
+    of `{ tag; path; }` in `diagnose` order.
+  */
+  diagnosticsFor =
+    body:
+    let
+      diagnostics = nftzones.internal.normalize.diagnose (evalTable body);
+      project = map (diagnostic: {
+        inherit (diagnostic) path tag;
+      });
+    in
+    {
+      errors = project diagnostics.errors;
+      warnings = project diagnostics.warnings;
+    };
 
   /*
     Resolve real declarations through node lowering and the same zone
