@@ -110,3 +110,11 @@ only child-dispatch jumps.
 **Dispatch tree**:
 For one base chain, its jumps to root-zone sub-chains and every
 sub-chain they reach, each with its slots and child-dispatch jumps.
+
+### Validation
+
+**Diagnostic**:
+A problem found in a table's declarations: an error, which rejects the
+table, or a warning, which doesn't. Each names its kind and the
+declaration it concerns.
+_Avoid_: Assertion (a NixOS module concept)
