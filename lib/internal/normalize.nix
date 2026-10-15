@@ -298,33 +298,41 @@ let
       };
     };
 
+  /*
+    The zones the wildcard expands to, per direction. Shared by
+    `expandWildcardZones` and `checkWildcardZoneMix`, so the warning
+    flags exactly the names the expansion already covers.
+
+    From-side wildcard expands to root zones (plus the local zone)
+    only: descendants receive traffic via parent dispatch (Phase 4
+    emits child sub-chain jumps inside each parent's sub-chain).
+    Expanding to every zone would emit redundant cells in every
+    leaf (ADR-0007).
+
+    To-side wildcard keeps the full zone list because to-side
+    hierarchy is not modelled — `to = [ "all" ]` means "any
+    destination zone" and each unique destination needs its own
+    sub-chain.
+  */
+  wildcardExpansion = ctx: {
+    from = ctx.zoneMembership.rootZoneNames;
+    to = ctx.allZoneNames;
+  };
+
   expandWildcardZones =
     { table, ctx }:
     let
       inherit (table.settings) wildcardZone;
-      inherit (ctx) allZoneNames;
-      inherit (ctx.zoneMembership) rootZoneNames;
 
-      /*
-        From-side wildcard expands to root zones only: descendants
-        receive traffic via parent dispatch (Phase 4 emits child
-        sub-chain jumps inside each parent's sub-chain). Expanding
-        to every zone would emit redundant cells in every leaf.
-
-        To-side wildcard keeps the full zone list because to-side
-        hierarchy is not modelled — `to = [ "all" ]` means "any
-        destination zone" and each unique destination needs its
-        own sub-chain.
-      */
-      expandFrom =
-        zones:
-        lib.unique (lib.concatMap (zone: if zone == wildcardZone then rootZoneNames else [ zone ]) zones);
-      expandTo =
-        zones:
-        lib.unique (lib.concatMap (zone: if zone == wildcardZone then allZoneNames else [ zone ]) zones);
+      expansion = wildcardExpansion ctx;
 
       expandDirection =
-        direction: entry: if direction == "from" then expandFrom entry.from else expandTo entry.to;
+        direction: entry:
+        lib.unique (
+          lib.concatMap (
+            zone: if zone == wildcardZone then expansion.${direction} else [ zone ]
+          ) entry.${direction}
+        );
 
       expandEntry =
         directions: entry: lib.genAttrs directions (direction: expandDirection direction entry);
@@ -795,12 +803,13 @@ let
     shape. The user almost certainly meant `[ "all" ]` alone or
     `[ "wan" ]` alone, not both.
 
-    What the wildcard covers depends on the side, mirroring
-    `expandFrom` / `expandTo`: a from-side wildcard covers root
-    zones and the local zone only (ADR-0007), a to-side wildcard
-    every zone. A child zone beside a from-side wildcard is
-    therefore not flagged: it gets its own cells in its own
-    sub-chain, so removing it changes the ruleset.
+    What the wildcard covers depends on the side, read from
+    `wildcardExpansion`: a from-side wildcard covers root zones and
+    the local zone only (ADR-0007), a to-side wildcard every zone.
+    A child zone beside a from-side wildcard is therefore not
+    flagged: it gets its own cells in its own sub-chain, so
+    removing it changes the ruleset. Nor is an unknown name, which
+    the wildcard covers on neither side; `checkZoneRefs` rejects it.
 
     Walks the raw `from` / `to` lists before wildcard expansion —
     by the time `expandWildcardZones` runs, the wildcard sentinel
@@ -816,12 +825,8 @@ let
     { table, ctx }:
     let
       inherit (table.settings) localZone wildcardZone;
-      inherit (ctx.zoneMembership) rootZoneNames;
 
-      coveredBy = {
-        from = zone: builtins.elem zone rootZoneNames;
-        to = _: true;
-      };
+      expansion = wildcardExpansion ctx;
 
       coverage = {
         from = "every root zone and the local zone '${localZone}'";
@@ -831,7 +836,9 @@ let
       checkEntryDirection =
         groupName: entryName: direction: zones:
         let
-          redundantZones = builtins.filter (zone: zone != wildcardZone && coveredBy.${direction} zone) zones;
+          redundantZones = builtins.filter (
+            zone: zone != wildcardZone && builtins.elem zone expansion.${direction}
+          ) zones;
           quotedZones = lib.concatStringsSep ", " (map (zone: "'${zone}'") redundantZones);
         in
         if builtins.elem wildcardZone zones && redundantZones != [ ] then

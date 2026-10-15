@@ -926,6 +926,36 @@ in
     };
   };
 
+  # An unknown zone is no zone the wildcard covers: only the
+  # reference error reports it.
+  testWildcardBesideUnknownZoneOnlyRejected = {
+    expr = diagnosticsFor {
+      zones = lanWan;
+      policies.typo = {
+        from = [ "lan" ];
+        to = [
+          "all"
+          "wna"
+        ];
+        verdict = "drop";
+      };
+    };
+    expected = {
+      errors = [
+        {
+          tag = "invalidZoneRef";
+          path = [
+            "policies"
+            "typo"
+            "to"
+            "1"
+          ];
+        }
+      ];
+      warnings = [ ];
+    };
+  };
+
   # ===== NAT bodies =====
 
   testNatBodySnatWithAddrAccepted = {
