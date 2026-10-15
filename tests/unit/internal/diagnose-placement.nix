@@ -838,11 +838,9 @@ in
     };
   };
 
-  /*
-    A from-side wildcard expands to root zones and the local zone
-    only, so the child zone `guest` listed beside it is not
-    redundant: removing it changes the ruleset.
-  */
+  # A from-side wildcard expands to root zones and the local zone
+  # only, so the child zone `guest` listed beside it is not
+  # redundant: removing it changes the ruleset.
   testWildcardBesideFromChildZoneSilent = {
     expr = diagnosticsFor {
       zones = {
