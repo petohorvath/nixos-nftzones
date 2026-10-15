@@ -103,10 +103,10 @@ in
   testNodeAddressBothNullTypeAccepts = {
     # The type accepts both-null (both fields default to `null`).
     # The "at least one address required" rule is enforced by
-    # Phase 1's `checkNodeAddresses` validator so the error
+    # Phase 1's `nodeAddressMissing` diagnostic so the error
     # aggregates with the rest of Phase 1 instead of throwing at
-    # type-apply time. See `tests/unit/internal/normalize.nix` for
-    # the validator's rejection tests.
+    # type-apply time. See `tests/unit/internal/diagnose-hierarchy.nix`
+    # for the rejection tests.
     expr =
       (nodeIn {
         zone = "dmz";

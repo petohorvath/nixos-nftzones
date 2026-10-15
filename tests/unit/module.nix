@@ -527,7 +527,7 @@ in
   # `lib/default.nix` and `nixos/module.nix`).
   #
   # Trigger: two zones declaring overlapping interfaces, which
-  # `checkInterfaceOverlap` rejects.
+  # Phase 1 rejects with an `interfaceOverlap` error.
   testModulePhase1ValidatorPropagates = {
     expr =
       let

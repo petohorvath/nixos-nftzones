@@ -1,7 +1,7 @@
 /*
   Rejection scenario for `checkNameCollisions` — a node and a
   zone share a name. The lowering would silently overwrite one
-  with the other in `mergedZones`; the validator must reject so
+  with the other in the zone namespace; the validator must reject so
   the user fixes the ambiguity.
 
   The lowered node clobbers the zone, so the node's `zone = "web"`

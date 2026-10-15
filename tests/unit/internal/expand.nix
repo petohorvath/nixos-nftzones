@@ -212,7 +212,7 @@ in
     expected = {
       name = "f";
       comment = "preserved";
-      priority = 1; # "first" symbol resolved via Phase 1's resolvePriorities
+      priority = 1; # "first" symbol resolved by Phase 1
       ruleIsList = true;
     };
   };
@@ -252,7 +252,7 @@ in
   };
 
   # ===== expandTable — wildcard de-duplicates when explicit zones overlap =====
-  # `expandWildcardZones` calls `lib.unique` after expansion. If a
+  # Phase 1's wildcard expansion deduplicates its result. If a
   # user writes `from = [ "all" "lan" ]`, "lan" appears once.
 
   testExpandWildcardDeduplication = {

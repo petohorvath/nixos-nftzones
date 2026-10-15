@@ -68,12 +68,12 @@ let
     including `name` itself. Order is parent-before-child (each
     level appears before its children's children).
 
-    Defensive cycle guard: `resolveMembership` runs before Phase 1's
-    `checkParentCycles` in the validator pipeline, so a cycle
-    here would stack-overflow before the dedicated validator
-    reports it. The `visited` set short-circuits any revisit so
-    a cyclic input fails the eventual `checkParentCycles` check
-    with a clean error rather than hitting Nix's max-call-depth.
+    Defensive cycle guard: Phase 1 resolves membership before its
+    validators run, so a cycle here would stack-overflow before
+    the cycle validator reports it. The `visited` set
+    short-circuits any revisit so a cyclic input fails with a
+    clean `zoneParentCycle` error rather than hitting Nix's
+    max-call-depth.
   */
   descendantsOf =
     childrenOf: name:
@@ -230,8 +230,8 @@ let
 
         # Interfaces section is hook-gated: drop it when the relevant
         # iif/oif field isn't valid at the hook.
-        # checkChainOverridePlacement should have flagged this case, so
-        # this is defensive.
+        # Phase 1's `chainOverrideUnreachable` check should have
+        # flagged this case, so this is defensive.
         interfacesAtHook = if interfaceIsAvailable then interfacesSection else [ ];
 
         # An active override is always own, including on grouping zones.

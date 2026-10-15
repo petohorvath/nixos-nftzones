@@ -359,8 +359,8 @@ let
           option and forwarded into `tables.<key>`. Leaving `name`
           a plain, readable field keeps the table copy-safe and
           facade-safe, matching the grouped object types (whose
-          `name == key` is likewise a boundary concern, checked by
-          `internal.normalize.checkNameKeyMismatch`). Phase 4 emit
+          `name == key` is likewise a boundary concern, reported by
+          Phase 1 as a `nameKeyMismatch` diagnostic). Phase 4 emit
           (`assembleOutput`) reads `.name` for the on-wire table
           name, and external introspection (nix-topology,
           `deepSeq`) reads it too; the boundary keeps it equal to

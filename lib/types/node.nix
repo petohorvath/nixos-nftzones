@@ -26,7 +26,7 @@
   The lowered values merge directly with declared zones (also
   submodule-evaluated) under one uniform shape — no re-evaluation
   needed downstream. Phase 1 of the compile pipeline performs the
-  merge in `convertNodesToZones`.
+  merge.
 
   At the type layer:
     - `zone` (parent reference) is required.
@@ -34,18 +34,18 @@
       "at least one of `ipv4` / `ipv6` must be set" constraint
       is NOT enforced at the type layer — `addCheck` operates
       on raw user input (not the merged-with-defaults value),
-      so the empty-defaults case slips through. Phase 1's
-      `checkNodeAddresses` validator catches it instead, which
+      so the empty-defaults case slips through. Phase 1 reports
+      it as a `nodeAddressMissing` diagnostic instead, which
       also lets the error aggregate with other Phase 1 errors
       under one message.
 
-  Cross-cutting concerns (Phase 1 validators):
+  Cross-cutting concerns (Phase 1 diagnostics):
     - Node names must not collide with zone names (shared
-      namespace at compile time) — `checkNameCollisions`.
-    - `node.zone` must reference an existing zone — handled by
-      `convertNodesToZones` / `checkZoneRefs`.
+      namespace at compile time) — `zoneNameCollision`.
+    - `node.zone` must reference an existing zone —
+      `invalidZoneRef`.
     - At least one of `address.ipv4` / `address.ipv6` is set —
-      `checkNodeAddresses`.
+      `nodeAddressMissing`.
 
   Example:
     options.nodes = lib.mkOption {
@@ -89,7 +89,7 @@ let
   /*
     Submodule with optional `ipv4` / `ipv6` fields. The
     constraint "at least one must be set" is enforced by Phase
-    1's `checkNodeAddresses` validator, NOT at the type layer.
+    1's `nodeAddressMissing` diagnostic, NOT at the type layer.
     `addCheck` would not work here: it operates on raw user
     input (not the merged-with-defaults value), so the empty-
     defaults case `{ ipv4 = null; ipv6 = null; }` slips through.
@@ -146,7 +146,7 @@ let
           description = ''
             IP address(es) of the node. At least one of `ipv4` /
             `ipv6` must be set — enforced by Phase 1's
-            `checkNodeAddresses` validator so the error aggregates
+            `nodeAddressMissing` diagnostic so the error aggregates
             with other validation errors instead of throwing
             immediately at type-apply time.
           '';

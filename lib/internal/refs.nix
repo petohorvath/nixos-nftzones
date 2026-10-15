@@ -2,10 +2,11 @@
   internal/refs — extracts named-object references from rule bodies,
   exposed under `nftzones.internal.refs`.
 
-  Consumed by `internal.normalize.checkObjectRefs` (Phase 1) to
-  verify every named ref in a user's rule body resolves to a key
-  in `table.objects.<kind>`. Independent helper so the walker can
-  be unit-tested without booting Phase 1.
+  Consumed by Phase 1's object-reference validator, which reports
+  an `objectRefUnknown` diagnostic for every named ref in a user's
+  rule body that does not resolve to a key in `table.objects.<kind>`.
+  Independent helper so the walker can be unit-tested without
+  booting Phase 1.
 */
 { inputs }:
 let
