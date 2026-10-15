@@ -195,6 +195,19 @@ in
     };
   };
 
+  # Phase 2 onward reads only these keys; scratch values stay inside
+  # Phase 1.
+  testNormalizeTableCtxHoldsOnlyKeysLaterPhasesRead = {
+    expr = builtins.attrNames (ctxFor {
+      zones.lan.interfaces = [ "lan0" ];
+    });
+    expected = [
+      "expandedGroups"
+      "resolvedPriorities"
+      "zoneMembership"
+    ];
+  };
+
   testNormalizeTableReturnsTableUntouched = {
     expr =
       let

@@ -34,6 +34,16 @@ let
   };
 in
 {
+  # Validators and compute steps are private; tests reach Phase 1
+  # only through these two functions.
+  testPhase1ExportsOnlyDiagnoseAndNormalizeTable = {
+    expr = builtins.attrNames nftzones.internal.normalize;
+    expected = [
+      "diagnose"
+      "normalizeTable"
+    ];
+  };
+
   testDiagnoseCleanTableReportsNothing = {
     expr = diagnosticsFor {
       zones.lan.interfaces = [ "lan0" ];

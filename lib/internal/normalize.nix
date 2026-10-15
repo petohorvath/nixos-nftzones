@@ -2,25 +2,30 @@
   internal/normalize — Phase 1 of the compile pipeline, exposed
   under `nftzones.internal.normalize`.
 
-  Lowers nodes into zones, resolves wildcards in rule groups'
-  `from` / `to`, and runs cross-reference validations to produce a
-  single normalized table value consumed by downstream phases
-  (expand, dispatch+sort, emit).
+  Lowers nodes into zones, resolves zone membership, wildcards and
+  priorities, and validates the table's cross-references.
 
-  Pipeline pattern: each phase takes `{ table; ctx }` and
-  returns the same shape. `table` is the original
-  `nftzones.types.table` value and stays *untouched* through the
-  pipeline; phases only contribute keys to `ctx`. `diagnose` and
-  `normalizeTable` share one run of the pipeline.
+  Interface: two functions over an evaluated `nftzones.types.table`,
+  sharing one private run of the pipeline below.
 
-  Diagnostics: every validator appends `{ tag; path; message; }`
-  records (see `mkDiagnostic`) to `ctx.errors` or `ctx.warnings`.
-  `diagnose` returns both lists sorted by path, then tag, as data.
-  `normalizeTable` throws once with every error, rendered as
-  `[tag] path.joined: message`, or emits each warning the same way
-  through `lib.warn`.
+    - `diagnose` returns every Diagnostic as data:
+      `{ errors; warnings; }`, each a list of `{ tag; path; message; }`
+      sorted by path, then tag.
+    - `normalizeTable` throws once with every error, rendered as
+      `[tag] path.joined: message`, or emits each warning the same way
+      through `lib.warn`, and returns `{ table; ctx; }` for Phase 2.
+      `ctx` holds only what later phases read: `zoneMembership`,
+      `expandedGroups` and `resolvedPriorities`.
 
-  Phase pipeline:
+  Every compute step and validator is private; tests reach them only
+  through these two functions.
+
+  Pipeline pattern: each step takes `{ table; ctx }` and returns the
+  same shape. `table` stays untouched; steps only contribute keys to
+  `ctx`. Compute steps run first and derive the scratch values the
+  validators share; each validator then appends Diagnostics (see
+  `mkDiagnostic`) to `ctx.errors` or `ctx.warnings`, and none
+  short-circuits.
 
       { table; ctx = { errors = [ ]; warnings = [ ]; }; }
         ↓ convertNodesToZones           ctx.mergedZones
@@ -50,33 +55,16 @@
         ↓ checkCidrOverlap              ctx.errors   (appends)
         ↓ checkCrossAxisOverlap         ctx.warnings (appends)
         ↓ checkObjectRefs               ctx.errors   (appends)
-      { table;
-        ctx = {
-          mergedZones; zoneMembership;
-          allZoneNames; expandedGroups; resolvedPriorities;
-          zoneRefs; errors; warnings;
-        };
-      }
-
-  Output: `normalizeTable` returns the final pipeline context
-    `{ table; ctx }` directly — no assembly. `table` is the
-    untouched user input; `ctx` contains everything Phase 1
-    computed. Downstream phases (Phase 2 expand, Phase 3 dispatch,
-    Phase 4 emit) consume both. The final nftables table shape is
-    assembled at Phase 4.
 
   Path stability: `collectZoneRefs` walks the *original* table.
   Reference paths in diagnostics therefore point at the user's
   input slot, not at indices in the post-expansion list.
 
-  Wired into the surface from `lib/internal/default.nix`.
-
-  Output shape note: lowered nodes are completed to the full
-  `nftzones.types.zone` submodule shape (`name`, `parent`,
-  `interfaces`, `cidrs`, `matchOverride`), mirroring the
-  submodule's defaults. Declared zones already have this shape
-  from submodule evaluation, so `ctx.mergedZones` is uniformly
-  shaped — downstream phases can consume it without re-evaluation.
+  Lowered nodes are completed to the full `nftzones.types.zone`
+  submodule shape (`name`, `parent`, `interfaces`, `cidrs`,
+  `matchOverride`), mirroring the submodule's defaults. Declared
+  zones already have this shape from submodule evaluation, so
+  `ctx.mergedZones` is uniformly shaped.
 */
 { inputs, internal }:
 let
@@ -182,13 +170,6 @@ let
       };
     };
 
-  /*
-    `parentOf zone` reads `zone.parent or null` — accommodating
-    raw test fixtures that bypass the type system. Submodule-
-    evaluated zones always have `parent` defaulted to null.
-  */
-  parentOf = zone: zone.parent or null;
-
   checkParentRefs =
     { table, ctx }:
     let
@@ -198,7 +179,7 @@ let
       newErrors = lib.foldlAttrs (
         acc: zoneName: zone:
         let
-          parent = parentOf zone;
+          inherit (zone) parent;
         in
         if parent == null then
           acc
@@ -258,8 +239,7 @@ let
           step =
             visited: name:
             let
-              zone = mergedZones.${name} or null;
-              parent = if zone == null then null else parentOf zone;
+              inherit (mergedZones.${name}) parent;
             in
             if parent == null || !(mergedZones ? ${parent}) then
               [ ]
@@ -480,17 +460,11 @@ let
         lib.concatLists (
           lib.mapAttrsToList (
             key: object:
-            # `object.name or key` mirrors the defensive reads elsewhere
-            # in this file (`parentOf`): raw fixtures that bypass the
-            # type system may omit `name`, and an absent name can't
-            # diverge from its key. `object.name` in the message is only
-            # forced when the guard already proved it present and
-            # divergent, so this never trips the missing-attr path.
-            lib.optional ((object.name or key) != key) (
+            lib.optional (object.name != key) (
               mkDiagnostic "nameKeyMismatch" [ group key "name" ]
                 "is '${object.name}' but must equal its attribute key '${key}' — the compile pipeline references this object by '${key}'. Drop the explicit `name` (it defaults to the key) or rename the attribute to '${object.name}'."
             )
-          ) (table.${group} or { })
+          ) table.${group}
         );
 
       newErrors = lib.concatMap checkGroup keyedNameGroups;
@@ -538,7 +512,7 @@ let
         );
 
       placementsForGroup =
-        group: lib.concatLists (lib.mapAttrsToList (placementsForEntry group) (table.${group} or { }));
+        group: lib.concatLists (lib.mapAttrsToList (placementsForEntry group) table.${group});
 
       mkError =
         group: placement: reason:
@@ -591,10 +565,7 @@ let
       inherit (nftypes) priorityNameOf;
 
       claimsRawPrerouting =
-        entry:
-        let
-          chain = entry.chain or null;
-        in
+        { chain, ... }:
         chain != null && chain.hook == "prerouting" && priorityNameOf family chain.priority == "raw";
 
       groupClaims = group: lib.any claimsRawPrerouting (lib.attrValues table.${group});
@@ -644,7 +615,7 @@ let
       inherit (table) family;
       inherit (nftypes) priorityNameOf;
 
-      entryHasChain = entry: (entry.chain or null) != null;
+      entryHasChain = entry: entry.chain != null;
 
       mkWarning =
         tag: group: entryName:
@@ -667,7 +638,7 @@ let
             ]
           else
             [ ]
-        ) (table.filters or { })
+        ) table.filters
       );
 
       # Dnat at output — from-side at output is local, not external.
@@ -682,7 +653,7 @@ let
             ]
           else
             [ ]
-        ) (table.dnats or { })
+        ) table.dnats
       );
 
       # Snat at non-srcnat priority — breaks conntrack.
@@ -697,7 +668,7 @@ let
             ]
           else
             [ ]
-        ) (table.snats or { })
+        ) table.snats
       );
 
       newWarnings = filterPostroutingWarnings ++ dnatOutputWarnings ++ snatPriorityWarnings;
@@ -843,12 +814,12 @@ let
       checkEntry =
         groupName: directions: entryName: entry:
         lib.concatMap (
-          direction: checkEntryDirection groupName entryName direction (entry.${direction} or [ ])
+          direction: checkEntryDirection groupName entryName direction entry.${direction}
         ) directions;
 
       checkGroup =
         groupName: directions:
-        lib.concatLists (lib.mapAttrsToList (checkEntry groupName directions) (table.${groupName} or { }));
+        lib.concatLists (lib.mapAttrsToList (checkEntry groupName directions) table.${groupName});
 
       newWarnings = lib.concatLists (lib.mapAttrsToList checkGroup groupDirections);
     in
@@ -881,7 +852,7 @@ let
             mkDiagnostic "nodeAddressMissing" [ "nodes" name ]
               "address must set at least one of `ipv4` / `ipv6` — a node with no address contributes no CIDR to its lowered zone."
           )
-        ) (table.nodes or { })
+        ) table.nodes
       );
     in
     {
@@ -910,7 +881,7 @@ let
             mkDiagnostic "natBodyMissingAddr" [ "snats" name ]
               "rule.snat.addr is null — `snat` requires a target address. Use `rule.masquerade = { }` for auto-target via the outgoing interface, or set `rule.snat.addr` explicitly."
           )
-        ) (table.snats or { })
+        ) table.snats
       );
 
       dnatErrors = lib.concatLists (
@@ -920,7 +891,7 @@ let
             mkDiagnostic "natBodyMissingAddr" [ "dnats" name ]
               "rule.action.dnat.addr is null — `dnat` requires a target address. Use `rule.action.redirect = { port = N; }` for redirect-to-localhost, or set `rule.action.dnat.addr` explicitly."
           )
-        ) (table.dnats or { })
+        ) table.dnats
       );
 
       newErrors = snatErrors ++ dnatErrors;
@@ -1060,7 +1031,7 @@ let
       */
       enumerateEntry =
         groupName: directions: entryName: entry:
-        if (entry.chain or null) == null then
+        if entry.chain == null then
           [ ]
         else
           let
@@ -1532,8 +1503,10 @@ let
     Run Phase 1 for the compile pipeline: throw once with every error,
     or emit each warning through `lib.warn` and hand Phase 2 its input.
 
-    Takes an evaluated `nftzones.types.table` value. Returns the final
-    pipeline state `{ table; ctx; }`.
+    Takes an evaluated `nftzones.types.table` value. Returns
+    `{ table; ctx; }`: `table` untouched, and `ctx` holding only what
+    later phases read (`zoneMembership`, `expandedGroups`,
+    `resolvedPriorities`).
   */
   normalizeTable =
     table:
@@ -1548,7 +1521,12 @@ let
         ) result warnings;
     in
     if errors == [ ] then
-      withWarnings final
+      withWarnings {
+        inherit table;
+        ctx = {
+          inherit (final.ctx) expandedGroups resolvedPriorities zoneMembership;
+        };
+      }
     else
       throw (
         "nftzones.normalize: validation failed:\n"
@@ -1556,35 +1534,5 @@ let
       );
 in
 {
-  inherit
-    checkChainOverridePlacement
-    checkChainOverrideSemantics
-    checkChainPlacement
-    checkCidrOverlap
-    checkCrossAxisOverlap
-    checkExtraSectionFields
-    checkInterfaceOverlap
-    checkNameCollisions
-    checkNameKeyMismatch
-    checkNatBodies
-    checkNodeAddresses
-    checkObjectRefs
-    checkParentCycles
-    checkParentRefs
-    checkPolicyUniqueness
-    checkRpfilterOverride
-    checkSetNameCollisions
-    checkSettings
-    checkWildcardZoneMix
-    checkZoneMatchable
-    checkZoneRefs
-    collectAllZoneNames
-    collectZoneRefs
-    computeZoneMembership
-    convertNodesToZones
-    diagnose
-    expandWildcardZones
-    normalizeTable
-    resolvePriorities
-    ;
+  inherit diagnose normalizeTable;
 }
