@@ -839,13 +839,11 @@ in
   };
 
   /*
-    Pins a misleading warning (#22, out of scope there). A from-side
-    wildcard expands to root zones only, so the child zone `guest`
-    listed beside it is not redundant: removing it changes the
-    ruleset. The warning still calls it redundant. A fix changes this
-    expected value.
+    A from-side wildcard expands to root zones and the local zone
+    only, so the child zone `guest` listed beside it is not
+    redundant: removing it changes the ruleset.
   */
-  testWildcardBesideFromChildZoneWarnsMisleadingly = {
+  testWildcardBesideFromChildZoneSilent = {
     expr = diagnosticsFor {
       zones = {
         lan.interfaces = [ "lan0" ];
@@ -864,6 +862,57 @@ in
         verdict = "accept";
       };
     };
+    expected = clean;
+  };
+
+  # The from-side wildcard's expansion includes the local zone.
+  testWildcardBesideFromLocalZoneWarns = {
+    expr = diagnosticsFor {
+      zones = lanWan;
+      filters.from-host = {
+        from = [
+          "all"
+          "local"
+        ];
+        to = [ "wan" ];
+        rule = [ ];
+      };
+    };
+    expected = {
+      errors = [ ];
+      warnings = [
+        {
+          tag = "wildcardZoneMixed";
+          path = [
+            "filters"
+            "from-host"
+            "from"
+          ];
+        }
+      ];
+    };
+  };
+
+  # A to-side wildcard expands to every zone, children included.
+  testWildcardBesideToChildZoneWarns = {
+    expr = diagnosticsFor {
+      zones = {
+        lan.interfaces = [ "lan0" ];
+        guest = {
+          interfaces = [ "guest0" ];
+          parent = "lan";
+        };
+        wan.interfaces = [ "wan0" ];
+      };
+      policies.to-guest = {
+        from = [ "wan" ];
+        to = [
+          "all"
+          "guest"
+        ];
+        verdict = "drop";
+      };
+    };
     expected = {
       errors = [ ];
       warnings = [
@@ -871,8 +920,8 @@ in
           tag = "wildcardZoneMixed";
           path = [
             "policies"
-            "guest-out"
-            "from"
+            "to-guest"
+            "to"
           ];
         }
       ];

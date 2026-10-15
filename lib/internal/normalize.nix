@@ -788,14 +788,19 @@ let
     };
 
   /*
-    Warn when an entry's `from` or `to` list mixes the wildcard
-    zone with explicit zone names — e.g. `from = [ "all" "wan" ]`.
-    The wildcard alone already expands to every in-scope zone
-    (`expandFrom` / `expandTo` substitute the wildcard sentinel),
-    so explicit zones appearing alongside it are either already
-    covered (no-op) or, more likely, a typo / leftover from an
-    earlier config shape. The user almost certainly meant `[
-    "all" ]` alone or `[ "wan" ]` alone, not both.
+    Warn when an entry's `from` or `to` list names an explicit zone
+    that the wildcard beside it already covers — e.g. `from = [
+    "all" "wan" ]` with `wan` a root zone. Such a name is a no-op
+    or, more likely, a typo / leftover from an earlier config
+    shape. The user almost certainly meant `[ "all" ]` alone or
+    `[ "wan" ]` alone, not both.
+
+    What the wildcard covers depends on the side, mirroring
+    `expandFrom` / `expandTo`: a from-side wildcard covers root
+    zones and the local zone only (ADR-0007), a to-side wildcard
+    every zone. A child zone beside a from-side wildcard is
+    therefore not flagged: it gets its own cells in its own
+    sub-chain, so removing it changes the ruleset.
 
     Walks the raw `from` / `to` lists before wildcard expansion —
     by the time `expandWildcardZones` runs, the wildcard sentinel
@@ -810,18 +815,29 @@ let
   checkWildcardZoneMix =
     { table, ctx }:
     let
-      inherit (table.settings) wildcardZone;
+      inherit (table.settings) localZone wildcardZone;
+      inherit (ctx.zoneMembership) rootZoneNames;
+
+      coveredBy = {
+        from = zone: builtins.elem zone rootZoneNames;
+        to = _: true;
+      };
+
+      coverage = {
+        from = "every root zone and the local zone '${localZone}'";
+        to = "every zone";
+      };
 
       checkEntryDirection =
         groupName: entryName: direction: zones:
-        if builtins.elem wildcardZone zones && builtins.length zones > 1 then
-          let
-            explicitZones = builtins.filter (zone: zone != wildcardZone) zones;
-            quotedZones = lib.concatStringsSep ", " (map (zone: "'${zone}'") explicitZones);
-          in
+        let
+          redundantZones = builtins.filter (zone: zone != wildcardZone && coveredBy.${direction} zone) zones;
+          quotedZones = lib.concatStringsSep ", " (map (zone: "'${zone}'") redundantZones);
+        in
+        if builtins.elem wildcardZone zones && redundantZones != [ ] then
           [
             (mkDiagnostic "wildcardZoneMixed" [ groupName entryName direction ]
-              "list contains the wildcard zone '${wildcardZone}' alongside explicit zone(s) ${quotedZones}. The wildcard alone already expands to every in-scope zone — the explicit names are either redundant or a leftover. Use `[ \"${wildcardZone}\" ]` or list the explicit zones without the wildcard."
+              "list contains the wildcard zone '${wildcardZone}' alongside explicit zone(s) ${quotedZones}. On the `${direction}` side the wildcard already expands to ${coverage.${direction}}, so these names are redundant or a leftover. Use `[ \"${wildcardZone}\" ]` or list the explicit zones without the wildcard."
             )
           ]
         else
