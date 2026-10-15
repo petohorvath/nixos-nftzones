@@ -51,23 +51,21 @@ in
     };
 
   /*
-    Resolve real declarations through node lowering and the same zone
-    interface used by normalization. Deliberately stop before validation
-    so grouping zones and malformed hierarchy can be exercised too.
+    Resolve zone membership straight from real declarations: the
+    evaluated zones plus each node lowered by `internal.node.toZone`.
+    Bypassing Phase 1 means malformed hierarchy, such as parent
+    cycles, reaches membership instead of failing validation.
 
     Takes a table body and returns the zone membership interface.
   */
   membershipFor =
     body:
     let
-      state = nftzones.internal.normalize.convertNodesToZones {
-        table = evalTable body;
-        ctx = { };
-      };
+      table = evalTable body;
     in
     nftzones.internal.zone.resolveMembership {
-      zones = state.ctx.mergedZones;
-      inherit (state.table.settings) localZone;
+      zones = table.zones // lib.mapAttrs (_: nftzones.internal.node.toZone) table.nodes;
+      inherit (table.settings) localZone;
     };
 
   /*
