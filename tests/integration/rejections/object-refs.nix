@@ -1,5 +1,5 @@
 /*
-  Rejection scenario for `checkObjectRefs` — a filter rule
+  Rejection scenario for `objectRefUnknown` — a filter rule
   references a counter that hasn't been declared in
   `objects.counters`. Without rejection, the rendered ruleset
   would reference a non-existent counter and fail at `nft load`
@@ -10,7 +10,7 @@ let
   inherit (nftypes.dsl) accept counter;
 in
 {
-  description = "checkObjectRefs: rule references undeclared counter";
+  description = "objectRefUnknown: rule references undeclared counter";
 
   errors = [
     {

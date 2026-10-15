@@ -1,12 +1,12 @@
 /*
-  Rejection scenario for `checkSettings` — the localZone
+  Rejection scenario for `settingsConflict` — the localZone
   sentinel ("local" by default) matches a declared zone or
   node. The localZone is the chain-dispatch trigger for input
   and output hooks; if a real zone or node shares the name,
   dispatch routing becomes ambiguous.
 */
 _: {
-  description = "checkSettings: localZone shadows a declared node";
+  description = "settingsConflict: localZone shadows a declared node";
 
   errors = [
     {

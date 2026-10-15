@@ -1,12 +1,12 @@
 /*
-  Rejection scenario for `checkChainPlacement` — bridge family
+  Rejection scenario for `invalidChainPlacement` — bridge family
   with a droute rule. Symmetric to chain-placement-bridge-sroute:
   bridge has no `mangle` priority symbol, so destination-route
   mangling is unsupported at the kernel level. Pins that
-  checkChainPlacement walks the droute group too, not just sroute.
+  placement is checked for the droute group too, not just sroute.
 */
 _: {
-  description = "checkChainPlacement: bridge family + droute (no mangle priority)";
+  description = "invalidChainPlacement: bridge family + droute (no mangle priority)";
 
   errors = [
     {

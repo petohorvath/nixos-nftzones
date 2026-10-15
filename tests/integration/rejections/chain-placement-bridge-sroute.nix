@@ -1,5 +1,5 @@
 /*
-  Rejection scenario for `checkChainPlacement` — bridge family
+  Rejection scenario for `invalidChainPlacement` — bridge family
   with an sroute rule. Bridge has no `mangle` priority symbol,
   so source-route mangling is unsupported at the kernel level.
   The complementary case (bridge + snat, which exercises the
@@ -8,7 +8,7 @@
   path.
 */
 _: {
-  description = "checkChainPlacement: bridge family + sroute (no mangle priority)";
+  description = "invalidChainPlacement: bridge family + sroute (no mangle priority)";
 
   errors = [
     {

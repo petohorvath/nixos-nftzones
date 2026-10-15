@@ -1,11 +1,11 @@
 /*
-  Rejection scenario for `checkCidrOverlap` — two unrelated
+  Rejection scenario for `cidrOverlap` — two unrelated
   zones with overlapping CIDR prefixes. Without rejection,
   packets from the overlap range match both zones' v4 sets and
   the dispatcher's first jump wins.
 */
 _: {
-  description = "checkCidrOverlap: two unrelated zones overlap CIDRs";
+  description = "cidrOverlap: two unrelated zones overlap CIDRs";
 
   errors = [
     {

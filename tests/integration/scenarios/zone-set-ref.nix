@@ -3,7 +3,7 @@
   zone-derived auto-set (`@<zone>_v4`) directly via a raw match
   clause. Pins the option-(a) namespace resolution decided in
   `docs/adr/0004-zone-sets-referenceable-from-rule-bodies.md`:
-  `checkObjectRefs` resolves names against the union of
+  object references resolve against the union of
   `table.objects.sets.<name>` keys and the predictable
   `<zone>_{iifs,v4,v6}` names — a user can use an auto-set as an
   escape hatch for raw `match`-against-zone-membership without
@@ -29,8 +29,8 @@ in
       to = [ "wan" ];
       # Raw `@lan_v4` match — referencing the auto-emitted
       # zone-derived v4 set rather than re-declaring the CIDR
-      # under `objects.sets`. Compiles only because
-      # checkObjectRefs accepts zone-derived names.
+      # under `objects.sets`. Compiles only because Phase 1
+      # resolves object references against zone-derived names.
       rule = [
         (inSet ip.saddr (expr.setRef "lan_v4"))
         accept

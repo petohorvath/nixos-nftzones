@@ -1,17 +1,17 @@
 /*
-  Rejection scenario for `checkChainOverridePlacement` — a
+  Rejection scenario for `chainOverrideUnreachable` — a
   filter routed via `chain = { hook = "prerouting"; ... }` with
   `to = [ "iface-only" ]`, where the to-side zone is matchable
   only via interface (oifname). At prerouting, the output
   interface isn't decided yet, so oifname-based matches are
-  invalid; the validator must reject.
+  invalid; Phase 1 must reject.
 */
 { nftypes }:
 let
   inherit (nftypes.dsl) accept;
 in
 {
-  description = "checkChainOverridePlacement: oifname-only zone at prerouting hook";
+  description = "chainOverrideUnreachable: oifname-only zone at prerouting hook";
 
   errors = [
     {

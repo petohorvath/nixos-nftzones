@@ -1,5 +1,5 @@
 /*
-  Rejection scenario for `checkSettings` — the wildcardZone
+  Rejection scenario for `settingsConflict` — the wildcardZone
   sentinel ("all" by default) matches a declared zone. The
   wildcard expands `from = [ wildcardZone ]` to every root
   plus localZone; if a real zone shares the name, dispatch
@@ -8,7 +8,7 @@
   by settings.nix; this one pins the shadow case.
 */
 _: {
-  description = "checkSettings: wildcardZone shadows a declared zone";
+  description = "settingsConflict: wildcardZone shadows a declared zone";
 
   errors = [
     {

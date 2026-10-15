@@ -1,7 +1,7 @@
 /*
-  Rejection scenario for `checkNameCollisions` — a node and a
+  Rejection scenario for `zoneNameCollision` — a node and a
   zone share a name. The lowering would silently overwrite one
-  with the other in the zone namespace; the validator must reject so
+  with the other in the zone namespace; Phase 1 must reject so
   the user fixes the ambiguity.
 
   The lowered node clobbers the zone, so the node's `zone = "web"`
@@ -9,7 +9,7 @@
   cascade (#7); fixing the clobber removes the second error.
 */
 _: {
-  description = "checkNameCollisions: node name collides with zone name";
+  description = "zoneNameCollision: node name collides with zone name";
 
   errors = [
     {

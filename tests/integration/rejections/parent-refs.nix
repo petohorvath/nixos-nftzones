@@ -1,12 +1,12 @@
 /*
-  Rejection scenario for `checkParentRefs` — a zone declares a
-  `parent` that doesn't exist in the same zones attrset. The
-  validator must reject this; if disconnected, parent dispatch
-  would silently fail at runtime (the child would be unreachable
-  via its non-existent parent's chain).
+  Rejection scenario for `zoneParentUnknown` — a zone declares a
+  `parent` that doesn't exist in the same zones attrset. Phase 1
+  must reject this; otherwise parent dispatch would silently fail
+  at runtime (the child would be unreachable via its non-existent
+  parent's chain).
 */
 _: {
-  description = "checkParentRefs: zone references unknown parent";
+  description = "zoneParentUnknown: zone references unknown parent";
 
   errors = [
     {

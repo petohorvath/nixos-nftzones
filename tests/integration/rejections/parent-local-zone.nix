@@ -1,5 +1,5 @@
 /*
-  Rejection scenario for `checkParentRefs` — a zone declares
+  Rejection scenario for `zoneParentLocalZone` — a zone declares
   `parent = localZone`. The localZone sentinel represents the
   firewall machine itself and is reserved for chain dispatch
   (input / output hooks); it cannot anchor a zone hierarchy.
@@ -8,7 +8,7 @@
   references unknown zone) is covered by parent-refs.nix.
 */
 _: {
-  description = "checkParentRefs: zone parent is the localZone sentinel";
+  description = "zoneParentLocalZone: zone parent is the localZone sentinel";
 
   errors = [
     {

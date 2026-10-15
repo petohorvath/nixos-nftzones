@@ -1,13 +1,13 @@
 /*
-  Rejection scenario for `checkChainPlacement` — bridge family
+  Rejection scenario for `invalidChainPlacement` — bridge family
   with one *valid* filter alongside an *invalid* snat in the same
-  table. Pins that checkChainPlacement iterates every entry and
+  table. Pins that Phase 1 checks the placement of every entry and
   doesn't short-circuit on the first valid placement: the snat
   must still be rejected even when a sibling filter compiles.
 */
 { nftypes }:
 {
-  description = "checkChainPlacement: bridge filter (valid) + snat (invalid) in one table";
+  description = "invalidChainPlacement: bridge filter (valid) + snat (invalid) in one table";
 
   errors = [
     {
