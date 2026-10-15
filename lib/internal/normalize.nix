@@ -299,9 +299,11 @@ let
     };
 
   /*
-    The zones the wildcard expands to, per direction. Shared by
+    The zones the wildcard expands to, per direction, with a prose
+    `description` of them for diagnostics. Shared by
     `expandWildcardZones` and `checkWildcardZoneMix`, so the warning
-    flags exactly the names the expansion already covers.
+    flags exactly the names the expansion already covers; keep each
+    `description` in step with its `zones`.
 
     From-side wildcard expands to root zones (plus the local zone)
     only: descendants receive traffic via parent dispatch (Phase 4
@@ -314,23 +316,31 @@ let
     destination zone" and each unique destination needs its own
     sub-chain.
   */
-  wildcardExpansion = ctx: {
-    from = ctx.zoneMembership.rootZoneNames;
-    to = ctx.allZoneNames;
-  };
+  wildcardExpansionOf =
+    { table, ctx }:
+    {
+      from = {
+        zones = ctx.zoneMembership.rootZoneNames;
+        description = "every root zone and the local zone '${table.settings.localZone}'";
+      };
+      to = {
+        zones = ctx.allZoneNames;
+        description = "every zone";
+      };
+    };
 
   expandWildcardZones =
     { table, ctx }:
     let
       inherit (table.settings) wildcardZone;
 
-      expansion = wildcardExpansion ctx;
+      expansion = wildcardExpansionOf { inherit table ctx; };
 
       expandDirection =
         direction: entry:
         lib.unique (
           lib.concatMap (
-            zone: if zone == wildcardZone then expansion.${direction} else [ zone ]
+            zone: if zone == wildcardZone then expansion.${direction}.zones else [ zone ]
           ) entry.${direction}
         );
 
@@ -804,7 +814,7 @@ let
     `[ "wan" ]` alone, not both.
 
     What the wildcard covers depends on the side, read from
-    `wildcardExpansion`: a from-side wildcard covers root zones and
+    `wildcardExpansionOf`: a from-side wildcard covers root zones and
     the local zone only (ADR-0007), a to-side wildcard every zone.
     A child zone beside a from-side wildcard is therefore not
     flagged: it gets its own cells in its own sub-chain, so
@@ -824,27 +834,26 @@ let
   checkWildcardZoneMix =
     { table, ctx }:
     let
-      inherit (table.settings) localZone wildcardZone;
+      inherit (table.settings) wildcardZone;
 
-      expansion = wildcardExpansion ctx;
-
-      coverage = {
-        from = "every root zone and the local zone '${localZone}'";
-        to = "every zone";
-      };
+      expansion = wildcardExpansionOf { inherit table ctx; };
 
       checkEntryDirection =
         groupName: entryName: direction: zones:
         let
-          redundantZones = builtins.filter (
-            zone: zone != wildcardZone && builtins.elem zone expansion.${direction}
-          ) zones;
+          redundantZones = lib.unique (
+            builtins.filter (
+              zone: zone != wildcardZone && builtins.elem zone expansion.${direction}.zones
+            ) zones
+          );
           quotedZones = lib.concatStringsSep ", " (map (zone: "'${zone}'") redundantZones);
         in
         if builtins.elem wildcardZone zones && redundantZones != [ ] then
           [
             (mkDiagnostic "wildcardZoneMixed" [ groupName entryName direction ]
-              "list contains the wildcard zone '${wildcardZone}' alongside explicit zone(s) ${quotedZones}. On the `${direction}` side the wildcard already expands to ${coverage.${direction}}, so these names are redundant or a leftover. Use `[ \"${wildcardZone}\" ]` or list the explicit zones without the wildcard."
+              "list contains the wildcard zone '${wildcardZone}' alongside ${quotedZones}, which it already covers: the wildcard expands to ${
+                expansion.${direction}.description
+              }. Remove ${quotedZones} from the list, or list the explicit zones without the wildcard."
             )
           ]
         else

@@ -133,7 +133,7 @@ Own, descendant and ancestor meanings stay distinct: an empty grouping zone can 
 
 ### 1.2 Wildcard resolution
 
-Phase 1 substitutes the wildcard zone (default `"all"`) in every entry's `from` / `to` list and deduplicates the result. A from-side wildcard expands to the root zones only, because descendants receive traffic through their parent's sub-chain ([ADR-0007](adr/0007-from-wildcard-expands-to-roots.md)). A to-side wildcard expands to every in-scope zone: declared zones, lowered nodes and `settings.localZone`.
+Phase 1 substitutes the wildcard zone (default `"all"`) in every entry's `from` / `to` list and deduplicates the result. A from-side wildcard expands to the root zones and `settings.localZone` only, because descendants receive traffic through their parent's sub-chain ([ADR-0007](adr/0007-from-wildcard-expands-to-roots.md)). A to-side wildcard expands to every in-scope zone: declared zones, lowered nodes and `settings.localZone`.
 
 ```
 wildcard = "all"
