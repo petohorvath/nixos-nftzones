@@ -10,6 +10,16 @@
 _: {
   description = "checkChainPlacement: bridge family + sroute (no mangle priority)";
 
+  errors = [
+    {
+      tag = "invalidChainPlacement";
+      path = [
+        "sroutes"
+        "mark-it"
+      ];
+    }
+  ];
+
   body = {
     family = "bridge";
 

@@ -15,6 +15,17 @@ in
 {
   description = "checkObjectRefs: set element-attached stmt references unknown counter";
 
+  errors = [
+    {
+      tag = "objectRefUnknown";
+      path = [
+        "objects"
+        "sets"
+        "tracker"
+      ];
+    }
+  ];
+
   body = {
     zones.lan.interfaces = [ "lan0" ];
 

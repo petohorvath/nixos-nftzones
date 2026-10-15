@@ -8,6 +8,16 @@
 _: {
   description = "checkSettings: localZone shadows a declared node";
 
+  errors = [
+    {
+      tag = "settingsConflict";
+      path = [
+        "settings"
+        "localZone"
+      ];
+    }
+  ];
+
   body = {
     zones.lan.interfaces = [ "eth1" ];
     # Default localZone is "local"; lowering nodes.local to a

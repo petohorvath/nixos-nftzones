@@ -10,6 +10,16 @@
 _: {
   description = "checkSettings: wildcardZone shadows a declared zone";
 
+  errors = [
+    {
+      tag = "settingsConflict";
+      path = [
+        "settings"
+        "wildcardZone"
+      ];
+    }
+  ];
+
   body = {
     # Default wildcardZone is "all"; declaring zones.all is the
     # collision.

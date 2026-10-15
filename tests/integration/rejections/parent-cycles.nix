@@ -6,6 +6,17 @@
 _: {
   description = "checkParentCycles: three-zone parent cycle";
 
+  errors = [
+    {
+      tag = "zoneParentCycle";
+      path = [
+        "zones"
+        "a"
+        "parent"
+      ];
+    }
+  ];
+
   body = {
     zones = {
       a = {

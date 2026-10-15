@@ -9,6 +9,16 @@
 _: {
   description = "checkNodeAddresses: node.address with both ipv4 and ipv6 null";
 
+  errors = [
+    {
+      tag = "nodeAddressMissing";
+      path = [
+        "nodes"
+        "web"
+      ];
+    }
+  ];
+
   body = {
     zones.dmz.interfaces = [ "dmz0" ];
 

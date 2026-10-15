@@ -1,22 +1,24 @@
 /*
-  Rejection scenario for `checkMatchOverrideContent`. The
+  Type-layer rejection scenario for verdicts in `matchOverride`. The
   `matchOverride.<side>.<section>` sections are spliced as
-  prefix-match clauses into every dispatch rule for the zone;
-  a verdict there would short-circuit zone dispatch before the
+  prefix-match clauses into every dispatch rule for the zone; a
+  verdict there would short-circuit zone dispatch before the
   per-pair sub-chain jump fires, silently changing the rule's
   meaning. Side-effecting statements (counter / log / limit /
-  mark-set / …) would fire on every packet matching the zone
+  mark-set / ...) would fire on every packet matching the zone
   rather than just the packets the user's filter rule targets.
 
-  This scenario embeds a `jump` verdict in `extra` to pin that
-  the structural check is wired into the live `mkRuleset`
-  pipeline. Per-statement-kind acceptance / rejection is
-  covered exhaustively by the unit tests in
-  `tests/unit/internal/normalize.nix`.
+  The table type rejects both: each section is a
+  `primitives.matchRule`, a list of nftypes' `matchStatement`, so
+  `mkRuleset` fails while evaluating the body, before Phase 1 runs.
+  This scenario embeds a `jump` verdict in `extra` to pin that the
+  restriction is reached through the nftzones type surface.
+  Per-statement-kind acceptance and rejection is covered upstream
+  in nftypes.
 */
 { nftypes }:
 {
-  description = "checkMatchOverrideContent: rejects verdict statements in matchOverride sections";
+  description = "primitives.matchRule: rejects verdict statements in matchOverride sections";
 
   body = {
     zones.lan = {

@@ -7,6 +7,16 @@
 _: {
   description = "checkChainPlacement: bridge family + snat (no nat support)";
 
+  errors = [
+    {
+      tag = "invalidChainPlacement";
+      path = [
+        "snats"
+        "bad-bridge-nat"
+      ];
+    }
+  ];
+
   body = {
     family = "bridge";
 

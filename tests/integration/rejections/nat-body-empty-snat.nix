@@ -8,6 +8,16 @@
 _: {
   description = "checkNatBodies: rule.snat with null addr";
 
+  errors = [
+    {
+      tag = "natBodyMissingAddr";
+      path = [
+        "snats"
+        "outbound"
+      ];
+    }
+  ];
+
   body = {
     zones = {
       lan.interfaces = [ "lan0" ];

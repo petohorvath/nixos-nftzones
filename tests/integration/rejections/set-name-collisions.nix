@@ -9,6 +9,17 @@
 _: {
   description = "checkSetNameCollisions: user set name matches auto zone-derived set name";
 
+  errors = [
+    {
+      tag = "setNameCollision";
+      path = [
+        "objects"
+        "sets"
+        "lan_iifs"
+      ];
+    }
+  ];
+
   body = {
     zones.lan = {
       interfaces = [ "eth1" ];

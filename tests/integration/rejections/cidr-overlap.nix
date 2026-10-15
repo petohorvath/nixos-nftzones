@@ -7,6 +7,17 @@
 _: {
   description = "checkCidrOverlap: two unrelated zones overlap CIDRs";
 
+  errors = [
+    {
+      tag = "cidrOverlap";
+      path = [
+        "zones"
+        "lan"
+        "cidrs"
+      ];
+    }
+  ];
+
   body = {
     zones = {
       lan.cidrs = [ "10.0.0.0/24" ];

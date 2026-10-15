@@ -11,6 +11,18 @@ in
 {
   description = "checkZoneMatchable: filter.from points to zone with no match content";
 
+  errors = [
+    {
+      tag = "zoneNotMatchable";
+      path = [
+        "filters"
+        "f"
+        "from"
+        "0"
+      ];
+    }
+  ];
+
   body = {
     zones = {
       lan.interfaces = [ "eth1" ];

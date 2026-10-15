@@ -7,6 +7,16 @@
 _: {
   description = "checkPolicyUniqueness: two policies for same (from, to)";
 
+  errors = [
+    {
+      tag = "policyConflict";
+      path = [
+        "policies"
+        "a"
+      ];
+    }
+  ];
+
   body = {
     zones = {
       lan.interfaces = [ "lan0" ];

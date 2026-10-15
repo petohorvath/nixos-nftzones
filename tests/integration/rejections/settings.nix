@@ -8,6 +8,16 @@
 _: {
   description = "checkSettings: localZone equals wildcardZone";
 
+  errors = [
+    {
+      tag = "settingsConflict";
+      path = [
+        "settings"
+        "localZone"
+      ];
+    }
+  ];
+
   body = {
     settings = {
       localZone = "anywhere";

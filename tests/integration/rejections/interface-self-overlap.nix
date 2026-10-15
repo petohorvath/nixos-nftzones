@@ -9,6 +9,17 @@
 _: {
   description = "checkInterfaceOverlap: zone lists same interface twice";
 
+  errors = [
+    {
+      tag = "interfaceOverlap";
+      path = [
+        "zones"
+        "lan"
+        "interfaces"
+      ];
+    }
+  ];
+
   body = {
     zones.lan.interfaces = [
       "eth1"

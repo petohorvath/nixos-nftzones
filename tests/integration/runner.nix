@@ -22,11 +22,11 @@
 
     2. List of `{ name; body; }` (multi-table ruleset) — parse-only.
 
-    3. `{ body; assertions ? compiled: [ ]; }` (wrapper) — parse-
-       check plus structured assertions. `body` is either form 1
-       or form 2 nested. `assertions` is a function from the
-       compiled value to a list of `{ expr; expected;
-       description ? null; }` records. Any record where
+    3. `{ body; warnings ? [ ]; assertions ? compiled: [ ]; }`
+       (wrapper) — parse-check plus structured assertions.
+       `body` is either form 1 or form 2 nested. `assertions` is
+       a function from the compiled value to a list of
+       `{ expr; expected; description ? null; }` records. Any record where
        `expr != expected` throws at evaluation time, before the
        derivation is built — failures surface during
        `nix flake check` rather than buried in build logs.
@@ -47,12 +47,18 @@
   rule, chain naming canonical) that `nft -j --check` is too
   lenient to catch.
 
+  Every scenario also asserts its exact Phase 1 warnings: the
+  `{ tag; path; }` projection of `internal.normalize.diagnose`.
+  `warnings` defaults to none, so an unexpected warning fails the
+  check. A form 1 body declares a list; a form 2 body declares an
+  attrset of lists keyed by table name, defaulting to none per
+  table. Only form 3 can declare warnings.
+
   Rejection scenarios (a separate flow, see `mkRejectionCheck`)
   invert the polarity: the input is a deliberate misconfiguration,
   and the build succeeds iff `mkRuleset` *throws*. Used to prove
-  Phase 1 validators are wired into the live pipeline; unit tests
-  verify each validator in isolation, but only the rejection
-  build proves the orchestrator still calls them.
+  Phase 1 validators are wired into the live pipeline, and, through
+  their `errors` lists, which Diagnostics they report.
 */
 {
   pkgs,
@@ -86,6 +92,32 @@ let
           ${name} = nftzones.mkTable name body;
         };
       };
+
+  /*
+    Run Phase 1 on one table body evaluated through the table type, as
+    `mkTable` would. Takes the table name and body; returns
+    `{ errors; warnings; }` projected to `{ tag; path; }` so scenarios
+    never depend on message prose.
+  */
+  diagnosticsFor =
+    name: body:
+    let
+      table =
+        (lib.evalModules {
+          modules = [
+            { options.${name} = lib.mkOption { type = nftzones.types.table; }; }
+            { config.${name} = body; }
+          ];
+        }).config.${name};
+      diagnostics = nftzones.internal.normalize.diagnose table;
+      project = map (diagnostic: {
+        inherit (diagnostic) path tag;
+      });
+    in
+    {
+      errors = project diagnostics.errors;
+      warnings = project diagnostics.warnings;
+    };
 
   /*
     Render a scenario body as libnftables-JSON for `nft -j --check`.
@@ -161,7 +193,28 @@ let
       assertions =
         if isWrapper && scenario ? assertions then scenario.assertions compiledForAssertions else [ ];
 
-      checked = evaluateAssertions name assertions;
+      # A multi-table scenario keys its expected warnings by table name.
+      declaredWarnings =
+        if isWrapper && scenario ? warnings then
+          scenario.warnings
+        else if builtins.isList body then
+          { }
+        else
+          [ ];
+
+      checkWarnings = tableName: tableBody: {
+        description = "Phase 1 warnings of table '${tableName}'";
+        expr = (diagnosticsFor tableName tableBody).warnings;
+        expected = if builtins.isList body then declaredWarnings.${tableName} or [ ] else declaredWarnings;
+      };
+
+      warningChecks =
+        if builtins.isList body then
+          map (table: checkWarnings table.name table.body) body
+        else
+          [ (checkWarnings name body) ];
+
+      checked = evaluateAssertions name (warningChecks ++ assertions);
 
       rulesetPath = builtins.toFile "${name}.json" (renderScenario name body);
 
@@ -195,33 +248,35 @@ let
     leave the validator throws unforced and `tryEval` would
     spuriously report success.
 
-    `tryEval` does not capture the throw message — only its
-    presence — so the unit tests in `tests/unit/internal/normalize.nix`
-    remain the source of truth for *which* validator fired and
-    *what* it said. The rejection check just pins that something
-    in the pipeline rejected the input.
+    `tryEval` does not capture the throw message, only its
+    presence. A scenario that Phase 1 rejects therefore declares
+    `errors`, its exact list of `{ tag; path; }` Diagnostics, and
+    the check compares it with `diagnose`'s errors; messages are
+    ignored. Exact lists also pin cascades, where one mistake
+    produces several errors.
 
-    Scope: only validators that *throw* (i.e. push to
-    `ctx.errors`) are covered here. Warning-level validators —
-    `checkRpfilterOverride`, `checkChainOverrideSemantics`,
-    `checkExtraSectionFields`, `checkWildcardZoneMix`,
-    `checkCrossAxisOverlap` — push to `ctx.warnings`, do not
-    abort the compile, and so don't fit this build-failure
-    polarity. Their pipeline wiring is verified by the unit
-    tests in `tests/unit/internal/normalize.nix`, which call
-    each validator directly and inspect the resulting
-    `ctx.warnings`.
+    A scenario that the table type rejects (such as comment
+    injection) fails before Phase 1 runs, so it has no `errors`
+    and keeps only the "it threw" check.
   */
   mkRejectionCheck =
     name: rejection:
     let
       attempt = builtins.tryEval (builtins.deepSeq (nftzones.mkRuleset name rejection.body) null);
       description = rejection.description or "no description";
+
+      checked = evaluateAssertions "rejections/${name}" (
+        lib.optional (rejection ? errors) {
+          description = "Phase 1 errors";
+          expr = (diagnosticsFor name rejection.body).errors;
+          expected = rejection.errors;
+        }
+      );
     in
     if attempt.success then
       throw "nftzones rejection scenario '${name}': expected mkRuleset to throw on the supplied body, but it compiled cleanly. (${description})"
     else
-      pkgs.runCommand "nftzones-rejection-${name}" { } "touch $out";
+      builtins.seq checked (pkgs.runCommand "nftzones-rejection-${name}" { } "touch $out");
 in
 {
   inherit mkRejectionCheck mkScenarioCheck renderScenario;

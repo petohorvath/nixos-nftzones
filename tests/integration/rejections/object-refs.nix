@@ -12,6 +12,17 @@ in
 {
   description = "checkObjectRefs: rule references undeclared counter";
 
+  errors = [
+    {
+      tag = "objectRefUnknown";
+      path = [
+        "filters"
+        "f"
+        "rule"
+      ];
+    }
+  ];
+
   body = {
     zones = {
       lan.interfaces = [ "lan0" ];

@@ -11,6 +11,18 @@ in
 {
   description = "checkZoneRefs: filter.from points to undeclared zone";
 
+  errors = [
+    {
+      tag = "invalidZoneRef";
+      path = [
+        "filters"
+        "f"
+        "from"
+        "0"
+      ];
+    }
+  ];
+
   body = {
     zones.lan.interfaces = [ "eth1" ];
 

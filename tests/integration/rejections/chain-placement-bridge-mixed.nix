@@ -9,6 +9,16 @@
 {
   description = "checkChainPlacement: bridge filter (valid) + snat (invalid) in one table";
 
+  errors = [
+    {
+      tag = "invalidChainPlacement";
+      path = [
+        "snats"
+        "bad-bridge-nat"
+      ];
+    }
+  ];
+
   body = {
     family = "bridge";
 

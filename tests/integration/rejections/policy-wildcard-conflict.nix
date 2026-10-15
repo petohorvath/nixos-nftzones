@@ -10,6 +10,16 @@
 _: {
   description = "checkPolicyUniqueness: explicit + wildcard collide on (lan → wan)";
 
+  errors = [
+    {
+      tag = "policyConflict";
+      path = [
+        "policies"
+        "broad"
+      ];
+    }
+  ];
+
   body = {
     zones = {
       lan.interfaces = [ "lan0" ];

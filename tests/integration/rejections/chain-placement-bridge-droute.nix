@@ -8,6 +8,16 @@
 _: {
   description = "checkChainPlacement: bridge family + droute (no mangle priority)";
 
+  errors = [
+    {
+      tag = "invalidChainPlacement";
+      path = [
+        "droutes"
+        "mark-it"
+      ];
+    }
+  ];
+
   body = {
     family = "bridge";
 

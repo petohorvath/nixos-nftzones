@@ -10,6 +10,17 @@
 _: {
   description = "checkParentRefs: zone parent is the localZone sentinel";
 
+  errors = [
+    {
+      tag = "zoneParentLocalZone";
+      path = [
+        "zones"
+        "web"
+        "parent"
+      ];
+    }
+  ];
+
   body = {
     zones.web = {
       cidrs = [ "10.0.0.5/32" ];

@@ -7,6 +7,17 @@
 _: {
   description = "checkInterfaceOverlap: two unrelated zones share an interface";
 
+  errors = [
+    {
+      tag = "interfaceOverlap";
+      path = [
+        "zones"
+        "guest"
+        "interfaces"
+      ];
+    }
+  ];
+
   body = {
     zones = {
       lan.interfaces = [ "eth1" ];

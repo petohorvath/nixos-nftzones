@@ -8,6 +8,17 @@
 _: {
   description = "checkParentRefs: zone references unknown parent";
 
+  errors = [
+    {
+      tag = "zoneParentUnknown";
+      path = [
+        "zones"
+        "guests"
+        "parent"
+      ];
+    }
+  ];
+
   body = {
     zones.guests = {
       interfaces = [ "eth1" ];

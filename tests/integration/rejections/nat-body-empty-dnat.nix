@@ -8,6 +8,16 @@
 _: {
   description = "checkNatBodies: rule.action.dnat with null addr";
 
+  errors = [
+    {
+      tag = "natBodyMissingAddr";
+      path = [
+        "dnats"
+        "bad-fwd"
+      ];
+    }
+  ];
+
   body = {
     zones.wan.interfaces = [ "wan0" ];
 

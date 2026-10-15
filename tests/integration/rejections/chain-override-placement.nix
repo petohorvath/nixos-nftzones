@@ -13,6 +13,17 @@ in
 {
   description = "checkChainOverridePlacement: oifname-only zone at prerouting hook";
 
+  errors = [
+    {
+      tag = "chainOverrideUnreachable";
+      path = [
+        "filters"
+        "bad-hook"
+        "to"
+      ];
+    }
+  ];
+
   body = {
     zones = {
       lan.interfaces = [ "lan0" ];
