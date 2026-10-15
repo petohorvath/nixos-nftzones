@@ -102,6 +102,11 @@ let
   # Path of a list element; indices are strings like attribute names.
   elementPath = path: index: path ++ [ (toString index) ];
 
+  # Render a Diagnostic path as dotted text. The thrown and warned
+  # rendering and messages that name other declarations all use it, so
+  # their formats cannot drift apart.
+  renderPath = lib.concatStringsSep ".";
+
   # Rule-bearing groups paired with the direction fields each one
   # carries (`from` and/or `to`). Single source of truth for the
   # per-group direction config — `expandWildcardZones`,
@@ -425,10 +430,16 @@ let
       # the same name and clobbers the declared one.
       newErrors = map (
         name:
+        let
+          zonePath = renderPath [
+            "zones"
+            name
+          ];
+        in
         mkDiagnostic "zoneNameCollision" [
           "nodes"
           name
-        ] "name collision: '${name}' is also declared as zones.${name}"
+        ] "name collision: '${name}' is also declared as ${zonePath}"
       ) collisions;
     in
     {
@@ -740,12 +751,17 @@ let
             i: stmt:
             let
               key = metaKeyOf stmt;
+              interfacesPath = renderPath [
+                "matchOverride"
+                side
+                "interfaces"
+              ];
             in
             if key != null && builtins.elem key interfaceMetaKeys then
               [
                 (mkDiagnostic "extraSectionInterfaceMatch"
                   (elementPath [ "zones" zoneName "matchOverride" side "extra" ] i)
-                  "matches on `meta.${key}` — interface fields belong in `matchOverride.${side}.interfaces` instead. The `extra` section is inlined hook-agnostically and would silently become a no-op at hooks where ${key} is unavailable (e.g. iif* at output). The `interfaces` section is hook-gated correctly by `checkChainOverridePlacement` and `mkDirectionVariants`."
+                  "matches on `meta.${key}` — interface fields belong in `${interfacesPath}` instead. The compiler inlines the `extra` section at every hook, so this match silently becomes a no-op where ${key} is unavailable (e.g. iif* at output). The `interfaces` section is hook-gated instead: the compiler drops its matches only at hooks where they are unavailable."
                 )
               ]
             else
@@ -919,13 +935,18 @@ let
       # the path; a node comes first, as it does lexically.
       shadowed =
         setting: zoneName:
+        let
+          group = if table.nodes ? ${zoneName} then "nodes" else "zones";
+          settingPath = renderPath [
+            "settings"
+            setting
+          ];
+        in
         lib.optional (table.nodes ? ${zoneName} || table.zones ? ${zoneName}) (
-          mkDiagnostic "settingsConflict"
-            [
-              (if table.nodes ? ${zoneName} then "nodes" else "zones")
-              zoneName
-            ]
-            "shadows settings.${setting} '${zoneName}' — rename it, or set settings.${setting} to an unused name"
+          mkDiagnostic "settingsConflict" [
+            group
+            zoneName
+          ] "shadows ${settingPath} '${zoneName}' — rename it, or set ${settingPath} to an unused name"
         );
 
       wildcardShadowed = shadowed "wildcardZone" wildcardZone;
@@ -966,7 +987,13 @@ let
         key: cellTriples:
         let
           entryNames = map (triple: triple.entryName) cellTriples;
-          otherPaths = map (entryName: "policies.${entryName}") (builtins.tail entryNames);
+          otherPaths = map (
+            entryName:
+            renderPath [
+              "policies"
+              entryName
+            ]
+          ) (builtins.tail entryNames);
         in
         mkDiagnostic "policyConflict" [
           "policies"
@@ -1177,6 +1204,11 @@ let
             b = builtins.elemAt allEntries j;
             sameZone = a.zoneName == b.zoneName;
             sameIface = a.iface == b.iface;
+            otherPath = renderPath [
+              "zones"
+              b.zoneName
+              "interfaces"
+            ];
             shouldFlag = sameIface && (sameZone || !(ctx.zoneMembership.related a.zoneName b.zoneName));
           in
           if shouldFlag then
@@ -1185,7 +1217,7 @@ let
                 if sameZone then
                   "lists interface '${a.iface}' more than once"
                 else
-                  "interface '${a.iface}' is also claimed by zones.${b.zoneName}.interfaces (no ancestor/descendant relationship)"
+                  "interface '${a.iface}' is also claimed by ${otherPath} (no ancestor/descendant relationship)"
               ))
             ]
           else
@@ -1236,6 +1268,11 @@ let
             b = builtins.elemAt allEntries j;
             sameZone = a.zoneName == b.zoneName;
             shouldCheck = sameZone || !(ctx.zoneMembership.related a.zoneName b.zoneName);
+            otherPath = renderPath [
+              "zones"
+              b.zoneName
+              "cidrs"
+            ];
           in
           if shouldCheck && libnet.cidr.overlaps a.parsed b.parsed then
             [
@@ -1243,7 +1280,7 @@ let
                 if sameZone then
                   "has overlapping CIDRs '${a.cidr}' and '${b.cidr}'"
                 else
-                  "CIDR '${a.cidr}' overlaps zones.${b.zoneName}.cidrs CIDR '${b.cidr}' (no ancestor/descendant relationship)"
+                  "CIDR '${a.cidr}' overlaps ${otherPath} CIDR '${b.cidr}' (no ancestor/descendant relationship)"
               ))
             ]
           else
@@ -1263,8 +1300,14 @@ let
     let
       pairWarnings = map (
         { a, b }:
+        let
+          otherPath = renderPath [
+            "zones"
+            (lib.max a b)
+          ];
+        in
         mkDiagnostic "crossAxisOverlap" [ "zones" (lib.min a b) ]
-          "may match the same packet as zones.${lib.max a b} across different axes (one is interface-bound, the other is CIDR-bound). If both appear in the same chain, dispatch order is alphabetical attribute-key order — the losing zone's rules are silently shadowed. Restructure both zones onto the same axis, or make one a child of the other if it's a refinement."
+          "may match the same packet as ${otherPath} across different axes (one is interface-bound, the other is CIDR-bound). If both appear in the same chain, dispatch order is alphabetical attribute-key order — the losing zone's rules are silently shadowed. Restructure both zones onto the same axis, or make one a child of the other if it's a refinement."
       ) ctx.zoneMembership.crossAxisPairs;
     in
     {
@@ -1489,8 +1532,7 @@ let
   };
 
   renderDiagnostic =
-    diagnostic:
-    "[${diagnostic.tag}] ${lib.concatStringsSep "." diagnostic.path}: ${diagnostic.message}";
+    diagnostic: "[${diagnostic.tag}] ${renderPath diagnostic.path}: ${diagnostic.message}";
 
   /*
     Report every Diagnostic Phase 1 finds in a table, as data, without
