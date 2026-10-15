@@ -67,6 +67,9 @@
 }:
 let
   inherit (pkgs) lib;
+  # The unit tests' `{ tag; path; }` projection of Phase 1 diagnostics.
+  # It names the table "fw", which Phase 1 never reads.
+  inherit (import ../unit/helpers.nix { inherit pkgs nftzones; }) diagnosticsFor;
 
   /*
     Compile a scenario body into a `{ tables = { <name> = <table>;
@@ -92,32 +95,6 @@ let
           ${name} = nftzones.mkTable name body;
         };
       };
-
-  /*
-    Run Phase 1 on one table body evaluated through the table type, as
-    `mkTable` would. Takes the table name and body; returns
-    `{ errors; warnings; }` projected to `{ tag; path; }` so scenarios
-    never depend on message prose.
-  */
-  diagnosticsFor =
-    name: body:
-    let
-      table =
-        (lib.evalModules {
-          modules = [
-            { options.${name} = lib.mkOption { type = nftzones.types.table; }; }
-            { config.${name} = body; }
-          ];
-        }).config.${name};
-      diagnostics = nftzones.internal.normalize.diagnose table;
-      project = map (diagnostic: {
-        inherit (diagnostic) path tag;
-      });
-    in
-    {
-      errors = project diagnostics.errors;
-      warnings = project diagnostics.warnings;
-    };
 
   /*
     Render a scenario body as libnftables-JSON for `nft -j --check`.
@@ -204,7 +181,7 @@ let
 
       checkWarnings = tableName: tableBody: {
         description = "Phase 1 warnings of table '${tableName}'";
-        expr = (diagnosticsFor tableName tableBody).warnings;
+        expr = (diagnosticsFor tableBody).warnings;
         expected = if builtins.isList body then declaredWarnings.${tableName} or [ ] else declaredWarnings;
       };
 
@@ -268,7 +245,7 @@ let
       checked = evaluateAssertions "rejections/${name}" (
         lib.optional (rejection ? errors) {
           description = "Phase 1 errors";
-          expr = (diagnosticsFor name rejection.body).errors;
+          expr = (diagnosticsFor rejection.body).errors;
           expected = rejection.errors;
         }
       );

@@ -1,7 +1,8 @@
 /*
   Shared helpers for the per-module unit-test files. Each
   `tests/unit/internal/<module>.nix` and `tests/unit/types/<module>.nix`
-  imports this file instead of repeating evaluation boilerplate.
+  imports this file instead of repeating evaluation boilerplate. The
+  integration runner reuses `diagnosticsFor`.
 
   Exports `evalTable`, `diagnosticsFor`, `membershipFor`, `evalType`,
   and `evalFails`.
