@@ -7,8 +7,8 @@ They don't run as NixOS module `assertions`. Every validator appends to
 one error list and the orchestrator throws once, so no validator
 short-circuits the others. The idiomatic NixOS pattern is module
 `assertions`, but the library must also validate when used without the
-module (`mkTable` / `mkRuleset`), and pure validators are testable in
-isolation.
+module (`mkTable` / `mkRuleset`), and pure validators are testable
+without the NixOS module.
 
 ## Consequences
 

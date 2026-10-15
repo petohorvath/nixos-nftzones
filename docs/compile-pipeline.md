@@ -155,9 +155,9 @@ A **Diagnostic** is a record `{ tag; path; message; }`:
 
 A diagnostic about several declarations, such as an overlap, a collision or a cycle, carries one path and names the others in its message. The path is the lexically first declaration involved, unless one is clearly the one to edit: a zone/node name collision blames the node, and a parent cycle blames the `parent` of its lexically smallest zone. Diagnostics about a zone lowered from a node use a path under the lowered zone, `zones.<node>`, which the user never wrote.
 
-`diagnose` sorts both lists by path, then tag; the order is part of the interface. `normalizeTable` renders each diagnostic as `[tag] path.joined.with.dots: message`:
+`diagnose` sorts both lists by path, then tag; the order is part of the interface. Path elements, list indices included, are strings and sort as text, so `extra.10` sorts before `extra.2`. `normalizeTable` renders each diagnostic as `[tag] path.joined.with.dots: message`:
 
-```
+```text
 nftzones.normalize: validation failed:
   - [invalidZoneRef] filters.f.from.0: references unknown zone 'nowhere' (known: lan, local)
   - [zoneParentUnknown] zones.lan.parent: references unknown zone 'ghost'
