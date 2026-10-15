@@ -14,8 +14,8 @@ _: {
     {
       tag = "settingsConflict";
       path = [
-        "settings"
-        "wildcardZone"
+        "zones"
+        "all"
       ];
     }
   ];

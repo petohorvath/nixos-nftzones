@@ -12,8 +12,8 @@ _: {
     {
       tag = "settingsConflict";
       path = [
-        "settings"
-        "localZone"
+        "nodes"
+        "local"
       ];
     }
   ];

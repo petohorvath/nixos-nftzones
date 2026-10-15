@@ -414,8 +414,8 @@ in
         {
           tag = "settingsConflict";
           path = [
-            "settings"
-            "wildcardZone"
+            "zones"
+            "all"
           ];
         }
       ];
@@ -437,8 +437,8 @@ in
         {
           tag = "settingsConflict";
           path = [
-            "settings"
-            "localZone"
+            "nodes"
+            "local"
           ];
         }
       ];

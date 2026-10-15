@@ -907,26 +907,29 @@ let
     { table, ctx }:
     let
       inherit (table.settings) localZone wildcardZone;
-      zoneNames = builtins.attrNames ctx.mergedZones;
-
-      conflict =
-        setting:
-        mkDiagnostic "settingsConflict" [
-          "settings"
-          setting
-        ];
 
       pairConflict = lib.optional (wildcardZone == localZone) (
-        conflict "localZone" "'${localZone}' equals settings.wildcardZone — they must differ"
+        mkDiagnostic "settingsConflict" [
+          "settings"
+          "localZone"
+        ] "'${localZone}' equals settings.wildcardZone — they must differ"
       );
 
-      wildcardShadowed = lib.optional (builtins.elem wildcardZone zoneNames) (
-        conflict "wildcardZone" "'${wildcardZone}' collides with a declared zone or node"
-      );
+      # A shadowing declaration is what the user wrote, so it takes
+      # the path; a node comes first, as it does lexically.
+      shadowed =
+        setting: zoneName:
+        lib.optional (table.nodes ? ${zoneName} || table.zones ? ${zoneName}) (
+          mkDiagnostic "settingsConflict"
+            [
+              (if table.nodes ? ${zoneName} then "nodes" else "zones")
+              zoneName
+            ]
+            "shadows settings.${setting} '${zoneName}' — rename it, or set settings.${setting} to an unused name"
+        );
 
-      localShadowed = lib.optional (builtins.elem localZone zoneNames) (
-        conflict "localZone" "'${localZone}' collides with a declared zone or node"
-      );
+      wildcardShadowed = shadowed "wildcardZone" wildcardZone;
+      localShadowed = shadowed "localZone" localZone;
 
       newErrors = pairConflict ++ wildcardShadowed ++ localShadowed;
     in
