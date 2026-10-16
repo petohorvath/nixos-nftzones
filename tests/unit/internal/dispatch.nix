@@ -4,18 +4,18 @@
   shape as every other unit test; aggregated by `tests/unit/default.nix`.
 */
 {
-  pkgs,
+  helpers,
+  lib,
   nftzones,
   ...
 }:
 let
-  inherit (pkgs) lib;
 
   inherit (nftzones.internal.dispatch) dispatchAndSort;
   inherit (nftzones.internal.expand) expandTable;
   inherit (nftzones.internal.normalize) normalizeTable;
 
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
+  inherit (helpers) evalTable;
 
   # Run Phase 1 + Phase 2 + Phase 3 against an evalModules-produced
   # table and return the final `ctx`. Tests inspect `ctx.dispatchTrees`.

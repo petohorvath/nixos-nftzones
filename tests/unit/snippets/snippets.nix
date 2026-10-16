@@ -14,9 +14,9 @@
   lists whose elements stay as thunks until forced.
 */
 {
-  nftzones,
-  nftypes,
   libnet,
+  nftypes,
+  nftzones,
   ...
 }:
 let

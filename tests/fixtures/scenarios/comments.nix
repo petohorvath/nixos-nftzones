@@ -1,6 +1,6 @@
 /*
   Comment-propagation scenario — sets `comment` on the table and
-  filter entry. The runner's parse-check catches malformed JSON;
+  filter entry. The `nft -j --check` build test catches malformed JSON;
   the structured assertions below pin the comment text actually
   surfacing on the compiled output, since `nft -j --check` is
   lenient about unknown fields and would silently accept a

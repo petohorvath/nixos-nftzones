@@ -47,13 +47,10 @@
   Companion files: `forward.nix`, `vlan.nix`, `rpfilter.nix`,
   `marks.nix`, `droutes.nix`, `dualstack.nix`.
 */
-{
-  pkgs,
-  nftypes,
-  nftzonesModule,
-  ...
-}:
+{ inputs, ... }:
 let
+  nftypes = inputs.nftypes.lib;
+
   inherit (nftypes.dsl) accept counter;
 
   net = "10.0.0";
@@ -61,9 +58,7 @@ let
   vmAIp = "${net}.10";
   vmBIp = "${net}.20";
 in
-pkgs.testers.nixosTest {
-  name = "nftzones-bridge";
-
+{
   nodes = {
     vmA =
       { lib, ... }:
@@ -88,7 +83,7 @@ pkgs.testers.nixosTest {
     bridge =
       { lib, ... }:
       {
-        imports = [ nftzonesModule ];
+        imports = [ inputs.self.nixosModules.default ];
 
         virtualisation.vlans = [
           1

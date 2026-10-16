@@ -24,14 +24,14 @@
   test; aggregated by `tests/unit/default.nix`.
 */
 {
-  pkgs,
+  helpers,
+  lib,
   nftzones,
   ...
 }:
 let
-  inherit (pkgs) lib;
 
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalFails;
+  inherit (helpers) evalFails;
 
   inherit (nftzones.types)
     dnat

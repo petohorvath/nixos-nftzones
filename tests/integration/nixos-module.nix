@@ -1,30 +1,21 @@
 /*
-  Unit tests for the NixOS module (`nixos/module.nix`, exposed
-  as `nixosModules.default`). Same `testFoo = { expr; expected; }`
-  shape as every other unit test; aggregated by
-  `tests/unit/default.nix`.
+  Integration tests for the NixOS module (`nixos/module.nix`, exposed
+  as `nixosModules.default`).
 
-  Pure module evaluations — no VM boot. We use `pkgs.nixos` (the
-  nixpkgs-provided NixOS evaluator) with the flake's
-  `nftzonesModule` plus a minimal-but-valid context (loader /
-  filesystems / stateVersion stubs), then read back the resulting
-  `config` for assertions. Going through `nftzonesModule` instead
-  of importing the module file directly means tests exercise the
-  same wiring production consumers see.
+  Pure module evaluations, with no VM boot: `helpers.evalNixosModule`
+  evaluates a NixOS system with `pkgs.nixos` and the module, beside a
+  minimal but valid context (loader, filesystems, and stateVersion
+  stubs), and the tests read back the resulting `config`.
 
-  VM tests live elsewhere — `tests/vm/firewall.nix` boots a
-  real router under nixosTest and asserts traffic-level behaviour.
+  The VM tests in `tests/vm/` boot real routers and check traffic.
 */
 {
-  pkgs,
-  nftzonesModule,
+  helpers,
+  lib,
   nftzones,
-  nftypes,
   ...
 }:
 let
-  inherit (pkgs) lib;
-
   minimalContext = {
     boot.loader.grub.enable = false;
     fileSystems."/" = {
@@ -38,23 +29,20 @@ let
     networking.hostName = "test";
   };
 
-  /*
-    Build a minimal NixOS system with the nftzones module imported
-    and the test-specific config layered on. Returns the evaluated
-    `config`.
-  */
+  # Build a minimal NixOS system with the nftzones module imported
+  # and the test-specific config layered on. Returns the evaluated
+  # `config`.
   evalSystem =
     extraConfig:
-    (pkgs.nixos [
-      nftzonesModule
-      minimalContext
-      extraConfig
-    ]).config;
+    helpers.evalNixosModule {
+      imports = [
+        minimalContext
+        extraConfig
+      ];
+    };
 
-  /*
-    Convenience for the common shape: nftables enabled,
-    nftzones module enabled, with the supplied `tables`.
-  */
+  # Convenience for the common shape: nftables enabled,
+  # nftzones module enabled, with the supplied `tables`.
   evalEnabled =
     tables:
     evalSystem {
@@ -195,40 +183,8 @@ in
     };
   };
 
-  # ===== module — pretty mode flips renderer to multi-line =====
-
-  testModulePrettyMode = {
-    # The pretty flag only controls which nftypes renderer is
-    # applied — `mkDirectionVariants` and the rest of the compile
-    # pipeline produce the same output. So we don't need to spin
-    # up two NixOS evaluations: render the once-compiled table
-    # both ways and compare.
-    expr =
-      let
-        body = {
-          zones.lan.interfaces = [ "lan0" ];
-          zones.wan.interfaces = [ "wan0" ];
-          filters.allow-ssh = {
-            from = [ "wan" ];
-            to = [ "local" ];
-            rule = [ ];
-          };
-        };
-        table = nftzones.mkTable "fw" body;
-        compact = nftypes.toTextBlock table;
-        pretty = nftypes.toTextBlockPretty table;
-      in
-      {
-        prettyHasMoreLines =
-          lib.length (lib.splitString "\n" pretty) > lib.length (lib.splitString "\n" compact);
-      };
-    expected = {
-      prettyHasMoreLines = true;
-    };
-  };
-
   # ===== module — pretty option is actually wired through to content =====
-  # The bypass-evaluation test above proves the renderers behave
+  # The unit suite `nixos.module` proves the renderers behave
   # differently. This one proves the module's `pretty` option
   # actually selects between them — same body, two real
   # evaluations, content must differ.
@@ -519,7 +475,7 @@ in
 
   # ===== module — Phase 1 validator throws surface at module eval =====
   # Pins that the module path doesn't swallow Phase 1 throws.
-  # Integration rejections prove `mkRuleset` itself throws on
+  # The unit suite `rejections` proves `mkRuleset` itself throws on
   # bad bodies; this proves the throw still bubbles out when
   # the body is reached via the NixOS option machinery (the
   # module routes through `internal.compile.mkTable` directly,

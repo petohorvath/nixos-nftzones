@@ -3,11 +3,7 @@
   `nftzones.internal.node.toZone`). Same `testFoo = { expr; expected; }`
   shape as every other unit test; aggregated by `tests/unit/default.nix`.
 */
-{
-  pkgs,
-  nftzones,
-  ...
-}:
+{ lib, nftzones, ... }:
 let
   inherit (nftzones.internal.node) toZone;
 
@@ -121,7 +117,7 @@ in
   # All fields the evaluated zone submodule has must be present.
 
   testToZoneProducesFullShape = {
-    expr = pkgs.lib.sort (a: b: a < b) (
+    expr = lib.sort (a: b: a < b) (
       builtins.attrNames (toZone {
         name = "x";
         zone = "z";

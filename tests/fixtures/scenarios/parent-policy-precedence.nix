@@ -22,7 +22,7 @@
   to the parent's, silently changing semantics. The
   assertion-level checks pin both tail rules' presence and
   which sub-chain each lives in, so the regression would
-  surface as a failed integration check rather than a quiet
+  surface as a failed scenario test rather than a quiet
   behavioural change.
 */
 _: {

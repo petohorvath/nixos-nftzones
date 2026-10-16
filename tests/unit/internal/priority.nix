@@ -3,10 +3,7 @@
   `nftzones.internal.priority`). Same `testFoo = { expr; expected; }`
   shape as every other unit test; aggregated by `tests/unit/default.nix`.
 */
-{
-  nftzones,
-  ...
-}:
+{ nftzones, ... }:
 let
   inherit (nftzones.internal.priority) entryPriorities resolvePriority;
 in

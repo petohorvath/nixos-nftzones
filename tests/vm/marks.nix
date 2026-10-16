@@ -44,17 +44,14 @@
   wan filter applying to children too — nftzones' zone parent
   dispatch sends child traffic through the parent's chain
   unless the child has its own rule. Tested in
-  `tests/integration/scenarios/parent-basic.nix`.
+  `tests/fixtures/scenarios/parent-basic.nix`.
 
   Companion files: `forward.nix`, `vlan.nix`, `rpfilter.nix`.
 */
-{
-  pkgs,
-  nftypes,
-  nftzonesModule,
-  ...
-}:
+{ inputs, ... }:
 let
+  nftypes = inputs.nftypes.lib;
+
   inherit (nftypes.dsl) accept mangle;
   inherit (nftypes.dsl.fields) meta;
 
@@ -68,9 +65,7 @@ let
   clientMarkedIp = "${lanNet}.5";
   serverWanIp = "${wanNet}.10";
 in
-pkgs.testers.nixosTest {
-  name = "nftzones-marks";
-
+{
   nodes = {
     client =
       { lib, ... }:
@@ -105,7 +100,7 @@ pkgs.testers.nixosTest {
     router =
       { lib, pkgs, ... }:
       {
-        imports = [ nftzonesModule ];
+        imports = [ inputs.self.nixosModules.default ];
 
         virtualisation.vlans = [
           1

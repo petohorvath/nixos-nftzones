@@ -6,13 +6,12 @@
   `tests/unit/default.nix`.
 */
 {
-  pkgs,
-  nftzones,
+  helpers,
   nftypes,
   ...
 }:
 let
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalFails evalTable;
+  inherit (helpers) evalFails evalTable;
 
   inherit (nftypes.dsl) eq;
   inherit (nftypes.dsl.fields) tcp;

@@ -1,9 +1,9 @@
 # Unit tests for the overlap Diagnostics of Phase 1: interface and
 # CIDR overlap errors, and cross-axis overlap warnings. Each test
 # compares the whole `{ tag; path; }` lists from `diagnose`.
-{ pkgs, nftzones, ... }:
+{ helpers, ... }:
 let
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) diagnosticsFor;
+  inherit (helpers) diagnosticsFor;
 
   clean = {
     errors = [ ];

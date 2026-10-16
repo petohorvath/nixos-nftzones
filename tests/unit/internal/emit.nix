@@ -4,13 +4,13 @@
   shape as every other unit test; aggregated by `tests/unit/default.nix`.
 */
 {
-  pkgs,
-  nftzones,
+  helpers,
+  lib,
   nftypes,
+  nftzones,
   ...
 }:
 let
-  inherit (pkgs) lib;
 
   inherit (nftypes.dsl) expr;
   inherit (nftzones.internal.dispatch) dispatchAndSort;
@@ -27,7 +27,7 @@ let
   inherit (nftzones.internal.expand) expandTable;
   inherit (nftzones.internal.normalize) normalizeTable;
 
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable membershipFor;
+  inherit (helpers) evalTable membershipFor;
 
   /*
     Run Phase 1 → Phase 4 against an evalModules-produced table
@@ -220,7 +220,7 @@ in
   # Chain type derivation belongs to
   # `nftypes.compatibility.chainTypeFor`; tests for it live with
   # the upstream helper. End-to-end coverage of the consumer path
-  # comes from the integration scenarios.
+  # comes from the scenario tests.
 
   # ===== mkBaseChain — filter input gets stateful + loopback =====
 

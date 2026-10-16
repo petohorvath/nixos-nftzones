@@ -1,57 +1,43 @@
-/*
-  Assemble the project checks. The unit, integration, examples, and VM
-  tiers test the root flake's public exports; formatting and lint run
-  against the cleaned source tree. The `vm-` prefix keeps VM test names
-  such as `activation` apart from the names of the other checks.
-*/
-{
-  formatter,
-  inputs,
-  pkgs,
-  system,
-}:
+# Assemble the test entries of the `checks` output: `unit` and
+# `integration` run the nix-unit suites, `build-<test>` the build tests,
+# and `vm-<scenario>` the VM tests.
+{ inputs, pkgs }:
 let
-  sourceDir = pkgs.lib.cleanSource ../.;
-  testContext = import ./helpers/test-context.nix {
-    flake = inputs.self;
-    inherit system;
+  inherit (pkgs) lib;
+  repo = "nftzones";
+
+  # The files the nix-unit suites read, so other edits do not rebuild
+  # their entries.
+  srcDir = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [
+      ../examples
+      ../lib
+      ../nixos
+      ./fixtures
+      ./helpers
+      ./integration
+      ./test-context.nix
+      ./unit
+    ];
   };
 
-  mkSourceCheck =
-    {
-      name,
-      packages,
-      script,
-    }:
-    pkgs.runCommand name { nativeBuildInputs = packages; } ''
-      cp -R ${sourceDir} source
-      chmod -R u+w source
-      cd source
-      ${script}
-      touch "$out"
-    '';
+  runNixUnit = import ./runners/nix-unit.nix {
+    inherit
+      inputs
+      pkgs
+      repo
+      srcDir
+      ;
+  };
+  runBuild = import ./runners/build.nix { inherit pkgs repo; };
+  runVm = import ./runners/vm.nix { inherit pkgs repo; };
 in
-{
-  unit = pkgs.callPackage ./unit-check.nix { inherit inputs sourceDir system; };
-  integration = import ./integration testContext;
-  examples = import ./examples.nix testContext;
-  formatting = mkSourceCheck {
-    name = "nftzones-formatting";
-    packages = [ formatter ];
-    script = "nftzones-fmt --ci";
-  };
-  lint = mkSourceCheck {
-    name = "nftzones-lint";
-    packages = [
-      pkgs.statix
-      pkgs.deadnix
-      pkgs.actionlint
-    ];
-    script = ''
-      statix check .
-      deadnix --fail .
-      actionlint .github/workflows/*.yml
-    '';
-  };
-}
-// pkgs.lib.mapAttrs' (name: pkgs.lib.nameValuePair "vm-${name}") (import ./vm testContext)
+lib.foldl' lib.attrsets.unionOfDisjoint { } [
+  {
+    unit = runNixUnit { kind = "unit"; };
+    integration = runNixUnit { kind = "integration"; };
+  }
+  (runBuild (import ./build { inherit inputs pkgs; }))
+  (runVm (import ./vm { inherit inputs pkgs; }))
+]

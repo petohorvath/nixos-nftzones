@@ -29,13 +29,10 @@
   Companion: `vlan.nix` exercises inter-VLAN routing over a
   single trunk (router-on-a-stick).
 */
-{
-  pkgs,
-  nftypes,
-  nftzonesModule,
-  ...
-}:
+{ inputs, ... }:
 let
+  nftypes = inputs.nftypes.lib;
+
   inherit (nftypes.dsl)
     accept
     counter
@@ -54,12 +51,10 @@ let
   serverWanIp = "${wanNet}.10";
   externalWanIp = "${wanNet}.20";
 in
-pkgs.testers.nixosTest {
-  name = "nftzones-forward";
-
+{
   nodes = {
     client =
-      { lib, ... }:
+      { lib, pkgs, ... }:
       {
         virtualisation.vlans = [ 1 ];
 
@@ -100,7 +95,7 @@ pkgs.testers.nixosTest {
     router =
       { lib, pkgs, ... }:
       {
-        imports = [ nftzonesModule ];
+        imports = [ inputs.self.nixosModules.default ];
 
         virtualisation.vlans = [
           1

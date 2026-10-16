@@ -7,11 +7,11 @@
   Zone-reference collection and the in-scope zone names leave no such
   key; their tests observe them through `invalidZoneRef` Diagnostics.
 */
-{ pkgs, nftzones, ... }:
+{ helpers, nftzones, ... }:
 let
   inherit (nftzones.internal.normalize) normalizeTable;
 
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) diagnosticsFor evalTable;
+  inherit (helpers) diagnosticsFor evalTable;
 
   ctxFor = body: (normalizeTable (evalTable body)).ctx;
 

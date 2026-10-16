@@ -7,13 +7,9 @@
   `testFoo = { expr; expected; }` shape as every other unit test;
   aggregated by `tests/unit/default.nix`.
 */
-{
-  pkgs,
-  nftzones,
-  ...
-}:
+{ helpers, ... }:
 let
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalFails evalTable;
+  inherit (helpers) evalFails evalTable;
 
   empty = evalTable { };
 in

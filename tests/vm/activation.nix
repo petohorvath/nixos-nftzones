@@ -31,13 +31,10 @@
   Companion file: `atomic-reload.nix` (same scenario via direct
   `nft -f` rather than the activation script).
 */
-{
-  pkgs,
-  nftypes,
-  nftzonesModule,
-  ...
-}:
+{ inputs, ... }:
 let
+  nftypes = inputs.nftypes.lib;
+
   inherit (nftypes.dsl) accept eq;
   inherit (nftypes.dsl.fields) tcp;
 
@@ -93,9 +90,7 @@ let
     # No allow-ssh — lan→wan TCP/22 falls to policies.lan-to-wan drop.
   };
 in
-pkgs.testers.nixosTest {
-  name = "nftzones-activation";
-
+{
   nodes = {
     client =
       { lib, ... }:
@@ -121,7 +116,7 @@ pkgs.testers.nixosTest {
     router =
       { lib, pkgs, ... }:
       {
-        imports = [ nftzonesModule ];
+        imports = [ inputs.self.nixosModules.default ];
 
         virtualisation.vlans = [
           1

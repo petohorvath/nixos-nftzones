@@ -1,11 +1,11 @@
 # Unit tests for Phase 1's diagnostics interface: `diagnose` and the
 # throwing `normalizeTable` adapter over it. Tests compare the
 # `{ tag; path; }` projection of each diagnostic list, never messages.
-{ pkgs, nftzones, ... }:
+{ helpers, nftzones, ... }:
 let
   inherit (nftzones.internal.normalize) diagnose normalizeTable;
 
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) diagnosticsFor evalTable;
+  inherit (helpers) diagnosticsFor evalTable;
 
   # Two errors from different validators, reported in reverse order
   # of their paths.

@@ -1,15 +1,18 @@
 /*
-  Shared helpers for the per-module unit-test files. Each
-  `tests/unit/internal/<module>.nix` and `tests/unit/types/<module>.nix`
-  imports this file instead of repeating evaluation boilerplate. The
-  integration runner reuses `diagnosticsFor`.
+  Evaluation helpers for the nix-unit suites, which reach them through
+  `testContext.helpers`.
 
-  Exports `evalTable`, `diagnosticsFor`, `membershipFor`, `evalType`,
-  and `evalFails`.
+  Takes `lib`, the `nftzones` library, its NixOS module `nixosModule`,
+  and the package set `pkgs`. Exports `evalTable`, `diagnosticsFor`,
+  `membershipFor`, `evalType`, `evalFails`, and `evalNixosModule`.
 */
-{ pkgs, nftzones }:
+{
+  lib,
+  nftzones,
+  nixosModule,
+  pkgs,
+}:
 let
-  inherit (pkgs) lib;
 
   /*
     Evaluate a raw user table body against `nftzones.types.table`, so
@@ -96,4 +99,14 @@ in
     Takes any value and returns true if evaluating it throws.
   */
   evalFails = result: !(builtins.tryEval (builtins.deepSeq result result)).success;
+
+  # Evaluate a NixOS system with `pkgs.nixos`, importing the nftzones
+  # NixOS module beside the given `configuration` module. Returns the
+  # evaluated `config`.
+  evalNixosModule =
+    configuration:
+    (pkgs.nixos [
+      nixosModule
+      configuration
+    ]).config;
 }

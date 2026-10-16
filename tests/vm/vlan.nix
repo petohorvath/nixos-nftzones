@@ -23,13 +23,10 @@
   Companion: `forward.nix` covers L3 forwarding + NAT + policy
   on a more conventional lan/wan topology.
 */
-{
-  pkgs,
-  nftypes,
-  nftzonesModule,
-  ...
-}:
+{ inputs, ... }:
 let
+  nftypes = inputs.nftypes.lib;
+
   inherit (nftypes.dsl) accept;
 
   iotNet = "192.168.10";
@@ -43,14 +40,12 @@ let
   iotVlanId = 10;
   adminVlanId = 20;
 in
-pkgs.testers.nixosTest {
-  name = "nftzones-vlan";
-
+{
   nodes = {
     router =
       { lib, pkgs, ... }:
       {
-        imports = [ nftzonesModule ];
+        imports = [ inputs.self.nixosModules.default ];
 
         virtualisation.vlans = [ 3 ];
 
