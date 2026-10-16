@@ -3,10 +3,8 @@
   `iot` is a child zone. The wildcard expands to root zones plus
   `localZone` only, so the explicit child adds its own sub-chain.
 
-  The `wildcardZoneMixed` warning still calls the explicit name
-  redundant, which this ruleset disproves. The expected warning
-  pins today's misleading behaviour; fixing the warning shows up
-  as a change to `warnings` here.
+  The explicit name is not redundant, so `wildcardZoneMixed` stays
+  silent.
 */
 { nftypes, ... }:
 let
@@ -37,16 +35,7 @@ in
     };
   };
 
-  warnings = [
-    {
-      tag = "wildcardZoneMixed";
-      path = [
-        "filters"
-        "allow-dns"
-        "from"
-      ];
-    }
-  ];
+  warnings = [ ];
 
   assertions = compiled: [
     {

@@ -298,33 +298,51 @@ let
       };
     };
 
+  /*
+    The zones the wildcard expands to, per direction, with a prose
+    `description` of them for diagnostics. Shared by
+    `expandWildcardZones` and `checkWildcardZoneMix`, so the warning
+    flags exactly the names the expansion already covers; keep each
+    `description` in step with its `zones`.
+
+    From-side wildcard expands to root zones (plus the local zone)
+    only: descendants receive traffic via parent dispatch (Phase 4
+    emits child sub-chain jumps inside each parent's sub-chain).
+    Expanding to every zone would emit redundant cells in every
+    leaf (ADR-0007).
+
+    To-side wildcard keeps the full zone list because to-side
+    hierarchy is not modelled — `to = [ "all" ]` means "any
+    destination zone" and each unique destination needs its own
+    sub-chain.
+  */
+  wildcardExpansionOf =
+    { table, ctx }:
+    {
+      from = {
+        zones = ctx.zoneMembership.rootZoneNames;
+        description = "every root zone and the local zone '${table.settings.localZone}'";
+      };
+      to = {
+        zones = ctx.allZoneNames;
+        description = "every zone";
+      };
+    };
+
   expandWildcardZones =
     { table, ctx }:
     let
       inherit (table.settings) wildcardZone;
-      inherit (ctx) allZoneNames;
-      inherit (ctx.zoneMembership) rootZoneNames;
 
-      /*
-        From-side wildcard expands to root zones only: descendants
-        receive traffic via parent dispatch (Phase 4 emits child
-        sub-chain jumps inside each parent's sub-chain). Expanding
-        to every zone would emit redundant cells in every leaf.
-
-        To-side wildcard keeps the full zone list because to-side
-        hierarchy is not modelled — `to = [ "all" ]` means "any
-        destination zone" and each unique destination needs its
-        own sub-chain.
-      */
-      expandFrom =
-        zones:
-        lib.unique (lib.concatMap (zone: if zone == wildcardZone then rootZoneNames else [ zone ]) zones);
-      expandTo =
-        zones:
-        lib.unique (lib.concatMap (zone: if zone == wildcardZone then allZoneNames else [ zone ]) zones);
+      expansion = wildcardExpansionOf { inherit table ctx; };
 
       expandDirection =
-        direction: entry: if direction == "from" then expandFrom entry.from else expandTo entry.to;
+        direction: entry:
+        lib.unique (
+          lib.concatMap (
+            zone: if zone == wildcardZone then expansion.${direction}.zones else [ zone ]
+          ) entry.${direction}
+        );
 
       expandEntry =
         directions: entry: lib.genAttrs directions (direction: expandDirection direction entry);
@@ -788,14 +806,20 @@ let
     };
 
   /*
-    Warn when an entry's `from` or `to` list mixes the wildcard
-    zone with explicit zone names — e.g. `from = [ "all" "wan" ]`.
-    The wildcard alone already expands to every in-scope zone
-    (`expandFrom` / `expandTo` substitute the wildcard sentinel),
-    so explicit zones appearing alongside it are either already
-    covered (no-op) or, more likely, a typo / leftover from an
-    earlier config shape. The user almost certainly meant `[
-    "all" ]` alone or `[ "wan" ]` alone, not both.
+    Warn when an entry's `from` or `to` list names an explicit zone
+    that the wildcard beside it already covers — e.g. `from = [
+    "all" "wan" ]` with `wan` a root zone. Such a name is a no-op
+    or, more likely, a typo / leftover from an earlier config
+    shape. The user almost certainly meant `[ "all" ]` alone or
+    `[ "wan" ]` alone, not both.
+
+    What the wildcard covers depends on the side, read from
+    `wildcardExpansionOf`: a from-side wildcard covers root zones and
+    the local zone only (ADR-0007), a to-side wildcard every zone.
+    A child zone beside a from-side wildcard is therefore not
+    flagged: it gets its own cells in its own sub-chain, so
+    removing it changes the ruleset. Nor is an unknown name, which
+    the wildcard covers on neither side; `checkZoneRefs` rejects it.
 
     Walks the raw `from` / `to` lists before wildcard expansion —
     by the time `expandWildcardZones` runs, the wildcard sentinel
@@ -812,16 +836,24 @@ let
     let
       inherit (table.settings) wildcardZone;
 
+      expansion = wildcardExpansionOf { inherit table ctx; };
+
       checkEntryDirection =
         groupName: entryName: direction: zones:
-        if builtins.elem wildcardZone zones && builtins.length zones > 1 then
-          let
-            explicitZones = builtins.filter (zone: zone != wildcardZone) zones;
-            quotedZones = lib.concatStringsSep ", " (map (zone: "'${zone}'") explicitZones);
-          in
+        let
+          redundantZones = lib.unique (
+            builtins.filter (
+              zone: zone != wildcardZone && builtins.elem zone expansion.${direction}.zones
+            ) zones
+          );
+          quotedZones = lib.concatStringsSep ", " (map (zone: "'${zone}'") redundantZones);
+        in
+        if builtins.elem wildcardZone zones && redundantZones != [ ] then
           [
             (mkDiagnostic "wildcardZoneMixed" [ groupName entryName direction ]
-              "list contains the wildcard zone '${wildcardZone}' alongside explicit zone(s) ${quotedZones}. The wildcard alone already expands to every in-scope zone — the explicit names are either redundant or a leftover. Use `[ \"${wildcardZone}\" ]` or list the explicit zones without the wildcard."
+              "list contains the wildcard zone '${wildcardZone}' alongside ${quotedZones}, which it already covers: the wildcard expands to ${
+                expansion.${direction}.description
+              }. Remove ${quotedZones} from the list, or list the explicit zones without the wildcard."
             )
           ]
         else

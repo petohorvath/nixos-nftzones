@@ -29,6 +29,7 @@
 ### Fixed
 
 - **Breaking (generated chain names):** separate the zones in a zone pair's sub-chain name with an uppercase `-TO-`, for example `forward-at-filter__lan-TO-wan` ([#18](https://github.com/petohorvath/nixos-nftzones/issues/18)). With the lowercase `-to-`, zones `a`, `a-to`, `b` and `to-b` made the pairs `a-to → b` and `a → to-b` share the sub-chain `forward-at-filter__a-to-to-b` behind one jump, so one pair's rules matched the other pair's traffic. Single-zone sub-chains keep their names. Base chains jump to sub-chains in name order, so root zones where one name extends the other, such as `lan` and `lan-guest`, now jump in the opposite order; this decides the verdict only when their matches overlap.
+- The `wildcardZoneMixed` warning no longer calls a child zone listed beside a `from`-side wildcard redundant ([#30](https://github.com/petohorvath/nixos-nftzones/issues/30)). A `from`-side wildcard expands only to root zones and the local zone, so the child gets its own sub-chain and removing it changed the ruleset. The warning now names only the zones the wildcard already covers, and its message says what the wildcard covers there and advises removing only those zones. An unknown zone beside a `to`-side wildcard gets only its `invalidZoneRef` error, without the warning. A list that repeats the wildcard, such as `[ "all" "all" ]`, no longer warns.
 
 ### Migration
 

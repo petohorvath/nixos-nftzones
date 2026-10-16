@@ -133,7 +133,7 @@ Own, descendant and ancestor meanings stay distinct: an empty grouping zone can 
 
 ### 1.2 Wildcard resolution
 
-Phase 1 substitutes the wildcard zone (default `"all"`) in every entry's `from` / `to` list and deduplicates the result. A from-side wildcard expands to the root zones only, because descendants receive traffic through their parent's sub-chain ([ADR-0007](adr/0007-from-wildcard-expands-to-roots.md)). A to-side wildcard expands to every in-scope zone: declared zones, lowered nodes and `settings.localZone`.
+Phase 1 substitutes the wildcard zone (default `"all"`) in every entry's `from` / `to` list and deduplicates the result. A from-side wildcard expands to the root zones and `settings.localZone` only, because descendants receive traffic through their parent's sub-chain ([ADR-0007](adr/0007-from-wildcard-expands-to-roots.md)). A to-side wildcard expands to every in-scope zone: declared zones, lowered nodes and `settings.localZone`.
 
 ```
 wildcard = "all"
@@ -200,7 +200,7 @@ Overlap checks skip ancestor/descendant pairs, because that sharing is intention
 | `dnatAtOutput`               | `dnats.<entry>.chain`                             | A dnat at the output hook, which rewrites locally-originated traffic.                                                                                                                                                                               |
 | `snatOffSrcnat`              | `snats.<entry>.chain`                             | A snat at a priority other than `srcnat`, where conntrack misses the translation.                                                                                                                                                                   |
 | `extraSectionInterfaceMatch` | `zones.<zone>.matchOverride.<side>.extra.<index>` | An interface `meta` match in the hook-agnostic `extra` section; it belongs in `interfaces`.                                                                                                                                                         |
-| `wildcardZoneMixed`          | `<group>.<entry>.<direction>`                     | A `from` / `to` list that mixes the wildcard zone with explicit zones.                                                                                                                                                                              |
+| `wildcardZoneMixed`          | `<group>.<entry>.<direction>`                     | A `from` / `to` list that names an explicit zone the wildcard beside it already covers: a root zone or the local zone on the `from` side, any zone on the `to` side.                                                                                |
 | `crossAxisOverlap`           | `zones.<zone>`                                    | Two unrelated zones whose effective from-side axes are strictly split, one interface-only and the other CIDR-only, so alphabetical jump order may shadow one. Multi-axis zones, ancestor/descendant pairs and empty grouping zones are not flagged. |
 
 ## Phase 2: expand
