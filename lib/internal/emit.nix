@@ -84,12 +84,10 @@ let
   */
   policyVerdictStmts = { inherit accept drop; };
 
-  /*
-    Turn a `natBody` value into `snat` / `dnat` builder arguments.
-    The schema keeps nft's JSON field name `type_flags`; the DSL
-    builders spell it `typeFlags`.
-  */
-  natArgs =
+  # Turn a `natBody` value into `snat` / `dnat` builder arguments.
+  # The schema keeps nft's JSON field name `type_flags`; the DSL
+  # builders spell it `typeFlags`.
+  toNatArgs =
     body: builtins.removeAttrs body [ "type_flags" ] // { typeFlags = body.type_flags or null; };
 
   /*
@@ -111,7 +109,7 @@ let
         if cell ? verdict then
           [ policyVerdictStmts.${cell.verdict} ]
         else if cell.rule ? snat then
-          [ (snat (natArgs cell.rule.snat)) ]
+          [ (snat (toNatArgs cell.rule.snat)) ]
         else if cell.rule ? masquerade then
           [ (masquerade cell.rule.masquerade) ]
         else if cell.rule ? action then
@@ -119,7 +117,7 @@ let
           ++ [
             (
               if cell.rule.action ? dnat then
-                dnat (natArgs cell.rule.action.dnat)
+                dnat (toNatArgs cell.rule.action.dnat)
               else
                 redirect cell.rule.action.redirect
             )

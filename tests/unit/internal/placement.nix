@@ -365,7 +365,7 @@ in
   };
 
   # Family-aware: bridge's `filter = -200` canonicalizes through
-  # `priorityIntsBridge`, not `priorityIntsDefault`.
+  # `priorityIntsByFamily.bridge`, not `priorityIntsByFamily.inet`.
   testBaseChainNameOfBridgeFamily = {
     expr = baseChainNameOf "bridge" {
       hook = "input";

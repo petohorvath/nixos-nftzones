@@ -509,12 +509,12 @@ let
     Reject placements the kernel will refuse, before they reach
     `nft -f`. Each rule group dispatches into a `(hook, priority)`
     pair; combined with `table.family`, the implied chain type
-    (via `nftypes.chainTypeFor`) is what the kernel sees. If
-    `nftypes.validChainPlacement` says the triple is rejected,
-    we error out with the offending placement. A srcnat or dstnat
-    priority needs a `nat` chain; `chainTypeFor` falls back to
-    `filter` where nat can't attach, so that case is checked
-    separately.
+    (via `nftypes.chainTypeFor`) is what the kernel sees. A srcnat
+    or dstnat priority needs a `nat` chain, but `chainTypeFor`
+    falls back to `filter` where nat can't attach, so those
+    priorities are checked as `nat`. If
+    `nftypes.validChainPlacement` says the triple is rejected, we
+    error out with the offending placement.
 
     Catches three failure modes uncovered by the audit:
       - `bridge` snat/dnat — bridge family doesn't support `nat`
@@ -522,8 +522,9 @@ let
       - `bridge` sroute/droute — bridge has no `mangle` priority,
         so `chainTypeFor` returns null and we surface the gap
         rather than throwing in emit.
-      - `route` chain at non-`output` hooks (kernel restriction
-        encoded in `hooksByChainType.route = [ "output" ]`).
+      - a srcnat or dstnat priority at a hook `nat` can't attach
+        to, such as `forward` (kernel restriction encoded in
+        `hooksByChainType.nat`).
 
     `internal.placement` owns entry-level placement analysis and
     Phase 3's cell placement. This validator classifies its
@@ -555,10 +556,11 @@ let
         group: placement:
         let
           chainType = chainTypeFor family placement.hook placement.priority;
-          natPriority = builtins.elem (priorityNameOf family placement.priority) [
+          isNatPriority = builtins.elem (priorityNameOf family placement.priority) [
             "srcnat"
             "dstnat"
           ];
+          requiredType = if isNatPriority then "nat" else chainType;
         in
         if chainType == null then
           [
@@ -566,16 +568,10 @@ let
               "priority symbol '${toString placement.priority}' has no value in family '${family}'"
             )
           ]
-        else if natPriority && !(validChainPlacement family "nat" placement.hook) then
+        else if !(validChainPlacement family requiredType placement.hook) then
           [
             (mkError group placement
-              "kernel rejects chain type 'nat' on hook '${placement.hook}' for family '${family}'"
-            )
-          ]
-        else if !(validChainPlacement family chainType placement.hook) then
-          [
-            (mkError group placement
-              "kernel rejects chain type '${chainType}' on hook '${placement.hook}' for family '${family}'"
+              "kernel rejects chain type '${requiredType}' on hook '${placement.hook}' for family '${family}'"
             )
           ]
         else

@@ -10,10 +10,11 @@
     - `srouteComment`  — optional free-form comment
 
   An sroute is a source-zone-keyed route-mangling rule that applies
-  in prerouting (`type route hook prerouting priority mangle`). It
-  marks or mangles incoming packets based on source zone,
-  triggering a routing re-evaluation when the chain exits — used
-  for mark-based policy routing of forwarded traffic. Consumers
+  in prerouting (`type filter hook prerouting priority mangle`; the
+  kernel attaches `route` chains only at output). It marks or
+  mangles incoming packets based on source zone before the routing
+  decision — used for mark-based policy routing of forwarded
+  traffic. Consumers
   wire it as `lib.mkOption { type = lib.types.attrsOf
   nftzones.types.sroute; }`.
 
