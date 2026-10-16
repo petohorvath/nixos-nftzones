@@ -76,12 +76,12 @@ in
     interface-self-overlap = import ./rejections/interface-self-overlap.nix rejectionArgs;
     matchoverride-verdict = import ./rejections/matchoverride-verdict.nix rejectionArgs;
     name-collisions = import ./rejections/name-collisions.nix rejectionArgs;
-    nat-body-empty-dnat = import ./rejections/nat-body-empty-dnat.nix rejectionArgs;
-    nat-body-empty-snat = import ./rejections/nat-body-empty-snat.nix rejectionArgs;
+    nat-body-no-addr-dnat = import ./rejections/nat-body-no-addr-dnat.nix rejectionArgs;
+    nat-body-no-addr-snat = import ./rejections/nat-body-no-addr-snat.nix rejectionArgs;
     node-address-missing = import ./rejections/node-address-missing.nix rejectionArgs;
     object-comment-injection = import ./rejections/object-comment-injection.nix rejectionArgs;
     object-refs = import ./rejections/object-refs.nix rejectionArgs;
-    object-refs-set-elem-stmt = import ./rejections/object-refs-set-elem-stmt.nix rejectionArgs;
+    object-refs-set-stmt = import ./rejections/object-refs-set-stmt.nix rejectionArgs;
     parent-cycles = import ./rejections/parent-cycles.nix rejectionArgs;
     parent-local-zone = import ./rejections/parent-local-zone.nix rejectionArgs;
     parent-refs = import ./rejections/parent-refs.nix rejectionArgs;

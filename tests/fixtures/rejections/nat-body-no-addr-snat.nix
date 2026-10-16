@@ -1,8 +1,8 @@
 /*
-  Rejection scenario for `natBodyMissingAddr` — `rule.snat = { }`
-  selects the `snat` tag with an all-null body. Type accepts it
-  (every nftypes `natBody` field is nullable); nft rejects the
-  resulting `snat to;` statement at activation. Phase 1
+  Rejection scenario for `natBodyMissingAddr` — `rule.snat` with a
+  port and no `addr`. nftypes' `natBody` type accepts it (it needs
+  an `addr` or a `port`), but nftzones requires a target address,
+  pointing to `masquerade` as the no-address alternative. Phase 1
   catches it early with a clear error.
 */
 _: {
@@ -27,7 +27,7 @@ _: {
     snats.outbound = {
       from = [ "lan" ];
       to = [ "wan" ];
-      rule.snat = { };
+      rule.snat.port = 8080;
     };
   };
 }

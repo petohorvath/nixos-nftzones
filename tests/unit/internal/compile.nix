@@ -278,7 +278,7 @@ in
               filters.f = {
                 from = [ "lan" ];
                 to = [ "wan" ];
-                rule = [ ];
+                rule = [ nftypes.dsl.accept ];
               };
             }
           )

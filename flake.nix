@@ -28,7 +28,7 @@
     };
     # Downstream flakes read `inputs.nftypes`, so keep this input name.
     nftypes = {
-      url = "github:petohorvath/nix-nftypes/v0.1.0";
+      url = "github:petohorvath/nix-nftypes/main";
       inputs = {
         flake-parts.follows = "flake-parts";
         nixpkgs.follows = "nixpkgs";

@@ -224,7 +224,7 @@ in
     expr = snippets.reject.udp 53;
     expected = [
       (eq udp.dport 53)
-      reject.plain
+      (reject { })
     ];
   };
 
@@ -233,7 +233,7 @@ in
     expr = snippets.reject.icmp.v4 8;
     expected = [
       (eq icmp.type 8)
-      reject.plain
+      (reject { })
     ];
   };
 
@@ -241,7 +241,7 @@ in
     expr = snippets.reject.icmp.v6 128;
     expected = [
       (eq icmpv6.type 128)
-      reject.plain
+      (reject { })
     ];
   };
 

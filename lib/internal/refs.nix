@@ -13,7 +13,8 @@ let
   inherit (inputs) lib;
 
   # Named-reference strings in expression position carry a leading
-  # `@` per libnftables-JSON convention (e.g. `{ set = "@blocklist"; }`).
+  # `@` per libnftables-JSON convention (e.g. a match `right` of
+  # `"@blocklist"`).
   # Statement-form names are bare. Strip the prefix uniformly so
   # refs match `table.objects.<kind>.<name>` keys regardless of
   # which DSL form produced them. `removePrefix` is a no-op when
@@ -64,6 +65,21 @@ let
           ]
         else
           [ ];
+
+      # A match whose right side is an `@name` string looks the
+      # packet up in a named set, as `dsl.inSet` and
+      # `dsl.expr.setRef` build it.
+      matchRef =
+        let
+          body = v.match or null;
+          right = body.right or null;
+        in
+        lib.optional
+          (isSingleton "match" && builtins.isAttrs body && builtins.isString right && lib.hasPrefix "@" right)
+          {
+            kind = "sets";
+            name = stripAt right;
+          };
 
       mapRef =
         # `map` key: statement form (attrset with `op` AND a
@@ -123,6 +139,7 @@ let
       (stringRef "ctTimeouts" "ct timeout")
       (stringRef "ctExpectations" "ct expectation")
       setRef
+      matchRef
       mapRef
       vmapRef
       flowRef

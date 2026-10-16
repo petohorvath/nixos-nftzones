@@ -275,21 +275,9 @@ One base chain per dispatch tree in `ctx.dispatchTrees` (Phase 3). Default place
 - **Route base chains** — `prerouting` at `mangle` (sroute), `output` at `mangle` (droute).
 - **Optional `rpfilter` chain** — emitted only when `settings.rpfilter = true`. `type filter hook prerouting priority raw;` with one rule: `fib saddr . iif oif eq 0 drop`.
 
-**Chain type derivation.** `chainAttrs` carries `(hook, priority)` only; `type` is derived locally in `emit.nix`. nftypes does _not_ expose this mapping (only `nftypes.enums.chainType = [ "filter" "nat" "route" ]` and `nftypes.compatibility.familiesByChainType` for validation). Rule:
+**Chain type derivation.** `chainAttrs` carries `(hook, priority)` only; `emit.nix` derives the chain type with `nftypes.chainTypeFor family hook priority`. A `srcnat` or `dstnat` priority gives `nat`, a `mangle` priority gives `route`, and any other priority gives `filter`. Where the kernel can't attach that type, such as `route` at `prerouting` (sroute's default), `chainTypeFor` returns `filter`.
 
-```nix
-chainTypeOf = chainAttrs:
-  let p = if builtins.isInt chainAttrs.priority
-          then chainAttrs.priority
-          else priorityIntsDefault.${chainAttrs.priority};
-  in
-    if p == priorityIntsDefault.srcnat || p == priorityIntsDefault.dstnat then "nat"
-    else if p == priorityIntsDefault.mangle
-         && (chainAttrs.hook == "prerouting" || chainAttrs.hook == "output") then "route"
-    else "filter";
-```
-
-Covers all default placements (snat → `nat`, dnat → `nat`, sroute / droute → `route`, filter / policy → `filter`, rpfilter override → `filter`) and any user override that doesn't deliberately land on `srcnat` / `dstnat` / special-`mangle`. If users ever need to pick chain type explicitly, add an optional `type` field to the chain-override schema later.
+That fallback would turn a NAT placement the kernel refuses into a filter chain holding NAT statements, which `nft -f` rejects. Phase 1's `invalidChainPlacement` check therefore requires a `nat` chain to attach wherever the priority is `srcnat` or `dstnat`. If users ever need to pick chain type explicitly, add an optional `type` field to the chain-override schema later.
 
 **Rule order in a base chain:**
 

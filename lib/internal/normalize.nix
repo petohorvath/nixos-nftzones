@@ -511,7 +511,10 @@ let
     pair; combined with `table.family`, the implied chain type
     (via `nftypes.chainTypeFor`) is what the kernel sees. If
     `nftypes.validChainPlacement` says the triple is rejected,
-    we error out with the offending placement.
+    we error out with the offending placement. A srcnat or dstnat
+    priority needs a `nat` chain; `chainTypeFor` falls back to
+    `filter` where nat can't attach, so that case is checked
+    separately.
 
     Catches three failure modes uncovered by the audit:
       - `bridge` snat/dnat — bridge family doesn't support `nat`
@@ -531,7 +534,7 @@ let
     let
       inherit (table) family;
       inherit (table.settings) localZone;
-      inherit (nftypes) chainTypeFor validChainPlacement;
+      inherit (nftypes) chainTypeFor priorityNameOf validChainPlacement;
       inherit (internal.placement) chainAttrsForEntry;
 
       placementsForEntry =
@@ -552,11 +555,21 @@ let
         group: placement:
         let
           chainType = chainTypeFor family placement.hook placement.priority;
+          natPriority = builtins.elem (priorityNameOf family placement.priority) [
+            "srcnat"
+            "dstnat"
+          ];
         in
         if chainType == null then
           [
             (mkError group placement
               "priority symbol '${toString placement.priority}' has no value in family '${family}'"
+            )
+          ]
+        else if natPriority && !(validChainPlacement family "nat" placement.hook) then
+          [
+            (mkError group placement
+              "kernel rejects chain type 'nat' on hook '${placement.hook}' for family '${family}'"
             )
           ]
         else if !(validChainPlacement family chainType placement.hook) then
@@ -911,13 +924,11 @@ let
     };
 
   /*
-    Reject `snats.<x>.rule.snat = { }` and
-    `dnats.<x>.rule.action.dnat = { }` where `addr` is null. nftypes'
-    `natBody` lets every field default to `null` (so the user-shape
-    validates), but the rendered `snat to` / `dnat to` statement with
-    no target is invalid nftables syntax and `nft -f` rejects it at
-    activation. Catches the empty-body case here with a clear error
-    pointing to `masquerade` / `redirect` as the no-target alternative.
+    Reject `snats.<x>.rule.snat` and `dnats.<x>.rule.action.dnat`
+    where `addr` is null. nftypes' `natBody` rejects an empty body
+    but accepts one with only a `port`; nftzones requires a target
+    address, and points to `masquerade` / `redirect` as the
+    no-address alternative.
   */
   checkNatBodies =
     { table, ctx }:
@@ -1451,9 +1462,8 @@ let
         Walk every `table.objects.<kind>.<name>` body. Most object
         kinds (counters, limits, quotas, synproxies, …) are
         config-only leaves and contribute no refs. Sets and maps
-        may carry refs in element-attached stateful statements
-        (`dsl.expr.elem { val; stmt; }`); the recursive walker
-        picks those up uniformly.
+        may carry refs in their stateful statements (`stmt`); the
+        recursive walker picks those up uniformly.
       */
       refsFromObjectKind =
         kindName: kindAttrs:

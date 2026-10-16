@@ -24,7 +24,7 @@
           filters.allow-ssh = {
             from = [ "wan" ];
             to = [ "local" ];
-            rule = [ ];
+            rule = [ nftypes.dsl.accept ];
           };
         };
         table = nftzones.mkTable "fw" body;

@@ -34,7 +34,7 @@
       proving the bridge chain actually runs against
       forwarded frames.
     - One filter `from = [ "bridged" ]; to = [ "bridged" ]`
-      with `[ (counter {}) accept ]` — counter increments
+      with `[ counter.auto accept ]` — counter increments
       per matched frame, accept lets the frame through.
 
   End-to-end flow:
@@ -143,7 +143,7 @@ pkgs.testers.runNixOSTest {
                 from = [ "bridged" ];
                 to = [ "bridged" ];
                 rule = [
-                  (counter { })
+                  counter.auto
                   accept
                 ];
               };

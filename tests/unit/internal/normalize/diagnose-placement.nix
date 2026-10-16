@@ -981,15 +981,15 @@ in
     expected = clean;
   };
 
-  # The type accepts an all-null `snat` body, but nft rejects
-  # `snat to;` at activation.
-  testNatBodyEmptySnatRejected = {
+  # The type accepts a port-only `snat` body, but nftzones requires
+  # a target address.
+  testNatBodyNoAddrSnatRejected = {
     expr = diagnosticsFor {
       zones = lanWan;
       snats.outbound = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.snat = { };
+        rule.snat.port = 8080;
       };
     };
     expected = {
@@ -1031,14 +1031,14 @@ in
     expected = clean;
   };
 
-  testNatBodyEmptyDnatRejected = {
+  testNatBodyNoAddrDnatRejected = {
     expr = diagnosticsFor {
       zones.wan.interfaces = [ "wan0" ];
       dnats.bad-fwd = {
         from = [ "wan" ];
         rule = {
           match = [ ];
-          action.dnat = { };
+          action.dnat.port = 8080;
         };
       };
     };
@@ -1062,13 +1062,13 @@ in
       snats.bad-s = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.snat = { };
+        rule.snat.port = 8080;
       };
       dnats.bad-d = {
         from = [ "wan" ];
         rule = {
           match = [ ];
-          action.dnat = { };
+          action.dnat.port = 8080;
         };
       };
     };
@@ -1294,18 +1294,14 @@ in
     expected = clean;
   };
 
-  # Per-element stateful statements carry refs that must resolve too.
-  testObjectRefsElementStatementUnknownRejected = {
+  # A set's stateful statements carry refs that must resolve too.
+  testObjectRefsSetStatementUnknownRejected = {
     expr = diagnosticsFor {
       zones.lan.interfaces = [ "lan0" ];
       objects.sets.tracker = {
         type = "ipv4_addr";
-        elem = [
-          (dsl.expr.elem {
-            val = "1.2.3.4";
-            stmt = [ (dsl.counter.ref "ghost-counter") ];
-          })
-        ];
+        elem = [ "1.2.3.4" ];
+        stmt = [ (dsl.counter.ref "ghost-counter") ];
       };
     };
     expected = {
@@ -1323,19 +1319,15 @@ in
     };
   };
 
-  testObjectRefsElementStatementDeclaredResolves = {
+  testObjectRefsSetStatementDeclaredResolves = {
     expr = diagnosticsFor {
       zones.lan.interfaces = [ "lan0" ];
       objects = {
         counters.tracker-hits = { };
         sets.tracker = {
           type = "ipv4_addr";
-          elem = [
-            (dsl.expr.elem {
-              val = "1.2.3.4";
-              stmt = [ (dsl.counter.ref "tracker-hits") ];
-            })
-          ];
+          elem = [ "1.2.3.4" ];
+          stmt = [ (dsl.counter.ref "tracker-hits") ];
         };
       };
     };

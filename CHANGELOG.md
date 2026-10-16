@@ -12,7 +12,8 @@
 - **Breaking:** `lib` is system-independent. Replace `inputs.nftzones.lib.${system}` with `inputs.nftzones.lib`.
 - Build the root flake with flake-parts. A `dev` partition provides `checks`, `devShells`, and `formatter`, so public outputs evaluate without development wiring.
 - Move the NixOS module from `modules/nftzones.nix` to `nixos/module.nix`. It builds the library from the evaluating system's `lib`, and `nixosModules.default` is unchanged.
-- Track `nixos-26.05` in the root `nixpkgs` input, and pin `libnet` and `nftypes` to their `v0.1.0` releases.
+- Track `nixos-26.05` in the root `nixpkgs` input, pin `libnet` to its `v0.1.0` release, and track the `main` branch of `nftypes`.
+- **Breaking:** follow nftypes `main`, past its `v0.1.0` release. A flake whose `nftypes` input follows `nftzones/nftypes` gets the new DSL, so rules written with the nftypes DSL may need the changes its [changelog](https://github.com/petohorvath/nix-nftypes/blob/main/CHANGELOG.md) lists, such as `reject { }` for `reject.plain` and `counter.auto` for `counter { }`. A filter with `rule = [ ]` no longer compiles, because nftypes refuses a rule with no statements, and a `snat` or `dnat` body needs an `addr` or a `port`.
 - Run the unit and integration tests with nix-unit's flake-parts module, which adds the `nix-unit` input and the `tests` output.
 - **Breaking (development interface):** move the VM tests from `checks.<system>.vm` to one check per test, `checks.<system>.vm-<name>`.
 - **Breaking (development interface):** organize the tests by the devnix-labs test standard. The `nix-unit` check replaces `unit`, `integration`, and `examples`: its unit suites also compile the examples and check the warnings and assertions of the scenarios and the rejections, and `build-scenarios` runs `nft -j --check` on the scenarios. Run one unit suite with `nix-unit --flake .#tests.systems.<system>.unit.<suite>`, and one test with `--attr <test>`.
@@ -35,6 +36,8 @@
 ### Migration
 
 Replace `inputs.nftzones.lib.${pkgs.system}` with `inputs.nftzones.lib`, for example `inherit (inputs.nftzones.lib.snippets) accept;`.
+
+Update rules written with the nftypes DSL as the nftypes [changelog](https://github.com/petohorvath/nix-nftypes/blob/main/CHANGELOG.md) describes, and give each filter at least one statement, such as `rule = [ accept ];`.
 
 Remove `follows` or overrides for the `nftzones` inputs `nixpkgs-unstable` and `git-hooks`. Keep `nftzones.inputs.nixpkgs.follows`; the `nftypes` input name is unchanged.
 

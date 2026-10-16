@@ -159,7 +159,7 @@ pkgs.testers.runNixOSTest {
                 priority = "first";
                 rule = [
                   (eq tcp.dport 7777)
-                  (counter { })
+                  counter.auto
                   reject.tcpReset
                 ];
               };
