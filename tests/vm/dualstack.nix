@@ -31,7 +31,7 @@
   Companion files: `forward.nix`, `vlan.nix`, `rpfilter.nix`,
   `marks.nix`.
 */
-{ inputs, ... }:
+{ inputs, pkgs }:
 let
   nftypes = inputs.nftypes.lib;
 
@@ -53,7 +53,9 @@ let
   routerWanIp6 = "${wanNet6}::1";
   serverWanIp6 = "${wanNet6}::10";
 in
-{
+pkgs.testers.runNixOSTest {
+  name = "nftzones-dualstack";
+
   nodes = {
     client =
       { lib, ... }:

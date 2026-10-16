@@ -2,8 +2,9 @@
   Build `testContext`, the single argument every nix-unit suite
   receives.
 
-  Takes the `nixpkgs`, `libnet`, and `nftypes` flakes and the `system`
-  to test. Imports nftzones and its NixOS module from source, with the
+  Takes the `nixpkgs`, `libnet`, and `nftypes` flakes, the `system` to
+  test, and, for the integration suites, `self`, the flake itself.
+  Imports nftzones and its NixOS module from source, with the
   dependencies `flake.nix` passes them, so suites need no flake-parts
   evaluation.
 */
@@ -11,6 +12,7 @@
   libnet,
   nftypes,
   nixpkgs,
+  self ? null,
   system,
 }:
 let
@@ -34,7 +36,7 @@ let
   );
 in
 {
-  inherit lib nftzones;
+  inherit lib nftzones self;
   libnet = libnet.lib.withLib lib;
   nftypes = nftypes.lib;
   fixtures = import ./fixtures {

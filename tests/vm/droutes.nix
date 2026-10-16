@@ -45,7 +45,7 @@
   Companion files: `forward.nix`, `vlan.nix`, `rpfilter.nix`,
   `marks.nix` (sroutes counterpart), `dualstack.nix`.
 */
-{ inputs, ... }:
+{ inputs, pkgs }:
 let
   nftypes = inputs.nftypes.lib;
 
@@ -56,7 +56,9 @@ let
   routerWanIp = "${wanNet}.1";
   targetIp = "${wanNet}.10";
 in
-{
+pkgs.testers.runNixOSTest {
+  name = "nftzones-droutes";
+
   nodes = {
     router =
       { lib, pkgs, ... }:

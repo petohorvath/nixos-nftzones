@@ -1,30 +1,11 @@
-# The unit suites for nix-unit, listed by hand. Each suite's attribute
-# path matches the path of the source file it tests.
-# Example: nix-unit tests/unit --attr internal.compile
-let
-  rootInputs = (builtins.getFlake (toString ../..)).inputs;
-  rebuild = import ../helpers/evaluation-inputs.nix;
-
-  # libnet and nftypes follow nixpkgs, and flake-parts through
-  # nixpkgs-lib, so rebuild them against the selected one.
-  rebuildAgainst =
-    nixpkgs: inputName:
-    rebuild {
-      path = rootInputs.${inputName}.outPath;
-      inputs = {
-        inherit nixpkgs;
-        flake-parts = rebuild {
-          path = rootInputs.flake-parts.outPath;
-          inputs.nixpkgs-lib = nixpkgs;
-        };
-      };
-    };
-in
+# The unit suites, listed by hand. Each suite's attribute path matches
+# the path of the source file it tests.
+# Example: nix-unit --flake .#tests.systems.x86_64-linux.unit.internal.compile
 {
-  nixpkgs ? rootInputs.nixpkgs,
-  libnet ? rebuildAgainst nixpkgs "libnet",
-  nftypes ? rebuildAgainst nixpkgs "nftypes",
-  system ? builtins.currentSystem,
+  libnet,
+  nftypes,
+  nixpkgs,
+  system,
 }:
 let
   testContext = import ../test-context.nix {

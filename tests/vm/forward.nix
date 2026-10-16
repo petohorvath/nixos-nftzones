@@ -29,7 +29,7 @@
   Companion: `vlan.nix` exercises inter-VLAN routing over a
   single trunk (router-on-a-stick).
 */
-{ inputs, ... }:
+{ inputs, pkgs }:
 let
   nftypes = inputs.nftypes.lib;
 
@@ -51,7 +51,9 @@ let
   serverWanIp = "${wanNet}.10";
   externalWanIp = "${wanNet}.20";
 in
-{
+pkgs.testers.runNixOSTest {
+  name = "nftzones-forward";
+
   nodes = {
     client =
       { lib, pkgs, ... }:

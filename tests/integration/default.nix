@@ -1,30 +1,13 @@
-# The integration suites for nix-unit, listed by hand. Each suite
-# evaluates nftzones inside a host, such as nixpkgs' NixOS modules.
-# Example: nix-unit tests/integration --attr nixos-module
-let
-  rootInputs = (builtins.getFlake (toString ../..)).inputs;
-  rebuild = import ../helpers/evaluation-inputs.nix;
-
-  # libnet and nftypes follow nixpkgs, and flake-parts through
-  # nixpkgs-lib, so rebuild them against the selected one.
-  rebuildAgainst =
-    nixpkgs: inputName:
-    rebuild {
-      path = rootInputs.${inputName}.outPath;
-      inputs = {
-        inherit nixpkgs;
-        flake-parts = rebuild {
-          path = rootInputs.flake-parts.outPath;
-          inputs.nixpkgs-lib = nixpkgs;
-        };
-      };
-    };
-in
+# The integration suites, listed by hand. Each suite evaluates nftzones
+# inside a host, such as nixpkgs' NixOS modules, or reads the flake
+# itself as consumers see it.
+# Example: nix-unit --flake .#tests.systems.x86_64-linux.integration
 {
-  nixpkgs ? rootInputs.nixpkgs,
-  libnet ? rebuildAgainst nixpkgs "libnet",
-  nftypes ? rebuildAgainst nixpkgs "nftypes",
-  system ? builtins.currentSystem,
+  libnet,
+  nftypes,
+  nixpkgs,
+  self,
+  system,
 }:
 let
   testContext = import ../test-context.nix {
@@ -32,10 +15,12 @@ let
       libnet
       nftypes
       nixpkgs
+      self
       system
       ;
   };
 in
 {
+  flake-outputs = import ./flake-outputs.nix testContext;
   nixos-module = import ./nixos-module.nix testContext;
 }

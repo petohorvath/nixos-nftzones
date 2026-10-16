@@ -23,7 +23,7 @@
   Companion: `forward.nix` covers L3 forwarding + NAT + policy
   on a more conventional lan/wan topology.
 */
-{ inputs, ... }:
+{ inputs, pkgs }:
 let
   nftypes = inputs.nftypes.lib;
 
@@ -40,7 +40,9 @@ let
   iotVlanId = 10;
   adminVlanId = 20;
 in
-{
+pkgs.testers.runNixOSTest {
+  name = "nftzones-vlan";
+
   nodes = {
     router =
       { lib, pkgs, ... }:

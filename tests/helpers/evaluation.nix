@@ -4,7 +4,8 @@
 
   Takes `lib`, the `nftzones` library, its NixOS module `nixosModule`,
   and the package set `pkgs`. Exports `evalTable`, `diagnosticsFor`,
-  `membershipFor`, `evalType`, `evalFails`, and `evalNixosModule`.
+  `membershipFor`, `evalType`, `evalFails`, `evalNixosSystem`, and
+  `evalNixosModule`.
 */
 {
   lib,
@@ -13,6 +14,7 @@
   pkgs,
 }:
 let
+  evalNixosSystem = modules: (pkgs.nixos modules).config;
 
   /*
     Evaluate a raw user table body against `nftzones.types.table`, so
@@ -100,13 +102,17 @@ in
   */
   evalFails = result: !(builtins.tryEval (builtins.deepSeq result result)).success;
 
+  # Evaluate a NixOS system from the given `modules` with `pkgs.nixos`.
+  # Returns the evaluated `config`.
+  inherit evalNixosSystem;
+
   # Evaluate a NixOS system with `pkgs.nixos`, importing the nftzones
   # NixOS module beside the given `configuration` module. Returns the
   # evaluated `config`.
   evalNixosModule =
     configuration:
-    (pkgs.nixos [
+    evalNixosSystem [
       nixosModule
       configuration
-    ]).config;
+    ];
 }

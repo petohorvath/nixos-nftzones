@@ -1,4 +1,4 @@
-# Run `nft -j --check` on every scenario fixture, one case per
+# Run `nft -j --check` on every scenario fixture, one linked case per
 # scenario. The unit suite `scenarios` checks their warnings and
 # assertions.
 { inputs, pkgs }:
@@ -11,6 +11,8 @@ let
   checkRuleset = import ../helpers/nft-check.nix { inherit pkgs; };
   inherit (import ../helpers/scenarios.nix { inherit lib nftypes nftzones; }) renderScenario;
 in
-lib.mapAttrs (
-  name: scenario: checkRuleset "nftzones-scenario-${name}" (renderScenario name scenario)
-) fixtures.scenarios
+pkgs.linkFarm "nftzones-build-scenarios" (
+  lib.mapAttrs (
+    name: scenario: checkRuleset "nftzones-scenario-${name}" (renderScenario name scenario)
+  ) fixtures.scenarios
+)

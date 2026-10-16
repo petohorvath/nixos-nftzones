@@ -47,7 +47,7 @@
   Companion files: `forward.nix`, `vlan.nix`, `rpfilter.nix`,
   `marks.nix`, `droutes.nix`, `dualstack.nix`.
 */
-{ inputs, ... }:
+{ inputs, pkgs }:
 let
   nftypes = inputs.nftypes.lib;
 
@@ -58,7 +58,9 @@ let
   vmAIp = "${net}.10";
   vmBIp = "${net}.20";
 in
-{
+pkgs.testers.runNixOSTest {
+  name = "nftzones-bridge";
+
   nodes = {
     vmA =
       { lib, ... }:

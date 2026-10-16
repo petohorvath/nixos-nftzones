@@ -31,7 +31,7 @@
   Companion file: `atomic-reload.nix` (same scenario via direct
   `nft -f` rather than the activation script).
 */
-{ inputs, ... }:
+{ inputs, pkgs }:
 let
   nftypes = inputs.nftypes.lib;
 
@@ -90,7 +90,9 @@ let
     # No allow-ssh — lan→wan TCP/22 falls to policies.lan-to-wan drop.
   };
 in
-{
+pkgs.testers.runNixOSTest {
+  name = "nftzones-activation";
+
   nodes = {
     client =
       { lib, ... }:

@@ -38,7 +38,7 @@
   Companion files: `forward.nix` (lan/wan NAT + policy),
   `vlan.nix` (router-on-a-stick inter-VLAN).
 */
-{ inputs, ... }:
+{ inputs, pkgs }:
 let
   nftypes = inputs.nftypes.lib;
 
@@ -53,7 +53,9 @@ let
   spooferWanIp = "${wanNet}.99";
   spooferSpoofedIp = "${lanNet}.99";
 in
-{
+pkgs.testers.runNixOSTest {
+  name = "nftzones-rpfilter";
+
   nodes = {
     client =
       { lib, ... }:

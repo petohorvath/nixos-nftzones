@@ -39,7 +39,7 @@
   Companion files: `forward.nix`, `vlan.nix`, `rpfilter.nix`,
   `marks.nix`, `droutes.nix`, `dualstack.nix`, `bridge.nix`.
 */
-{ inputs, ... }:
+{ inputs, pkgs }:
 let
   nftypes = inputs.nftypes.lib;
   nftzones = inputs.self.lib;
@@ -119,7 +119,9 @@ let
     ${nftypes.toText (nftypes.dsl.ruleset [ (nftzones.mkTable "fw" v2Body) ])}
   '';
 in
-{
+pkgs.testers.runNixOSTest {
+  name = "nftzones-atomic-reload";
+
   nodes = {
     client =
       { lib, ... }:

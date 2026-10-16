@@ -48,7 +48,7 @@
 
   Companion files: `forward.nix`, `vlan.nix`, `rpfilter.nix`.
 */
-{ inputs, ... }:
+{ inputs, pkgs }:
 let
   nftypes = inputs.nftypes.lib;
 
@@ -65,7 +65,9 @@ let
   clientMarkedIp = "${lanNet}.5";
   serverWanIp = "${wanNet}.10";
 in
-{
+pkgs.testers.runNixOSTest {
+  name = "nftzones-marks";
+
   nodes = {
     client =
       { lib, ... }:
