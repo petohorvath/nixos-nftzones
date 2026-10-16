@@ -12,7 +12,7 @@ The development shell, loaded by `nix develop` or by direnv through
 
 ```sh
 nix fmt                     # fix a failing `formatting` check
-nix-unit tests/entrypoint.nix --attr internal.compile  # one unit suite
+nix-unit tests/unit --attr internal.compile  # one unit suite
 nix flake check -L          # every check with the locked nixpkgs; needs KVM
 nix build -L .#checks.x86_64-linux.vm-<name>  # one VM test; needs KVM
 ```
