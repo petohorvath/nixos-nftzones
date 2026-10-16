@@ -1,22 +1,18 @@
 /*
-  Compile each `examples/*.nix` through `mkRuleset` and force the
-  result, so the shipped examples stay in sync with the types and the
-  compiler. The build test `scenarios` already proves that rendered
-  rulesets are valid nftables, so the examples skip `nft --check`.
+  Compile each example in `fixtures.examples` through `mkRuleset` and
+  force the result, so the shipped examples stay in sync with the types
+  and the compiler. The build test `scenarios` already proves that
+  rendered rulesets are valid nftables, so the examples skip
+  `nft --check`.
 */
 {
+  fixtures,
   lib,
-  nftypes,
   nftzones,
   ...
 }:
 let
-  compiles =
-    name:
-    let
-      body = import ../../examples/${name}.nix { inherit nftypes nftzones; };
-    in
-    builtins.deepSeq (nftzones.mkRuleset name body) true;
+  compiles = name: builtins.deepSeq (nftzones.mkRuleset name fixtures.examples.${name}) true;
 in
 {
   testDmzHierarchyCompiles = {
@@ -39,17 +35,12 @@ in
     expected = true;
   };
 
-  # Fails when an example is added without a test above.
+  # Fails when an example is added without a fixture.
   testListsEveryExample = {
     expr = lib.pipe (builtins.readDir ../../examples) [
       builtins.attrNames
       (map (lib.removeSuffix ".nix"))
     ];
-    expected = [
-      "dmz-hierarchy"
-      "home-router"
-      "policy-routed-vpn"
-      "vlan-segmentation"
-    ];
+    expected = builtins.attrNames fixtures.examples;
   };
 }

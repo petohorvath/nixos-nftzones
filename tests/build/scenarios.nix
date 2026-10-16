@@ -11,7 +11,7 @@ let
   checkRuleset = import ../helpers/nft-check.nix { inherit pkgs; };
   inherit (import ../helpers/scenarios.nix { inherit lib nftypes nftzones; }) renderScenario;
 in
-pkgs.linkFarm "nftzones-build-scenarios" (
+pkgs.linkFarm "nftzones-scenarios" (
   lib.mapAttrs (
     name: scenario: checkRuleset "nftzones-scenario-${name}" (renderScenario name scenario)
   ) fixtures.scenarios

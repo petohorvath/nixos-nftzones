@@ -1,11 +1,11 @@
 # The unit suites, listed by hand. Each suite's attribute path matches
 # the path of the source file it tests.
 # Example: nix-unit --flake .#tests.systems.x86_64-linux.unit.internal.compile
+#   --attr testCompileFullCtx
 {
   libnet,
   nftypes,
   nixpkgs,
-  system,
 }:
 let
   testContext = import ../test-context.nix {
@@ -13,7 +13,6 @@ let
       libnet
       nftypes
       nixpkgs
-      system
       ;
   };
 in

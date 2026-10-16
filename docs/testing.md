@@ -12,13 +12,16 @@ The tests follow the devnix-labs test standard: each kind has one directory unde
 - **`build-scenarios`** ([`tests/build/`](../tests/build/)): runs `nft -j --check` on the rendered JSON of every scenario fixture, through the LKL and libredirect shim in [`tests/helpers/nft-check.nix`](../tests/helpers/nft-check.nix), since the build sandbox has no netlink socket.
 - **`formatting`** and **`lint`** ([`dev/checks.nix`](../dev/checks.nix)): `nix fmt` must leave the tree unchanged, and statix, deadnix, and actionlint must report nothing.
 
-Inside `nix develop`, run the nix-unit suites directly, optionally selecting one suite by its attribute path:
+Inside `nix develop`, run the nix-unit suites directly, optionally selecting one suite by its attribute path, and one test of a suite with `--attr`:
 
 ```bash
 nix-unit --flake .#tests.systems.x86_64-linux.unit
 nix-unit --flake .#tests.systems.x86_64-linux.unit.internal.compile
+nix-unit --flake .#tests.systems.x86_64-linux.unit.internal.compile --attr testCompileFullCtx
 nix-unit --flake .#tests.systems.x86_64-linux.integration.nixos-module
 ```
+
+Selecting a single test by its full attribute path does not work, because nix-unit treats the selected attribute as a suite.
 
 Add `--override-input nixpkgs <flake-ref>` to run the suites against another nixpkgs. Build one entry with `nix build .#checks.<system>.<entry>`, for example `nix build .#checks.x86_64-linux.build-scenarios`.
 

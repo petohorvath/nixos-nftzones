@@ -21,11 +21,9 @@
       nix-unit = {
         package = pkgs.nix-unit;
         inputs = removeAttrs inputs [ "self" ];
+        enableSystemAgnostic = false;
         tests = {
-          unit = import ../tests/unit {
-            inherit (inputs) libnet nftypes nixpkgs;
-            inherit system;
-          };
+          unit = import ../tests/unit { inherit (inputs) libnet nftypes nixpkgs; };
           integration = import ../tests/integration {
             inherit (inputs)
               libnet

@@ -1,59 +1,67 @@
 /*
   Shared test data. `scenarios` holds valid tables, each in one of the
   forms `helpers/scenarios.nix` describes; `rejections` holds deliberate
-  misconfigurations, each `{ description; body; errors ? [ … ]; }`.
+  misconfigurations, each `{ description; body; errors ? [ … ]; }`; and
+  `examples` holds the table body of each `examples/*.nix`.
 
   Takes the `nftypes` and `nftzones` libraries the fixtures build on.
   Adding a fixture means listing it here.
 */
 { nftypes, nftzones }:
 let
-  scenarioArgs = { inherit nftypes nftzones; };
+  libraryArgs = { inherit nftypes nftzones; };
   rejectionArgs = { inherit nftypes; };
 in
 {
+  examples = {
+    dmz-hierarchy = import ../../examples/dmz-hierarchy.nix libraryArgs;
+    home-router = import ../../examples/home-router.nix libraryArgs;
+    policy-routed-vpn = import ../../examples/policy-routed-vpn.nix libraryArgs;
+    vlan-segmentation = import ../../examples/vlan-segmentation.nix libraryArgs;
+  };
+
   scenarios = {
-    bridge-filter = import ./scenarios/bridge-filter.nix scenarioArgs;
-    chain-override = import ./scenarios/chain-override.nix scenarioArgs;
-    chain-placement = import ./scenarios/chain-placement.nix scenarioArgs;
-    comments = import ./scenarios/comments.nix scenarioArgs;
-    dnat-port-forward = import ./scenarios/dnat-port-forward.nix scenarioArgs;
-    dnat-redirect = import ./scenarios/dnat-redirect.nix scenarioArgs;
-    droute-mark = import ./scenarios/droute-mark.nix scenarioArgs;
-    droute-multi-zone = import ./scenarios/droute-multi-zone.nix scenarioArgs;
-    dual-stack = import ./scenarios/dual-stack.nix scenarioArgs;
-    family-ip6 = import ./scenarios/family-ip6.nix scenarioArgs;
-    family-ip = import ./scenarios/family-ip.nix scenarioArgs;
-    filter-basic = import ./scenarios/filter-basic.nix scenarioArgs;
-    log-statement = import ./scenarios/log-statement.nix scenarioArgs;
-    match-override-interfaces = import ./scenarios/match-override-interfaces.nix scenarioArgs;
-    match-override = import ./scenarios/match-override.nix scenarioArgs;
-    match-override-sections = import ./scenarios/match-override-sections.nix scenarioArgs;
-    minimal = import ./scenarios/minimal.nix scenarioArgs;
-    multi-table = import ./scenarios/multi-table.nix scenarioArgs;
-    multi-zone-fanout = import ./scenarios/multi-zone-fanout.nix scenarioArgs;
-    named-objects = import ./scenarios/named-objects.nix scenarioArgs;
-    objects-stateful = import ./scenarios/objects-stateful.nix scenarioArgs;
-    parent-basic = import ./scenarios/parent-basic.nix scenarioArgs;
-    parent-deep-nesting = import ./scenarios/parent-deep-nesting.nix scenarioArgs;
-    parent-empty-intermediate = import ./scenarios/parent-empty-intermediate.nix scenarioArgs;
-    parent-mixed-sections-mirror = import ./scenarios/parent-mixed-sections-mirror.nix scenarioArgs;
-    parent-mixed-sections = import ./scenarios/parent-mixed-sections.nix scenarioArgs;
-    parent-policy-precedence = import ./scenarios/parent-policy-precedence.nix scenarioArgs;
-    parent-priorities = import ./scenarios/parent-priorities.nix scenarioArgs;
-    parent-transitive-sets = import ./scenarios/parent-transitive-sets.nix scenarioArgs;
-    policy-default = import ./scenarios/policy-default.nix scenarioArgs;
-    priority-slots = import ./scenarios/priority-slots.nix scenarioArgs;
-    settings-toggles = import ./scenarios/settings-toggles.nix scenarioArgs;
-    snat-explicit-rewrite = import ./scenarios/snat-explicit-rewrite.nix scenarioArgs;
-    snat-masquerade = import ./scenarios/snat-masquerade.nix scenarioArgs;
-    snippets-acceptance = import ./scenarios/snippets-acceptance.nix scenarioArgs;
-    sroute-mark = import ./scenarios/sroute-mark.nix scenarioArgs;
-    sroute-multi-zone = import ./scenarios/sroute-multi-zone.nix scenarioArgs;
-    wildcard-child-mix = import ./scenarios/wildcard-child-mix.nix scenarioArgs;
-    wildcard-expansion = import ./scenarios/wildcard-expansion.nix scenarioArgs;
-    zone-names-with-to = import ./scenarios/zone-names-with-to.nix scenarioArgs;
-    zone-set-ref = import ./scenarios/zone-set-ref.nix scenarioArgs;
+    bridge-filter = import ./scenarios/bridge-filter.nix libraryArgs;
+    chain-override = import ./scenarios/chain-override.nix libraryArgs;
+    chain-placement = import ./scenarios/chain-placement.nix libraryArgs;
+    comments = import ./scenarios/comments.nix libraryArgs;
+    dnat-port-forward = import ./scenarios/dnat-port-forward.nix libraryArgs;
+    dnat-redirect = import ./scenarios/dnat-redirect.nix libraryArgs;
+    droute-mark = import ./scenarios/droute-mark.nix libraryArgs;
+    droute-multi-zone = import ./scenarios/droute-multi-zone.nix libraryArgs;
+    dual-stack = import ./scenarios/dual-stack.nix libraryArgs;
+    family-ip6 = import ./scenarios/family-ip6.nix libraryArgs;
+    family-ip = import ./scenarios/family-ip.nix libraryArgs;
+    filter-basic = import ./scenarios/filter-basic.nix libraryArgs;
+    log-statement = import ./scenarios/log-statement.nix libraryArgs;
+    match-override-interfaces = import ./scenarios/match-override-interfaces.nix libraryArgs;
+    match-override = import ./scenarios/match-override.nix libraryArgs;
+    match-override-sections = import ./scenarios/match-override-sections.nix libraryArgs;
+    minimal = import ./scenarios/minimal.nix libraryArgs;
+    multi-table = import ./scenarios/multi-table.nix libraryArgs;
+    multi-zone-fanout = import ./scenarios/multi-zone-fanout.nix libraryArgs;
+    named-objects = import ./scenarios/named-objects.nix libraryArgs;
+    objects-stateful = import ./scenarios/objects-stateful.nix libraryArgs;
+    parent-basic = import ./scenarios/parent-basic.nix libraryArgs;
+    parent-deep-nesting = import ./scenarios/parent-deep-nesting.nix libraryArgs;
+    parent-empty-intermediate = import ./scenarios/parent-empty-intermediate.nix libraryArgs;
+    parent-mixed-sections-mirror = import ./scenarios/parent-mixed-sections-mirror.nix libraryArgs;
+    parent-mixed-sections = import ./scenarios/parent-mixed-sections.nix libraryArgs;
+    parent-policy-precedence = import ./scenarios/parent-policy-precedence.nix libraryArgs;
+    parent-priorities = import ./scenarios/parent-priorities.nix libraryArgs;
+    parent-transitive-sets = import ./scenarios/parent-transitive-sets.nix libraryArgs;
+    policy-default = import ./scenarios/policy-default.nix libraryArgs;
+    priority-slots = import ./scenarios/priority-slots.nix libraryArgs;
+    settings-toggles = import ./scenarios/settings-toggles.nix libraryArgs;
+    snat-explicit-rewrite = import ./scenarios/snat-explicit-rewrite.nix libraryArgs;
+    snat-masquerade = import ./scenarios/snat-masquerade.nix libraryArgs;
+    snippets-acceptance = import ./scenarios/snippets-acceptance.nix libraryArgs;
+    sroute-mark = import ./scenarios/sroute-mark.nix libraryArgs;
+    sroute-multi-zone = import ./scenarios/sroute-multi-zone.nix libraryArgs;
+    wildcard-child-mix = import ./scenarios/wildcard-child-mix.nix libraryArgs;
+    wildcard-expansion = import ./scenarios/wildcard-expansion.nix libraryArgs;
+    zone-names-with-to = import ./scenarios/zone-names-with-to.nix libraryArgs;
+    zone-set-ref = import ./scenarios/zone-set-ref.nix libraryArgs;
   };
 
   rejections = {

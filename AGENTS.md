@@ -13,6 +13,7 @@ The development shell, loaded by `nix develop` or by direnv through
 ```sh
 nix fmt                     # fix a failing `formatting` check
 nix-unit --flake .#tests.systems.x86_64-linux.unit.internal.compile  # one unit suite
+nix-unit --flake .#tests.systems.x86_64-linux.unit.internal.compile --attr testCompileFullCtx  # one test
 nix flake check -L          # every check with the locked nixpkgs; needs KVM
 nix build -L .#checks.x86_64-linux.vm-<name>  # one VM test; needs KVM
 ```
