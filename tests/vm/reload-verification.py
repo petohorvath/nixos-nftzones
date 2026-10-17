@@ -5,17 +5,15 @@ the VMs and supplies the reload action (and its ruleset assertions) as the
 body of verify_reload; all SSH lifecycle and flow checks live here.
 """
 
+import typing
 from contextlib import contextmanager
 from shlex import quote
-import typing
 
 
 class _Machine(typing.Protocol):
     # The pinned channels use different test-driver machine classes.
     # Describe only the operations this helper needs from either one.
-    def execute(
-        self, command: str, /, *, timeout: int = 900
-    ) -> tuple[int, str]: ...
+    def execute(self, command: str, /, *, timeout: int = 900) -> tuple[int, str]: ...
 
     def succeed(self, command: str, /) -> str: ...
 
@@ -48,15 +46,16 @@ def verify_reload(
     # connection if the control socket disappears. ControlMaster=no still
     # reuses the existing master, but cannot create a new one.
     session_opts = (
-        f"{ssh_base_opts} -S {socket} "
-        "-o ControlMaster=no -o ProxyCommand=false"
+        f"{ssh_base_opts} -S {socket} -o ControlMaster=no -o ProxyCommand=false"
     )
 
+    # Diagnostics run after a failure; a failing capture must not
+    # replace it.
     def capture(machine: _Machine, command: str) -> str:
         try:
             status, output = machine.execute(command, timeout=10)
             return f"(exit {status})\n{output}"
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001
             return f"(failed to capture: {error})"
 
     @contextmanager
@@ -153,5 +152,5 @@ def verify_reload(
         # must not replace the original failure if the client is down.
         try:
             client.execute(f"systemctl stop {unit}", timeout=10)
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001
             print(f"Failed to stop SSH master: {error}", flush=True)

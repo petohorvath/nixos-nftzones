@@ -11,7 +11,7 @@ The development shell, loaded by `nix develop` or by direnv through
 `nft`.
 
 ```sh
-nix fmt                     # fix a failing `formatting` check
+nix fmt                     # fix a failing `treefmt` check
 nix-unit --flake .#tests.systems.x86_64-linux.unit.internal.compile  # one unit suite
 nix-unit --flake .#tests.systems.x86_64-linux.unit.internal.compile --attr testCompileFullCtx  # one test
 nix flake check -L          # every check with the locked nixpkgs; needs KVM
