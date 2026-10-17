@@ -4,7 +4,7 @@
 
 ### Added
 
-- Root formatting for Nix, shell, Markdown, YAML, and JSON through `nix fmt`, plus `formatting` and `lint` checks (statix, deadnix, actionlint).
+- Root formatting and linting through treefmt-nix: `nix fmt` runs nixfmt, deadnix, actionlint, prettier, ruff-format, and ruff-check, configured in `dev/treefmt.nix`. The `treefmt` check fails when `nix fmt` would change a file or a tool reports a finding it cannot fix, and the `lint` check runs statix.
 - A shared-policy CI caller and an MIT license.
 
 ### Changed
