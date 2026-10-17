@@ -175,6 +175,6 @@ Per-packet:
   - `mkSubChain` — renders a sub-chain's slots around its
     child-dispatch jumps.
   - `mkRootJumpRules` — renders base-chain jumps to the tree's roots.
-- `tests/integration/scenarios/parent-*.nix` — end-to-end
+- `tests/fixtures/scenarios/parent-*.nix` — end-to-end
   scenarios covering basic, priorities, deep nesting, and empty
   intermediates.

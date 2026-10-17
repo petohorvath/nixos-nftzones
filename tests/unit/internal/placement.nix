@@ -4,10 +4,7 @@
   shape as every other unit test; aggregated by
   `tests/unit/default.nix`.
 */
-{
-  nftzones,
-  ...
-}:
+{ nftzones, ... }:
 let
   inherit (nftzones.internal.placement)
     baseChainNameOf

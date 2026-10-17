@@ -4,7 +4,8 @@
   shape as every other unit test; aggregated by `tests/unit/default.nix`.
 */
 {
-  pkgs,
+  helpers,
+  lib,
   nftzones,
   ...
 }:
@@ -12,7 +13,7 @@ let
   inherit (nftzones.internal.normalize) normalizeTable;
   inherit (nftzones.internal.expand) expandTable;
 
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
+  inherit (helpers) evalTable;
 
   runExpand = body: (expandTable (normalizeTable (evalTable body))).ctx;
 in
@@ -94,7 +95,7 @@ in
   testExpandWildcard = {
     # `from = [ "all" ]` resolves to declared zones + localZone, so
     # 3 from-values × 1 to-value = 3 cells.
-    expr = pkgs.lib.sort (a: b: a < b) (
+    expr = lib.sort (a: b: a < b) (
       map (cell: cell.from)
         (runExpand {
           name = "fw";
@@ -160,10 +161,10 @@ in
       {
         # dnats: cells have `from` only, no `to`
         dnatHasFrom = builtins.all (cell: cell ? from && !(cell ? to)) ctx.cells.dnats;
-        dnatFroms = pkgs.lib.sort (a: b: a < b) (map (cell: cell.from) ctx.cells.dnats);
+        dnatFroms = lib.sort (a: b: a < b) (map (cell: cell.from) ctx.cells.dnats);
         # droutes: cells have `to` only, no `from`
         drouteHasTo = builtins.all (cell: cell ? to && !(cell ? from)) ctx.cells.droutes;
-        drouteTos = pkgs.lib.sort (a: b: a < b) (map (cell: cell.to) ctx.cells.droutes);
+        drouteTos = lib.sort (a: b: a < b) (map (cell: cell.to) ctx.cells.droutes);
       };
     expected = {
       dnatHasFrom = true;
@@ -256,7 +257,7 @@ in
   # user writes `from = [ "all" "lan" ]`, "lan" appears once.
 
   testExpandWildcardDeduplication = {
-    expr = pkgs.lib.sort (a: b: a < b) (
+    expr = lib.sort (a: b: a < b) (
       map (cell: cell.from)
         (runExpand {
           name = "fw";
@@ -309,7 +310,7 @@ in
         # Original from is the wildcard "all", not the expanded list
         originalFrom = result.table.filters.f.from;
         # Expanded cells use concrete zone names
-        cellFroms = pkgs.lib.sort (a: b: a < b) (map (cell: cell.from) result.ctx.cells.filters);
+        cellFroms = lib.sort (a: b: a < b) (map (cell: cell.from) result.ctx.cells.filters);
       };
     expected = {
       originalFrom = [ "all" ];

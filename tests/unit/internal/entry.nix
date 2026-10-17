@@ -3,11 +3,7 @@
   `nftzones.internal.entry.toCells`). Same `testFoo = { expr; expected; }`
   shape as every other unit test; aggregated by `tests/unit/default.nix`.
 */
-{
-  nftzones,
-  nftypes,
-  ...
-}:
+{ nftypes, nftzones, ... }:
 let
   inherit (nftypes.dsl) accept eq;
   inherit (nftypes.dsl.fields) tcp;

@@ -4,9 +4,10 @@
   shape as every other unit test; aggregated by `tests/unit/default.nix`.
 */
 {
-  pkgs,
-  nftzones,
+  helpers,
+  lib,
   nftypes,
+  nftzones,
   ...
 }:
 let
@@ -16,7 +17,7 @@ let
     mkTable
     ;
 
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalTable;
+  inherit (helpers) evalTable;
 in
 {
   # ===== compile — runs all four phases, ctx carries every artifact =====
@@ -245,7 +246,7 @@ in
           inherit (command.add.table) family name;
         }) tableCommands;
       in
-      pkgs.lib.sort (a: b: a.name < b.name) tableTuples;
+      lib.sort (a: b: a.name < b.name) tableTuples;
     expected = [
       {
         name = "fw-v4";
@@ -283,7 +284,7 @@ in
           )
         );
       in
-      pkgs.lib.sort (a: b: a < b) (
+      lib.sort (a: b: a < b) (
         map (command: command.add.chain.name) (
           builtins.filter (command: command ? add && command.add ? chain) json.nftables
         )

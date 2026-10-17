@@ -4,15 +4,14 @@
 # NAT bodies and object references. Each test writes a table body and
 # compares the `{ tag; path; }` lists of errors and warnings.
 {
-  pkgs,
-  nftzones,
+  helpers,
   nftypes,
   ...
 }:
 let
   inherit (nftypes) dsl;
 
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) diagnosticsFor;
+  inherit (helpers) diagnosticsFor;
 
   clean = {
     errors = [ ];

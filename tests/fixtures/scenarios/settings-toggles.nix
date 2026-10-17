@@ -4,7 +4,7 @@
   prerouting@raw chain; `chainPolicy = "accept"` flips the base
   chain default verdict; `stateful = false` drops the conntrack
   prelude; `loopback = false` drops the `iif lo accept` prelude
-  on input. None of these have integration coverage otherwise.
+  on input. None of these have scenario coverage otherwise.
 */
 { nftypes, ... }:
 let

@@ -39,14 +39,11 @@
   Companion files: `forward.nix`, `vlan.nix`, `rpfilter.nix`,
   `marks.nix`, `droutes.nix`, `dualstack.nix`, `bridge.nix`.
 */
-{
-  pkgs,
-  nftypes,
-  nftzones,
-  nftzonesModule,
-  ...
-}:
+{ inputs, pkgs }:
 let
+  nftypes = inputs.nftypes.lib;
+  nftzones = inputs.self.lib;
+
   inherit (nftypes.dsl) accept eq;
   inherit (nftypes.dsl.fields) tcp;
 
@@ -122,7 +119,7 @@ let
     ${nftypes.toText (nftypes.dsl.ruleset [ (nftzones.mkTable "fw" v2Body) ])}
   '';
 in
-pkgs.testers.nixosTest {
+pkgs.testers.runNixOSTest {
   name = "nftzones-atomic-reload";
 
   nodes = {
@@ -150,7 +147,7 @@ pkgs.testers.nixosTest {
     router =
       { lib, pkgs, ... }:
       {
-        imports = [ nftzonesModule ];
+        imports = [ inputs.self.nixosModules.default ];
 
         virtualisation.vlans = [
           1

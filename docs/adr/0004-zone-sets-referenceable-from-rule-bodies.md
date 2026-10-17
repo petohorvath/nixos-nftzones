@@ -15,4 +15,4 @@ This keeps an escape hatch for raw matches against zone membership.
   only way to express membership. Same cost as the chosen option, but
   removes the escape hatch.
 
-Pinned by `tests/integration/scenarios/zone-set-ref.nix`.
+Pinned by `tests/fixtures/scenarios/zone-set-ref.nix`.

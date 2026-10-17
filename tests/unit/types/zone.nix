@@ -5,13 +5,13 @@
   shape as every other unit test; aggregated by `tests/unit/default.nix`.
 */
 {
-  pkgs,
-  nftzones,
+  helpers,
   nftypes,
+  nftzones,
   ...
 }:
 let
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) evalFails evalTable evalType;
+  inherit (helpers) evalFails evalTable evalType;
 
   zoneIn =
     body:
@@ -63,7 +63,7 @@ in
   # value (this is what keeps evaluated zones copy-safe). The
   # `name == key` invariant is enforced at compile time by
   # Phase 1's `nameKeyMismatch` diagnostic, exercised in
-  # `tests/unit/types/name-key.nix`.
+  # `tests/unit/name-key.nix`.
   testZoneNameAcceptsExplicitKey = {
     expr =
       (evalTable {

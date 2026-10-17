@@ -38,13 +38,10 @@
   Companion files: `forward.nix` (lan/wan NAT + policy),
   `vlan.nix` (router-on-a-stick inter-VLAN).
 */
-{
-  pkgs,
-  nftypes,
-  nftzonesModule,
-  ...
-}:
+{ inputs, pkgs }:
 let
+  nftypes = inputs.nftypes.lib;
+
   inherit (nftypes.dsl) accept;
 
   lanNet = "192.168.1";
@@ -56,7 +53,7 @@ let
   spooferWanIp = "${wanNet}.99";
   spooferSpoofedIp = "${lanNet}.99";
 in
-pkgs.testers.nixosTest {
+pkgs.testers.runNixOSTest {
   name = "nftzones-rpfilter";
 
   nodes = {
@@ -91,7 +88,7 @@ pkgs.testers.nixosTest {
     router =
       { lib, pkgs, ... }:
       {
-        imports = [ nftzonesModule ];
+        imports = [ inputs.self.nixosModules.default ];
 
         virtualisation.vlans = [
           1

@@ -45,13 +45,10 @@
   Companion files: `forward.nix`, `vlan.nix`, `rpfilter.nix`,
   `marks.nix` (sroutes counterpart), `dualstack.nix`.
 */
-{
-  pkgs,
-  nftypes,
-  nftzonesModule,
-  ...
-}:
+{ inputs, pkgs }:
 let
+  nftypes = inputs.nftypes.lib;
+
   inherit (nftypes.dsl) counter mangle;
   inherit (nftypes.dsl.fields) meta;
 
@@ -59,14 +56,14 @@ let
   routerWanIp = "${wanNet}.1";
   targetIp = "${wanNet}.10";
 in
-pkgs.testers.nixosTest {
+pkgs.testers.runNixOSTest {
   name = "nftzones-droutes";
 
   nodes = {
     router =
       { lib, pkgs, ... }:
       {
-        imports = [ nftzonesModule ];
+        imports = [ inputs.self.nixosModules.default ];
 
         virtualisation.vlans = [ 2 ];
 

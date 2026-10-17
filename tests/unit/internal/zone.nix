@@ -5,16 +5,15 @@
   no synthetic set bodies or separately selected overrides are inputs.
 */
 {
-  pkgs,
-  nftzones,
+  helpers,
+  lib,
   nftypes,
   ...
 }:
 let
-  inherit (pkgs) lib;
 
   inherit (nftypes.dsl) expr;
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) membershipFor;
+  inherit (helpers) membershipFor;
 
   setsForZone = name: zone: (membershipFor { zones.${name} = zone; }).sets;
   setsFor =

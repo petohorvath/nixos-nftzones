@@ -14,6 +14,14 @@
         nixpkgs.follows = "nixpkgs";
       };
     };
+    nix-unit = {
+      url = "github:nix-community/nix-unit";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        treefmt-nix.follows = "";
+        nix-github-actions.follows = "";
+      };
+    };
     # Downstream flakes read `inputs.nftypes`, so keep this input name.
     nftypes = {
       url = "github:petohorvath/nix-nftypes/v0.1.0";
@@ -46,6 +54,7 @@
         checks = "dev";
         devShells = "dev";
         formatter = "dev";
+        tests = "dev";
       };
 
       flake = {

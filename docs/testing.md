@@ -4,14 +4,30 @@
 
 ## Checks
 
-- **`unit`** ([`tests/unit/`](../tests/unit/)): per-module tests of the compile pipeline's helpers and validators, run by [nix-unit](https://github.com/nix-community/nix-unit). For a focused run inside `nix develop`, select one test file or case, for example `nix-unit tests/entrypoint.nix --attr internal.compile`.
-- **`integration`** ([`tests/integration/`](../tests/integration/)): assertions on the rendered nftables JSON for representative scenarios, plus rejection tests that confirm the [Phase 1](compile-pipeline.md#phase-1-normalize) validators reject known-bad inputs in the live `mkRuleset` pipeline.
-- **`examples`** ([`tests/examples.nix`](../tests/examples.nix)): compiles every `examples/*.nix` through `mkRuleset`, so the shipped examples stay in sync with the types and the compiler.
-- **`formatting`** and **`lint`**: `nix fmt` must leave the tree unchanged, and statix, deadnix, and actionlint must report nothing.
+The tests follow the devnix-labs test standard: each kind has one directory under [`tests/`](../tests/) and one entry point that lists its tests by hand. Shared test data lives in [`tests/fixtures/`](../tests/fixtures/) and helpers in [`tests/helpers/`](../tests/helpers/).
+
+- **`nix-unit`**: the unit and integration suites, run by [nix-unit's flake-parts module](https://github.com/nix-community/nix-unit), which [`dev/default.nix`](../dev/default.nix) configures. The module exposes the suites as the flake output `tests.systems.<system>` and runs them in the build sandbox in one nix-unit process, passing every flake input as an `--override-input`.
+  - **`unit`** ([`tests/unit/`](../tests/unit/)): suites on the library, imported from source. Each suite has the path of the source file it tests, so `tests/unit/internal/compile.nix` (attribute `unit.internal.compile`) tests `lib/internal/compile.nix`, and the suites of `lib/internal/normalize.nix` live in `tests/unit/internal/normalize/`. The root also holds suites that span several files: `scenarios` checks the [Phase 1](compile-pipeline.md#phase-1-normalize) warnings and structured assertions of each scenario fixture, `rejections` confirms that `mkRuleset` rejects each known-bad fixture with the expected errors, `examples` compiles every `examples/*.nix`, and `name-key` checks the `name` invariant across the object types.
+  - **`integration`** ([`tests/integration/`](../tests/integration/)): suites that evaluate nftzones inside a host or read the flake itself. `nixos-module` evaluates the NixOS module with `pkgs.nixos`, and `flake-outputs` checks that the flake's `lib` and `nixosModules.default` behave like the source the other suites import.
+- **`build-scenarios`** ([`tests/build/`](../tests/build/)): runs `nft -j --check` on the rendered JSON of every scenario fixture, through the LKL and libredirect shim in [`tests/helpers/nft-check.nix`](../tests/helpers/nft-check.nix), since the build sandbox has no netlink socket.
+- **`formatting`** and **`lint`** ([`dev/checks.nix`](../dev/checks.nix)): `nix fmt` must leave the tree unchanged, and statix, deadnix, and actionlint must report nothing.
+
+Inside `nix develop`, run the nix-unit suites directly, optionally selecting one suite by its attribute path, and one test of a suite with `--attr`:
+
+```bash
+nix-unit --flake .#tests.systems.x86_64-linux.unit
+nix-unit --flake .#tests.systems.x86_64-linux.unit.internal.compile
+nix-unit --flake .#tests.systems.x86_64-linux.unit.internal.compile --attr testCompileFullCtx
+nix-unit --flake .#tests.systems.x86_64-linux.integration.nixos-module
+```
+
+Selecting a single test by its full attribute path does not work, because nix-unit treats the selected attribute as a suite.
+
+Add `--override-input nixpkgs <flake-ref>` to run the suites against another nixpkgs. Build one entry with `nix build .#checks.<system>.<entry>`, for example `nix build .#checks.x86_64-linux.build-scenarios`.
 
 ## VM tests
 
-The VM tests in [`tests/vm/`](../tests/vm/) are checks named `vm-<name>`. They boot NixOS machines with `pkgs.testers.nixosTest` and check traffic against a real kernel, one topology per feature. NAT and deny-path tests verify through conntrack on the router; the others verify packet contents. Build one with `nix build .#checks.<system>.vm-<name>`, for example `nix build .#checks.x86_64-linux.vm-atomic-reload`.
+The VM tests in [`tests/vm/`](../tests/vm/) are checks named `vm-<name>`. They run with `pkgs.testers.runNixOSTest` and check traffic against a real kernel, one topology per feature. NAT and deny-path tests verify through conntrack on the router; the others verify packet contents. Build one with `nix build .#checks.<system>.vm-<name>`, for example `nix build .#checks.x86_64-linux.vm-atomic-reload`.
 
 | Test               | VMs                                                                  | Coverage                                                                                                                                                                                          |
 | ------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

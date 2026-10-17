@@ -4,15 +4,14 @@
 # node addresses, set-name collisions and policy uniqueness. Each test
 # is a table body and its exact `{ tag; path; }` diagnostic lists.
 {
-  pkgs,
-  nftzones,
+  helpers,
   nftypes,
   ...
 }:
 let
   inherit (nftypes) dsl;
 
-  inherit (import ../helpers.nix { inherit pkgs nftzones; }) diagnosticsFor;
+  inherit (helpers) diagnosticsFor;
 
   clean = {
     errors = [ ];

@@ -8,9 +8,9 @@
   emits; if the DSL changes shape, these tests catch it.
 */
 {
-  pkgs,
-  nftzones,
+  lib,
   nftypes,
+  nftzones,
   ...
 }:
 let
@@ -20,7 +20,7 @@ let
 
   # Order-insensitive comparison: extractRefs is recursion-order
   # dependent, but tests assert presence/absence not order.
-  sortRefs = pkgs.lib.sort (a: b: a.kind + a.name < b.kind + b.name);
+  sortRefs = lib.sort (a: b: a.kind + a.name < b.kind + b.name);
 in
 {
   # ===== extractRefs — primitives and empty input have no refs =====

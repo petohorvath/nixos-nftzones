@@ -1,45 +1,61 @@
-/*
-  Unit-test definitions for nix-unit. Each test file returns an attrset
-  of `testFoo = { expr; expected; }` cases; the result nests them by
-  file, for example `internal.compile.testFoo` or `module.testFoo`.
-  `tests/unit-check.nix` runs each file as one nix-unit group.
-
-  Discovery is automatic: every `*.nix` file under this directory
-  (top-level + `internal/` + `types/`) is imported, except the
-  aggregator (`default.nix`) and the shared `helpers.nix`. Adding a
-  new unit-test file means dropping `tests/unit/<group>/<name>.nix`;
-  no edit here is required.
-*/
-args@{
-  pkgs,
-  nftzones,
-  ...
+# The unit suites, listed by hand. Each suite's attribute path matches
+# the path of the source file it tests.
+# Example: nix-unit --flake .#tests.systems.x86_64-linux.unit.internal.compile
+#   --attr testCompileFullCtx
+{
+  libnet,
+  nftypes,
+  nixpkgs,
 }:
 let
-  inherit (pkgs) lib;
-
-  excludedFiles = [
-    "default.nix"
-    "helpers.nix"
-  ];
-
-  importTestFiles =
-    dir:
-    lib.pipe (builtins.readDir dir) [
-      (lib.filterAttrs (
-        name: type: type == "regular" && lib.hasSuffix ".nix" name && !(builtins.elem name excludedFiles)
-      ))
-      (lib.mapAttrs' (
-        name: _: lib.nameValuePair (lib.removeSuffix ".nix" name) (import (dir + "/${name}") args)
-      ))
-    ];
+  testContext = import ../test-context.nix {
+    inherit
+      libnet
+      nftypes
+      nixpkgs
+      ;
+  };
 in
-importTestFiles ./.
-// {
-  internal = importTestFiles ./internal;
-  types = importTestFiles ./types;
-  version.testVersion = {
-    expr = nftzones.version;
-    expected = "0.1.0";
+{
+  examples = import ./examples.nix testContext;
+  internal = {
+    compile = import ./internal/compile.nix testContext;
+    dispatch = import ./internal/dispatch.nix testContext;
+    emit = import ./internal/emit.nix testContext;
+    entry = import ./internal/entry.nix testContext;
+    expand = import ./internal/expand.nix testContext;
+    node = import ./internal/node.nix testContext;
+    normalize = {
+      diagnose = import ./internal/normalize/diagnose.nix testContext;
+      diagnose-hierarchy = import ./internal/normalize/diagnose-hierarchy.nix testContext;
+      diagnose-overlap = import ./internal/normalize/diagnose-overlap.nix testContext;
+      diagnose-placement = import ./internal/normalize/diagnose-placement.nix testContext;
+      normalize-output = import ./internal/normalize/normalize-output.nix testContext;
+    };
+    placement = import ./internal/placement.nix testContext;
+    priority = import ./internal/priority.nix testContext;
+    refs = import ./internal/refs.nix testContext;
+    zone = import ./internal/zone.nix testContext;
+  };
+  lib = import ./lib.nix testContext;
+  name-key = import ./name-key.nix testContext;
+  nixos = {
+    module = import ./nixos/module.nix testContext;
+  };
+  rejections = import ./rejections.nix testContext;
+  scenarios = import ./scenarios.nix testContext;
+  snippets = {
+    snippets = import ./snippets/snippets.nix testContext;
+  };
+  types = {
+    dnat = import ./types/dnat.nix testContext;
+    droute = import ./types/droute.nix testContext;
+    filter = import ./types/filter.nix testContext;
+    node = import ./types/node.nix testContext;
+    policy = import ./types/policy.nix testContext;
+    snat = import ./types/snat.nix testContext;
+    sroute = import ./types/sroute.nix testContext;
+    table = import ./types/table.nix testContext;
+    zone = import ./types/zone.nix testContext;
   };
 }

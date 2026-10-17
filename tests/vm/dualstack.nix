@@ -31,13 +31,10 @@
   Companion files: `forward.nix`, `vlan.nix`, `rpfilter.nix`,
   `marks.nix`.
 */
-{
-  pkgs,
-  nftypes,
-  nftzonesModule,
-  ...
-}:
+{ inputs, pkgs }:
 let
+  nftypes = inputs.nftypes.lib;
+
   inherit (nftypes.dsl) accept eq;
   inherit (nftypes.dsl.fields) meta;
 
@@ -56,7 +53,7 @@ let
   routerWanIp6 = "${wanNet6}::1";
   serverWanIp6 = "${wanNet6}::10";
 in
-pkgs.testers.nixosTest {
+pkgs.testers.runNixOSTest {
   name = "nftzones-dualstack";
 
   nodes = {
@@ -94,7 +91,7 @@ pkgs.testers.nixosTest {
     router =
       { lib, pkgs, ... }:
       {
-        imports = [ nftzonesModule ];
+        imports = [ inputs.self.nixosModules.default ];
 
         virtualisation.vlans = [
           1
