@@ -22,6 +22,10 @@
         nix-github-actions.follows = "";
       };
     };
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     # Downstream flakes read `inputs.nftypes`, so keep this input name.
     nftypes = {
       url = "github:petohorvath/nix-nftypes/v0.1.0";
