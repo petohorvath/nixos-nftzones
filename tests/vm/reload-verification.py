@@ -13,9 +13,7 @@ import typing
 class _Machine(typing.Protocol):
     # The pinned channels use different test-driver machine classes.
     # Describe only the operations this helper needs from either one.
-    def execute(
-        self, command: str, /, *, timeout: int = 900
-    ) -> tuple[int, str]: ...
+    def execute(self, command: str, /, *, timeout: int = 900) -> tuple[int, str]: ...
 
     def succeed(self, command: str, /) -> str: ...
 
@@ -48,8 +46,7 @@ def verify_reload(
     # connection if the control socket disappears. ControlMaster=no still
     # reuses the existing master, but cannot create a new one.
     session_opts = (
-        f"{ssh_base_opts} -S {socket} "
-        "-o ControlMaster=no -o ProxyCommand=false"
+        f"{ssh_base_opts} -S {socket} -o ControlMaster=no -o ProxyCommand=false"
     )
 
     def capture(machine: _Machine, command: str) -> str:
