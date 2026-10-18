@@ -134,14 +134,15 @@ let
       security →  50
       srcnat   →  100
 
-    Symbol values come from `nftypes.compatibility.priorityIntsDefault`
+    Symbol values come from `nftypes.compatibility.priorityIntsByFamily.inet`
     (inet/ip/ip6/arp/netdev family). Bridge family has different
-    mappings; if multi-family ever lands, broaden to
-    `attrNames priorityIntsDefault ++ attrNames priorityIntsBridge`
-    and let `nftypes.resolvePriority` pick the right table at compile
-    time. Or pass any int directly.
+    mappings; if multi-family ever lands, broaden to the union of
+    `attrNames priorityIntsByFamily.inet` and
+    `attrNames priorityIntsByFamily.bridge`, and let
+    `nftypes.resolvePriority` pick the right table at compile time.
+    Or pass any int directly.
   */
-  chainPriority = lib.types.either (lib.types.enum (builtins.attrNames nftypes.compatibility.priorityIntsDefault)) lib.types.int;
+  chainPriority = lib.types.either (lib.types.enum (builtins.attrNames nftypes.compatibility.priorityIntsByFamily.inet)) lib.types.int;
 
   /*
     Optional chain-placement override — `null` (the default at

@@ -24,9 +24,9 @@
 
   Reject variant per protocol:
     - `reject.tcp`      → `reject.tcpReset`  (TCP RST, clean closure)
-    - `reject.udp`      → `reject.plain`     (ICMP port-unreachable)
-    - `reject.icmp.v4`  → `reject.plain`     (family-aware default)
-    - `reject.icmp.v6`  → `reject.plain`     (family-aware default)
+    - `reject.udp`      → `reject { }`       (ICMP port-unreachable)
+    - `reject.icmp.v4`  → `reject { }`       (family-aware default)
+    - `reject.icmp.v6`  → `reject { }`       (family-aware default)
 
   Field-name mapping:
     - `icmp.v4` → `nftypes.dsl.fields.icmp.type`
@@ -103,16 +103,16 @@ in
     ];
     udp = ports: [
       (mkPortMatch udp.dport ports)
-      reject.plain
+      (reject { })
     ];
     icmp = {
       v4 = types: [
         (mkIcmpMatch icmp.type types)
-        reject.plain
+        (reject { })
       ];
       v6 = types: [
         (mkIcmpMatch icmpv6.type types)
-        reject.plain
+        (reject { })
       ];
     };
   };

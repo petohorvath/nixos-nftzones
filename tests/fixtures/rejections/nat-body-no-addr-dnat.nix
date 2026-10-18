@@ -1,8 +1,8 @@
 /*
-  Rejection scenario for `natBodyMissingAddr` — `rule.action.dnat = { }`
-  selects the `dnat` tag with an all-null body. Type accepts it
-  (every nftypes `natBody` field is nullable); nft rejects the
-  resulting `dnat to;` statement at activation. Phase 1
+  Rejection scenario for `natBodyMissingAddr` — `rule.action.dnat` with a
+  port and no `addr`. nftypes' `natBody` type accepts it (it needs
+  an `addr` or a `port`), but nftzones requires a target address,
+  pointing to `redirect` as the no-address alternative. Phase 1
   catches it early with a clear error.
 */
 _: {
@@ -25,7 +25,7 @@ _: {
       from = [ "wan" ];
       rule = {
         match = [ ];
-        action.dnat = { };
+        action.dnat.port = 8080;
       };
     };
   };

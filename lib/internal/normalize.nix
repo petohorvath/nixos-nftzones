@@ -509,9 +509,12 @@ let
     Reject placements the kernel will refuse, before they reach
     `nft -f`. Each rule group dispatches into a `(hook, priority)`
     pair; combined with `table.family`, the implied chain type
-    (via `nftypes.chainTypeFor`) is what the kernel sees. If
-    `nftypes.validChainPlacement` says the triple is rejected,
-    we error out with the offending placement.
+    (via `nftypes.chainTypeFor`) is what the kernel sees. A srcnat
+    or dstnat priority needs a `nat` chain, but `chainTypeFor`
+    falls back to `filter` where nat can't attach, so those
+    priorities are checked as `nat`. A triple that
+    `nftypes.validChainPlacement` rejects becomes an error naming
+    the offending placement.
 
     Catches three failure modes uncovered by the audit:
       - `bridge` snat/dnat — bridge family doesn't support `nat`
@@ -519,8 +522,9 @@ let
       - `bridge` sroute/droute — bridge has no `mangle` priority,
         so `chainTypeFor` returns null and we surface the gap
         rather than throwing in emit.
-      - `route` chain at non-`output` hooks (kernel restriction
-        encoded in `hooksByChainType.route = [ "output" ]`).
+      - a srcnat or dstnat priority at a hook `nat` can't attach
+        to, such as `forward` (kernel restriction encoded in
+        `hooksByChainType.nat`).
 
     `internal.placement` owns entry-level placement analysis and
     Phase 3's cell placement. This validator classifies its
@@ -531,7 +535,7 @@ let
     let
       inherit (table) family;
       inherit (table.settings) localZone;
-      inherit (nftypes) chainTypeFor validChainPlacement;
+      inherit (nftypes) chainTypeFor priorityNameOf validChainPlacement;
       inherit (internal.placement) chainAttrsForEntry;
 
       placementsForEntry =
@@ -552,6 +556,11 @@ let
         group: placement:
         let
           chainType = chainTypeFor family placement.hook placement.priority;
+          isNatPriority = builtins.elem (priorityNameOf family placement.priority) [
+            "srcnat"
+            "dstnat"
+          ];
+          requiredType = if isNatPriority then "nat" else chainType;
         in
         if chainType == null then
           [
@@ -559,10 +568,10 @@ let
               "priority symbol '${toString placement.priority}' has no value in family '${family}'"
             )
           ]
-        else if !(validChainPlacement family chainType placement.hook) then
+        else if !(validChainPlacement family requiredType placement.hook) then
           [
             (mkError group placement
-              "kernel rejects chain type '${chainType}' on hook '${placement.hook}' for family '${family}'"
+              "kernel rejects chain type '${requiredType}' on hook '${placement.hook}' for family '${family}'"
             )
           ]
         else
@@ -911,13 +920,11 @@ let
     };
 
   /*
-    Reject `snats.<x>.rule.snat = { }` and
-    `dnats.<x>.rule.action.dnat = { }` where `addr` is null. nftypes'
-    `natBody` lets every field default to `null` (so the user-shape
-    validates), but the rendered `snat to` / `dnat to` statement with
-    no target is invalid nftables syntax and `nft -f` rejects it at
-    activation. Catches the empty-body case here with a clear error
-    pointing to `masquerade` / `redirect` as the no-target alternative.
+    Reject `snats.<x>.rule.snat` and `dnats.<x>.rule.action.dnat`
+    where `addr` is null. nftypes' `natBody` rejects an empty body
+    but accepts one with only a `port`; nftzones requires a target
+    address, and points to `masquerade` / `redirect` as the
+    no-address alternative.
   */
   checkNatBodies =
     { table, ctx }:
@@ -1451,9 +1458,8 @@ let
         Walk every `table.objects.<kind>.<name>` body. Most object
         kinds (counters, limits, quotas, synproxies, …) are
         config-only leaves and contribute no refs. Sets and maps
-        may carry refs in element-attached stateful statements
-        (`dsl.expr.elem { val; stmt; }`); the recursive walker
-        picks those up uniformly.
+        may carry refs in their stateful statements (`stmt`); the
+        recursive walker picks those up uniformly.
       */
       refsFromObjectKind =
         kindName: kindAttrs:

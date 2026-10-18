@@ -84,6 +84,37 @@ in
     };
   };
 
+  # A srcnat priority needs a `nat` chain, which can't attach at
+  # forward. `chainTypeFor` falls back to `filter` there, so the
+  # placement is checked as `nat` and rejected.
+  testChainPlacementNatPriorityAtForwardRejected = {
+    expr = diagnosticsFor {
+      family = "inet";
+      zones = lanWan;
+      snats.masq = {
+        from = [ "lan" ];
+        to = [ "wan" ];
+        rule.masquerade = { };
+        chain = {
+          hook = "forward";
+          priority = "srcnat";
+        };
+      };
+    };
+    expected = {
+      errors = [
+        {
+          tag = "invalidChainPlacement";
+          path = [
+            "snats"
+            "masq"
+          ];
+        }
+      ];
+      warnings = [ ];
+    };
+  };
+
   # Bridge has no `mangle` priority, so the default sroute placement
   # has no chain type; reported here rather than thrown by emit.
   testChainPlacementBridgeSrouteUnknownPriority = {
@@ -981,15 +1012,15 @@ in
     expected = clean;
   };
 
-  # The type accepts an all-null `snat` body, but nft rejects
-  # `snat to;` at activation.
-  testNatBodyEmptySnatRejected = {
+  # The type accepts a port-only `snat` body, but nftzones requires
+  # a target address.
+  testNatBodyNoAddrSnatRejected = {
     expr = diagnosticsFor {
       zones = lanWan;
       snats.outbound = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.snat = { };
+        rule.snat.port = 8080;
       };
     };
     expected = {
@@ -1031,14 +1062,14 @@ in
     expected = clean;
   };
 
-  testNatBodyEmptyDnatRejected = {
+  testNatBodyNoAddrDnatRejected = {
     expr = diagnosticsFor {
       zones.wan.interfaces = [ "wan0" ];
       dnats.bad-fwd = {
         from = [ "wan" ];
         rule = {
           match = [ ];
-          action.dnat = { };
+          action.dnat.port = 8080;
         };
       };
     };
@@ -1062,13 +1093,13 @@ in
       snats.bad-s = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.snat = { };
+        rule.snat.port = 8080;
       };
       dnats.bad-d = {
         from = [ "wan" ];
         rule = {
           match = [ ];
-          action.dnat = { };
+          action.dnat.port = 8080;
         };
       };
     };
@@ -1294,18 +1325,14 @@ in
     expected = clean;
   };
 
-  # Per-element stateful statements carry refs that must resolve too.
-  testObjectRefsElementStatementUnknownRejected = {
+  # A set's stateful statements carry refs that must resolve too.
+  testObjectRefsSetStatementUnknownRejected = {
     expr = diagnosticsFor {
       zones.lan.interfaces = [ "lan0" ];
       objects.sets.tracker = {
         type = "ipv4_addr";
-        elem = [
-          (dsl.expr.elem {
-            val = "1.2.3.4";
-            stmt = [ (dsl.counter.ref "ghost-counter") ];
-          })
-        ];
+        elem = [ "1.2.3.4" ];
+        stmt = [ (dsl.counter.ref "ghost-counter") ];
       };
     };
     expected = {
@@ -1323,19 +1350,15 @@ in
     };
   };
 
-  testObjectRefsElementStatementDeclaredResolves = {
+  testObjectRefsSetStatementDeclaredResolves = {
     expr = diagnosticsFor {
       zones.lan.interfaces = [ "lan0" ];
       objects = {
         counters.tracker-hits = { };
         sets.tracker = {
           type = "ipv4_addr";
-          elem = [
-            (dsl.expr.elem {
-              val = "1.2.3.4";
-              stmt = [ (dsl.counter.ref "tracker-hits") ];
-            })
-          ];
+          elem = [ "1.2.3.4" ];
+          stmt = [ (dsl.counter.ref "tracker-hits") ];
         };
       };
     };

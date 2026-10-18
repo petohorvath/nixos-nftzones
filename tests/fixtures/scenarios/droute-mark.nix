@@ -4,12 +4,6 @@
   steer them through a VPN tunnel. Lands in
   `output-at-mangle__lan-remote` with `type route`. Exercises
   the droute group dispatch path end-to-end.
-
-  Caveat: `nftypes.compatibility.familiesByChainType` lists
-  `route` as `[ "ip" "ip6" ]` (no `inet`), but the LKL kernel in
-  this sandbox accepts `inet route` at `output`. Whether real
-  kernels also accept it is an open question tracked in the
-  upstream prompt at `../nix-nftypes/prompt-fix.md` §3.
 */
 { nftypes, ... }:
 let

@@ -27,8 +27,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     # Downstream flakes read `inputs.nftypes`, so keep this input name.
+    # Temporary pin to a `main` commit past v0.1.0; repin to the next
+    # release tag once nftypes cuts one.
     nftypes = {
-      url = "github:petohorvath/nix-nftypes/v0.1.0";
+      url = "github:petohorvath/nix-nftypes/d805ffa5e87b887702a16926cc73869896a911fa";
       inputs = {
         flake-parts.follows = "flake-parts";
         nixpkgs.follows = "nixpkgs";

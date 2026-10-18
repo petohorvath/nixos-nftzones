@@ -12,6 +12,7 @@
 {
   helpers,
   lib,
+  nftypes,
   nftzones,
   ...
 }:
@@ -198,7 +199,7 @@ in
           filters.allow-ssh = {
             from = [ "wan" ];
             to = [ "local" ];
-            rule = [ ];
+            rule = [ nftypes.dsl.accept ];
           };
         };
         compact =
@@ -288,7 +289,7 @@ in
               myfw.filters.web = {
                 from = [ "lan" ];
                 to = [ "local" ];
-                rule = [ ];
+                rule = [ nftypes.dsl.accept ];
               };
               networking.nftzones = {
                 enable = true;

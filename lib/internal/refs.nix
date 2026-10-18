@@ -13,12 +13,17 @@ let
   inherit (inputs) lib;
 
   # Named-reference strings in expression position carry a leading
-  # `@` per libnftables-JSON convention (e.g. `{ set = "@blocklist"; }`).
-  # Statement-form names are bare. Strip the prefix uniformly so
-  # refs match `table.objects.<kind>.<name>` keys regardless of
+  # `@` per libnftables-JSON convention (e.g. a match `right` of
+  # `"@blocklist"`). Statement-form names are bare. Strip the prefix
+  # uniformly so refs match `table.objects.<kind>.<name>` keys regardless of
   # which DSL form produced them. `removePrefix` is a no-op when
   # the prefix is absent, so no guard is needed.
   stripAt = lib.removePrefix "@";
+
+  namedSetRef = name: {
+    kind = "sets";
+    name = stripAt name;
+  };
 
   /*
     Detect named-ref patterns at THIS attrset level only. Nested
@@ -40,30 +45,34 @@ let
 
       setRef =
         # `set` key carries either an expression form (string =
-        # named lookup, list = anonymous) or a statement form
-        # (attrset with `op`, `elem`, `set`). Statement form's
-        # named-set field is `body.set` (same key, nested).
+        # named lookup in raw libnftables JSON, list = anonymous) or
+        # a statement form (attrset with `op`, `elem`, `set`).
+        # Statement form's named-set field is `body.set` (same key,
+        # nested). The DSL builds named lookups as a bare `"@name"`
+        # match operand instead, which `matchRef` handles.
         let
           body = v.set or null;
         in
         if !(isSingleton "set") then
           [ ]
         else if builtins.isString body then
-          [
-            {
-              kind = "sets";
-              name = stripAt body;
-            }
-          ]
+          [ (namedSetRef body) ]
         else if builtins.isAttrs body && body ? set then
-          [
-            {
-              kind = "sets";
-              name = stripAt body.set;
-            }
-          ]
+          [ (namedSetRef body.set) ]
         else
           [ ];
+
+      # A match whose right side is an `@name` string looks the
+      # packet up in a named set, as `dsl.inSet` and
+      # `dsl.expr.setRef` build it.
+      matchRef =
+        let
+          body = v.match or null;
+          right = body.right or null;
+        in
+        lib.optional (
+          isSingleton "match" && builtins.isAttrs body && builtins.isString right && lib.hasPrefix "@" right
+        ) (namedSetRef right);
 
       mapRef =
         # `map` key: statement form (attrset with `op` AND a
@@ -123,6 +132,7 @@ let
       (stringRef "ctTimeouts" "ct timeout")
       (stringRef "ctExpectations" "ct expectation")
       setRef
+      matchRef
       mapRef
       vmapRef
       flowRef

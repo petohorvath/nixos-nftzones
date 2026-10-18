@@ -94,7 +94,7 @@ pkgs.testers.runNixOSTest {
               # `output-at-mangle__target` with `type route`
               # (output-hook routing-decision tap).
               #
-              # The leading `counter {}` is for the test —
+              # The leading `counter.auto` is for the test —
               # gives an observable signal that the rule
               # actually fired, distinct from the broader
               # "ping failed" outcome (which could happen for
@@ -102,7 +102,7 @@ pkgs.testers.runNixOSTest {
               droutes.target-via-unreachable = {
                 to = [ "target" ];
                 rule = [
-                  (counter { })
+                  counter.auto
                   (mangle meta.mark 200)
                 ];
               };

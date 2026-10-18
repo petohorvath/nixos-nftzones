@@ -40,10 +40,10 @@
 let
   inherit (inputs) lib nftypes;
   inherit (nftypes) priorityNameOf;
-  inherit (nftypes.compatibility) priorityIntsDefault;
+  inherit (nftypes.compatibility) priorityIntsByFamily;
 
   hookNames = lib.genAttrs nftypes.enums.hook lib.id;
-  priorityNames = lib.genAttrs (builtins.attrNames priorityIntsDefault) lib.id;
+  priorityNames = lib.genAttrs (builtins.attrNames priorityIntsByFamily.inet) lib.id;
 
   defaultGroupChainAttrs = {
     snats = {

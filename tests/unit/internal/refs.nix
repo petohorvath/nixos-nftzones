@@ -90,7 +90,7 @@ in
   };
 
   testRefsCtHelper = {
-    expr = extractRefs [ (dsl.ctHelper "ftp-helper") ];
+    expr = extractRefs [ (dsl.ctHelper.ref "ftp-helper") ];
     expected = [
       {
         kind = "ctHelpers";
@@ -100,7 +100,7 @@ in
   };
 
   testRefsCtTimeout = {
-    expr = extractRefs [ (dsl.ctTimeout "long-tcp") ];
+    expr = extractRefs [ (dsl.ctTimeout.ref "long-tcp") ];
     expected = [
       {
         kind = "ctTimeouts";
@@ -110,7 +110,7 @@ in
   };
 
   testRefsCtExpectation = {
-    expr = extractRefs [ (dsl.ctExpectation "exp-1") ];
+    expr = extractRefs [ (dsl.ctExpectation.ref "exp-1") ];
     expected = [
       {
         kind = "ctExpectations";
@@ -120,7 +120,7 @@ in
   };
 
   testRefsSecmark = {
-    expr = extractRefs [ (dsl.secmark "internal") ];
+    expr = extractRefs [ (dsl.secmark.ref "internal") ];
     expected = [
       {
         kind = "secmarks";
@@ -130,7 +130,7 @@ in
   };
 
   testRefsTunnel = {
-    expr = extractRefs [ (dsl.tunnel "vpn-1") ];
+    expr = extractRefs [ (dsl.tunnel.ref "vpn-1") ];
     expected = [
       {
         kind = "tunnels";
@@ -233,10 +233,7 @@ in
 
   testRefsMapLookupExpr = {
     expr = extractRefs [
-      (dsl.eq (dsl.expr.map {
-        key = fields.ip.saddr;
-        data = "verdict-map";
-      }) "drop")
+      (dsl.eq (dsl.expr.map fields.ip.saddr "verdict-map") "drop")
     ];
     expected = [
       {
