@@ -138,8 +138,9 @@ let
     (inet/ip/ip6/arp/netdev family). Bridge family has different
     mappings; if multi-family ever lands, broaden to the union of
     `attrNames priorityIntsByFamily.inet` and
-    `attrNames priorityIntsByFamily.bridge`, and let `nftypes.resolvePriority` pick the right table at compile
-    time. Or pass any int directly.
+    `attrNames priorityIntsByFamily.bridge`, and let
+    `nftypes.resolvePriority` pick the right table at compile time.
+    Or pass any int directly.
   */
   chainPriority = lib.types.either (lib.types.enum (builtins.attrNames nftypes.compatibility.priorityIntsByFamily.inet)) lib.types.int;
 

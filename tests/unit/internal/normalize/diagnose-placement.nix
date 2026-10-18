@@ -84,6 +84,37 @@ in
     };
   };
 
+  # A srcnat priority needs a `nat` chain, which can't attach at
+  # forward. `chainTypeFor` falls back to `filter` there, so the
+  # placement is checked as `nat` and rejected.
+  testChainPlacementNatPriorityAtForwardRejected = {
+    expr = diagnosticsFor {
+      family = "inet";
+      zones = lanWan;
+      snats.masq = {
+        from = [ "lan" ];
+        to = [ "wan" ];
+        rule.masquerade = { };
+        chain = {
+          hook = "forward";
+          priority = "srcnat";
+        };
+      };
+    };
+    expected = {
+      errors = [
+        {
+          tag = "invalidChainPlacement";
+          path = [
+            "snats"
+            "masq"
+          ];
+        }
+      ];
+      warnings = [ ];
+    };
+  };
+
   # Bridge has no `mangle` priority, so the default sroute placement
   # has no chain type; reported here rather than thrown by emit.
   testChainPlacementBridgeSrouteUnknownPriority = {

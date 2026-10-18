@@ -20,7 +20,7 @@ let
   # the prefix is absent, so no guard is needed.
   stripAt = lib.removePrefix "@";
 
-  setRefTo = name: {
+  namedSetRef = name: {
     kind = "sets";
     name = stripAt name;
   };
@@ -56,9 +56,9 @@ let
         if !(isSingleton "set") then
           [ ]
         else if builtins.isString body then
-          [ (setRefTo body) ]
+          [ (namedSetRef body) ]
         else if builtins.isAttrs body && body ? set then
-          [ (setRefTo body.set) ]
+          [ (namedSetRef body.set) ]
         else
           [ ];
 
@@ -72,7 +72,7 @@ let
         in
         lib.optional (
           isSingleton "match" && builtins.isAttrs body && builtins.isString right && lib.hasPrefix "@" right
-        ) (setRefTo right);
+        ) (namedSetRef right);
 
       mapRef =
         # `map` key: statement form (attrset with `op` AND a

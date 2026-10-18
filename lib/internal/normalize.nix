@@ -512,9 +512,9 @@ let
     (via `nftypes.chainTypeFor`) is what the kernel sees. A srcnat
     or dstnat priority needs a `nat` chain, but `chainTypeFor`
     falls back to `filter` where nat can't attach, so those
-    priorities are checked as `nat`. If
-    `nftypes.validChainPlacement` says the triple is rejected, we
-    error out with the offending placement.
+    priorities are checked as `nat`. A triple that
+    `nftypes.validChainPlacement` rejects becomes an error naming
+    the offending placement.
 
     Catches three failure modes uncovered by the audit:
       - `bridge` snat/dnat — bridge family doesn't support `nat`

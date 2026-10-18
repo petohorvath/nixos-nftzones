@@ -63,8 +63,8 @@
       },
       "original": {
         "owner": "petohorvath",
-        "ref": "main",
         "repo": "nix-nftypes",
+        "rev": "d805ffa5e87b887702a16926cc73869896a911fa",
         "type": "github"
       }
     },
