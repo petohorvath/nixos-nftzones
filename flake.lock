@@ -20,7 +20,7 @@
         "type": "github"
       }
     },
-    "libnet": {
+    "nix-libnet": {
       "inputs": {
         "flake-parts": [
           "flake-parts"
@@ -44,7 +44,7 @@
         "type": "github"
       }
     },
-    "nftypes": {
+    "nix-nftypes": {
       "inputs": {
         "flake-parts": [
           "flake-parts"
@@ -109,8 +109,8 @@
     "root": {
       "inputs": {
         "flake-parts": "flake-parts",
-        "libnet": "libnet",
-        "nftypes": "nftypes",
+        "nix-libnet": "nix-libnet",
+        "nix-nftypes": "nix-nftypes",
         "nix-unit": "nix-unit",
         "nixpkgs": "nixpkgs",
         "treefmt-nix": "treefmt-nix"

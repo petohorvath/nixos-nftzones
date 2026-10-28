@@ -23,11 +23,11 @@
         inputs = removeAttrs inputs [ "self" ];
         enableSystemAgnostic = false;
         tests = {
-          unit = import ../tests/unit { inherit (inputs) libnet nftypes nixpkgs; };
+          unit = import ../tests/unit { inherit (inputs) nix-libnet nix-nftypes nixpkgs; };
           integration = import ../tests/integration {
             inherit (inputs)
-              libnet
-              nftypes
+              nix-libnet
+              nix-nftypes
               nixpkgs
               self
               ;

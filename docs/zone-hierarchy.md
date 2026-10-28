@@ -84,8 +84,8 @@ Diagnostic at `zones.<zone>.parent`:
 
 ## Worked example
 
-(Assumes `inherit (nftypes.lib.dsl) eq accept limit;` and
-`inherit (nftypes.lib.dsl.fields) tcp;` are in scope.)
+(Assumes `inherit (nix-nftypes.lib.dsl) eq accept limit;` and
+`inherit (nix-nftypes.lib.dsl.fields) tcp;` are in scope.)
 
 ```nix
 zones.dmz = {

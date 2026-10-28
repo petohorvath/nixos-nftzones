@@ -4,7 +4,7 @@
 { inputs, pkgs }:
 let
   inherit (pkgs) lib;
-  nftypes = inputs.nftypes.lib;
+  nftypes = inputs.nix-nftypes.lib;
   nftzones = inputs.self.lib;
 
   fixtures = import ../fixtures { inherit nftypes nftzones; };

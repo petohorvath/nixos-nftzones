@@ -26,7 +26,7 @@
   Wire it into a NixOS host:
 
     networking.nftzones.tables.fw = import ./examples/vlan-segmentation.nix {
-      nftypes = inputs.nftypes.lib;
+      nftypes = inputs.nix-nftypes.lib;
       nftzones = inputs.nftzones.lib;
     };
 */

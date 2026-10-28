@@ -27,7 +27,7 @@
       networking.nftzones = {
         enable = true;
         tables.fw = import ./examples/home-router.nix {
-          nftypes = inputs.nftypes.lib;
+          nftypes = inputs.nix-nftypes.lib;
           nftzones = inputs.nftzones.lib;
         };
       };

@@ -3,15 +3,15 @@
 # Example: nix-unit --flake .#tests.systems.x86_64-linux.unit.internal.compile
 #   --attr testCompileFullCtx
 {
-  libnet,
-  nftypes,
+  nix-libnet,
+  nix-nftypes,
   nixpkgs,
 }:
 let
   testContext = import ../test-context.nix {
     inherit
-      libnet
-      nftypes
+      nix-libnet
+      nix-nftypes
       nixpkgs
       ;
   };
