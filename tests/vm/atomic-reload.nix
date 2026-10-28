@@ -41,7 +41,7 @@
 */
 { inputs, pkgs }:
 let
-  nftypes = inputs.nftypes.lib;
+  nftypes = inputs.nix-nftypes.lib;
   nftzones = inputs.self.lib;
 
   inherit (nftypes.dsl) accept eq;

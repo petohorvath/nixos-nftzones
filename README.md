@@ -35,12 +35,12 @@ Add nftzones as a flake input, and take nftypes from it for the rule-body DSL:
       url = "github:petohorvath/nixos-nftzones";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    nftypes.follows = "nftzones/nftypes";
+    nix-nftypes.follows = "nftzones/nix-nftypes";
   };
 }
 ```
 
-Following `nftzones/nftypes` keeps the DSL at the nftypes revision that nftzones locks and tests against.
+Following `nftzones/nix-nftypes` keeps the DSL at the nftypes revision that nftzones locks and tests against.
 
 The flake exposes the library as the system-independent `lib` output and the NixOS module as `nixosModules.default`. [`CHANGELOG.md`](CHANGELOG.md) lists breaking changes and their migration steps.
 
@@ -52,17 +52,17 @@ This flake compiles a table with two zones, an SSH rule, and a zone-pair policy,
 {
   inputs = {
     nftzones.url = "github:petohorvath/nixos-nftzones";
-    nftypes.follows = "nftzones/nftypes";
+    nix-nftypes.follows = "nftzones/nix-nftypes";
   };
 
   outputs =
-    { nftzones, nftypes, ... }:
+    { nftzones, nix-nftypes, ... }:
     let
-      inherit (nftypes.lib.dsl) accept eq;
-      inherit (nftypes.lib.dsl.fields) tcp;
+      inherit (nix-nftypes.lib.dsl) accept eq;
+      inherit (nix-nftypes.lib.dsl.fields) tcp;
     in
     {
-      ruleset = nftypes.lib.toTextPretty (
+      ruleset = nix-nftypes.lib.toTextPretty (
         nftzones.lib.mkRuleset "fw" {
           zones = {
             lan.interfaces = [ "eth1" ];
@@ -119,7 +119,7 @@ add rule inet fw input-at-filter meta iifname @lan_iifs jump input-at-filter__la
 add rule inet fw input-at-filter__lan-TO-local tcp dport 22 accept
 ```
 
-The connection-tracking, loopback, and `policy drop` lines come from the table's default `settings`. Load the text with `nft -f`, or render with `nftypes.lib.toJson` and load the JSON with `nft -j -f`.
+The connection-tracking, loopback, and `policy drop` lines come from the table's default `settings`. Load the text with `nft -f`, or render with `nix-nftypes.lib.toJson` and load the JSON with `nft -j -f`.
 
 The [`examples`](examples/) directory holds complete, commented tables. Each file is a function of `{ nftypes, nftzones, ... }` that returns a table body, and the `examples` check compiles every one:
 
@@ -148,8 +148,8 @@ Then declare tables in `configuration.nix`:
 ```nix
 { inputs, ... }:
 let
-  inherit (inputs.nftypes.lib.dsl) accept eq;
-  inherit (inputs.nftypes.lib.dsl.fields) tcp;
+  inherit (inputs.nix-nftypes.lib.dsl) accept eq;
+  inherit (inputs.nix-nftypes.lib.dsl.fields) tcp;
 in
 {
   networking = {
@@ -251,11 +251,11 @@ Each of `accept`, `drop`, and `reject` provides `tcp`, `udp`, `icmp.v4`, and `ic
 
 ## Compose several tables
 
-`mkTable name body` compiles one table body into an nftypes table value, and `mkRuleset name body` wraps one table in a complete ruleset. To build a ruleset of several tables, pass the `mkTable` results to `nftypes.lib.dsl.ruleset`, where `nftzones` and `nftypes` are the flake inputs:
+`mkTable name body` compiles one table body into an nftypes table value, and `mkRuleset name body` wraps one table in a complete ruleset. To build a ruleset of several tables, pass the `mkTable` results to `nix-nftypes.lib.dsl.ruleset`, where `nftzones` and `nix-nftypes` are the flake inputs:
 
 ```nix
 let
-  inherit (nftypes.lib) dsl toText;
+  inherit (nix-nftypes.lib) dsl toText;
   ipv4Table = nftzones.lib.mkTable "fw-v4" {
     family = "ip";
     zones.lan.interfaces = [ "eth1" ];

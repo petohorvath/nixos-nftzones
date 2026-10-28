@@ -47,7 +47,7 @@
 */
 { inputs, pkgs }:
 let
-  nftypes = inputs.nftypes.lib;
+  nftypes = inputs.nix-nftypes.lib;
 
   inherit (nftypes.dsl) counter mangle;
   inherit (nftypes.dsl.fields) meta;

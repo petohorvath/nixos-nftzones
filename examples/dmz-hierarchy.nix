@@ -31,7 +31,7 @@
   Wire it into a NixOS host:
 
     networking.nftzones.tables.fw = import ./examples/dmz-hierarchy.nix {
-      nftypes = inputs.nftypes.lib;
+      nftypes = inputs.nix-nftypes.lib;
       nftzones = inputs.nftzones.lib;
     };
 */

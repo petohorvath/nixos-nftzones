@@ -3,8 +3,8 @@
 # itself as consumers see it.
 # Example: nix-unit --flake .#tests.systems.x86_64-linux.integration
 {
-  libnet,
-  nftypes,
+  nix-libnet,
+  nix-nftypes,
   nixpkgs,
   self,
   system,
@@ -12,8 +12,8 @@
 let
   testContext = import ../test-context.nix {
     inherit
-      libnet
-      nftypes
+      nix-libnet
+      nix-nftypes
       nixpkgs
       self
       system

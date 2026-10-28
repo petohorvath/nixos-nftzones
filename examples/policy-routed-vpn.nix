@@ -39,7 +39,7 @@
       networking.nftzones = {
         enable = true;
         tables.fw = import ./examples/policy-routed-vpn.nix {
-          nftypes = inputs.nftypes.lib;
+          nftypes = inputs.nix-nftypes.lib;
           nftzones = inputs.nftzones.lib;
         };
       };

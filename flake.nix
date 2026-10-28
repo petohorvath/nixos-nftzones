@@ -7,7 +7,7 @@
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
-    libnet = {
+    nix-libnet = {
       url = "github:petohorvath/nix-libnet/v0.1.0";
       inputs = {
         flake-parts.follows = "flake-parts";
@@ -26,10 +26,10 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # Downstream flakes read `inputs.nftypes`, so keep this input name.
-    # Temporary pin to a `main` commit past v0.1.0; repin to the next
+    # Downstream flakes follow `nftzones/nix-nftypes`, so keep this input
+    # name. Temporary pin to a `main` commit past v0.1.0; repin to the next
     # release tag once nftypes cuts one.
-    nftypes = {
+    nix-nftypes = {
       url = "github:petohorvath/nix-nftypes/d805ffa5e87b887702a16926cc73869896a911fa";
       inputs = {
         flake-parts.follows = "flake-parts";
@@ -41,8 +41,8 @@
   outputs =
     inputs@{
       flake-parts,
-      libnet,
-      nftypes,
+      nix-libnet,
+      nix-nftypes,
       nixpkgs,
       ...
     }:
@@ -67,13 +67,13 @@
         lib = import ./lib {
           inputs = {
             inherit (nixpkgs) lib;
-            libnet = libnet.lib.withLib nixpkgs.lib;
-            nftypes = nftypes.lib;
+            libnet = nix-libnet.lib.withLib nixpkgs.lib;
+            nftypes = nix-nftypes.lib;
           };
         };
         nixosModules.default = flake-parts.lib.importApply ./nixos/module.nix {
-          libnet = libnet.lib;
-          nftypes = nftypes.lib;
+          libnet = nix-libnet.lib;
+          nftypes = nix-nftypes.lib;
         };
       };
     };
