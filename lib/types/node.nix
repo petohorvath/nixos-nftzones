@@ -28,6 +28,11 @@
   needed downstream. Phase 1 of the compile pipeline performs the
   merge.
 
+  A node has no `comment` option, for the same reason as a zone: its
+  lowered zone compiles to several sets and dispatch rules rather
+  than to one nftables object, so there is no single object a
+  comment could attach to.
+
   At the type layer:
     - `parent` (parent zone reference) is required.
     - `address` is a submodule with two nullable fields. The
@@ -44,6 +49,8 @@
       namespace at compile time) — `zoneNameCollision`.
     - `node.parent` must reference an existing zone —
       `invalidZoneRef`.
+    - `node.parent` must not be `settings.localZone` —
+      `zoneParentLocalZone`.
     - At least one of `address.ipv4` / `address.ipv6` is set —
       `nodeAddressMissing`.
 
@@ -132,9 +139,10 @@ let
           type = zoneName;
           example = "dmz";
           description = ''
-            Parent zone name. Must reference an existing zone in
-            the same firewall config; the check is enforced at
-            module level, not by the type.
+            Parent zone name. Phase 1 reports a zone that isn't
+            declared as an `invalidZoneRef` diagnostic, and the
+            `settings.localZone` sentinel as a
+            `zoneParentLocalZone` diagnostic.
           '';
         };
 

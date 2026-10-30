@@ -89,8 +89,9 @@ let
             Destination zones for the droute — non-empty. Each
             entry is either a declared zone name, the configured
             `settings.localZone` (default `"local"`), or
-            `settings.wildcardZone` (default `"all"`); resolution
-            is enforced at module level, not by the type.
+            `settings.wildcardZone` (default `"all"`). Phase 1
+            reports any other name as an `invalidZoneRef`
+            diagnostic.
           '';
         };
 

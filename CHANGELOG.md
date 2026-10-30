@@ -57,7 +57,7 @@ Rename `nodes.<name>.zone` to `nodes.<name>.parent`.
 
 Rename ICMP snippet calls from `icmp.v4` to `icmp` and from `icmp.v6` to `icmpv6`, for example `snippets.accept.icmp.v4 8` to `snippets.accept.icmp 8`.
 
-Remove `follows` or overrides for the `nftzones` inputs `nixpkgs-unstable` and `git-hooks`. Keep `nftzones.inputs.nixpkgs.follows`; the `nftypes` input name is unchanged.
+Remove `follows` or overrides for the `nftzones` inputs `nixpkgs-unstable` and `git-hooks`. Keep `nftzones.inputs.nixpkgs.follows`, and rename a `follows` or override of `nftzones/nftypes` or `nftzones/libnet` to `nftzones/nix-nftypes` or `nftzones/nix-libnet`.
 
 Update anything that names a zone pair's sub-chain, such as `nft list chain` commands, counters, or monitoring, from `<base>__<from>-to-<to>` to `<base>__<from>-TO-<to>`.
 

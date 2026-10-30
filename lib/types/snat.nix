@@ -18,9 +18,9 @@
 
   `from` / `to` use the shared `zoneNames` type and the same
   wildcard / localZone behaviour as filter — see
-  `types/filter.nix` for the full discussion. Cross-cutting
-  checks belong in module assertions on the enclosing `snats`
-  attrset. The `chain` field is the shared
+  `types/filter.nix` for the full discussion. Phase 1 runs
+  the cross-cutting checks, reporting an unresolved zone as an
+  `invalidZoneRef` diagnostic. The `chain` field is the shared
   `primitives.chainOverride`.
 
   `snatRule` is the `{ match; action; }` NAT body shared with dnat
@@ -142,8 +142,9 @@ let
             Source zones for the snat — non-empty. Each entry is
             either a declared zone name, the configured
             `settings.localZone` (default `"local"`), or
-            `settings.wildcardZone` (default `"all"`); resolution
-            is enforced at module level, not by the type.
+            `settings.wildcardZone` (default `"all"`). Phase 1
+            reports any other name as an `invalidZoneRef`
+            diagnostic.
           '';
         };
 
