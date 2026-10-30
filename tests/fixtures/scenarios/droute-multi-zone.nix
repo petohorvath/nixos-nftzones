@@ -60,7 +60,7 @@ in
       description = "west rule body marks with 400";
       expr =
         (builtins.elemAt compiled.tables.droute-multi-zone.chains."output-at-mangle__remote-west".rules 0)
-        .expr;
+        .statements;
       expected = [ (mangle meta.mark 400) ];
     }
   ];

@@ -35,7 +35,8 @@ in
     {
       description = "redirect path emits a redirect statement (not dnat)";
       expr =
-        (builtins.elemAt compiled.tables.dnat-redirect.chains."prerouting-at-dstnat__wan".rules 0).expr;
+        (builtins.elemAt compiled.tables.dnat-redirect.chains."prerouting-at-dstnat__wan".rules 0)
+        .statements;
       expected = [
         (eq tcp.dport 2222)
         (redirect { port = 22; })

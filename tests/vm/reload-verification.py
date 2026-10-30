@@ -32,7 +32,7 @@ def verify_reload(
     server: _Machine,
     server_ip: str,
     subtest: typing.Callable[[str], typing.ContextManager[None]],
-) -> typing.Iterator[None]:
+) -> typing.Generator[None, None, None]:
     """Require one established SSH session to survive while fresh SSH fails."""
     target = quote(f"root@{server_ip}")
     socket = "/tmp/nftzones-reload-ssh"
@@ -59,7 +59,7 @@ def verify_reload(
             return f"(failed to capture: {error})"
 
     @contextmanager
-    def diagnostic_subtest(name: str) -> typing.Iterator[None]:
+    def diagnostic_subtest(name: str) -> typing.Generator[None, None, None]:
         with subtest(name):
             try:
                 yield

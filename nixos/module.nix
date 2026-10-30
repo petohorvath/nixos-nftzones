@@ -36,26 +36,9 @@ let
 
   renderTable = if cfg.pretty then nftypes.toTextBlockPretty else nftypes.toTextBlock;
 
-  # `nftypes.toTextBlock` drops the `add table` self-command (its
-  # consumer — here nixpkgs' `networking.nftables.tables` — supplies
-  # the `table <fam> <name> { ... }` wrapper itself). That self-
-  # command is where `flags` and `comment` live, so the block
-  # renderer silently strips them. nftables block syntax permits
-  # both inside the braces, so we prepend them ourselves.
-  #
-  # No escaping needed for the comment: `nftzones.types.comment`
-  # restricts the input to nft-safe characters (no `"`, no `\`, no
-  # control chars, ≤128 bytes) at eval time. nft has no escape
-  # grammar so render-escaping isn't an option anyway.
-  renderTableMetadata =
-    table:
-    let
-      flagsLine = lib.optional (table.flags != [ ]) "flags ${lib.concatStringsSep ", " table.flags};";
-      commentLine = lib.optional (table.comment != null) "comment \"${table.comment}\";";
-      lines = flagsLine ++ commentLine;
-    in
-    lib.optionalString (lines != [ ]) (lib.concatStringsSep "\n" lines + "\n");
-
+  # nixpkgs' `networking.nftables.tables` supplies the
+  # `table <fam> <name> { ... }` wrapper; the block renderer writes
+  # the table's `flags` and `comment` inside it.
   compiledTables = lib.mapAttrs (
     _name: tableValue:
     let
@@ -63,13 +46,7 @@ let
     in
     {
       inherit (table) family;
-      # `tableValue` carries the user-shape with submodule defaults
-      # filled in (its `name` already projected onto the attr key by
-      # the `tables` option's `apply`); `table` is the compiled
-      # nftypes value which drops empty / null fields. Reading
-      # metadata from the user-shape keeps the prefix renderer
-      # predictable.
-      content = renderTableMetadata tableValue + renderTable table;
+      content = renderTable table;
     }
   ) cfg.tables;
 in

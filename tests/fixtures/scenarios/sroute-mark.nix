@@ -42,7 +42,7 @@ in
       description = "rule body is the bare mangle statement, comment-wrapped";
       expr = builtins.elemAt compiled.tables.sroute-mark.chains."prerouting-at-mangle__guest".rules 0;
       expected = {
-        expr = [ (mangle meta.mark 100) ];
+        statements = [ (mangle meta.mark 100) ];
         comment = "guest traffic policy-routed via VPN";
       };
     }

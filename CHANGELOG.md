@@ -12,9 +12,12 @@
 - **Breaking:** `lib` is system-independent. Replace `inputs.nftzones.lib.${system}` with `inputs.nftzones.lib`.
 - Build the root flake with flake-parts. A `dev` partition provides `checks`, `devShells`, and `formatter`, so public outputs evaluate without development wiring.
 - Move the NixOS module from `modules/nftzones.nix` to `nixos/module.nix`. It builds the library from the evaluating system's `lib`, and `nixosModules.default` is unchanged.
-- Track `nixos-26.05` in the root `nixpkgs` input, and pin `libnet` to its `v0.1.0` release.
-- **Breaking:** pin nftypes to a commit on its `main` branch, past its `v0.1.0` release, until nftypes tags its next release. A flake whose `nftypes` input follows `nftzones/nftypes` gets the new DSL, so rules written with the nftypes DSL may need the changes its [changelog](https://github.com/petohorvath/nix-nftypes/blob/main/CHANGELOG.md) lists, such as `reject { }` for `reject.plain` and `counter.auto` for `counter { }`. A filter with `rule = [ ]` no longer compiles, because nftypes refuses a rule with no statements, and a `snat` or `dnat` body needs an `addr` or a `port`.
+- Track `nixos-26.05` in the root `nixpkgs` input, locked to the stable revision of the shared policy's `v0.6.3` release.
+- **Breaking:** pin the `nix-nftypes` and `nix-libnet` inputs to their `v0.2.0` releases. A flake whose nftypes input follows `nftzones/nix-nftypes` gets the new DSL, so rules written with the nftypes DSL may need the changes its [changelog](https://github.com/petohorvath/nix-nftypes/blob/v0.2.0/CHANGELOG.md) lists, such as `reject { }` for `reject.plain`, `counter.auto` for `counter { }`, `inSet` for `within` (or `eq` for a single range), and `reject { type = "tcp reset"; }` for `reject.tcpReset`. A filter with `rule = [ ]` no longer compiles, because nftypes refuses a rule with no statements, and a `snat` or `dnat` body needs an `addr` or a `port`.
 - **Breaking:** rename the `libnet` and `nftypes` inputs to `nix-libnet` and `nix-nftypes`, the names of their repositories, as in the other devnix-labs flakes. A flake that follows `nftzones/nftypes` follows `nftzones/nix-nftypes` instead, and an override of `nftzones/libnet` or `nftzones/nftypes` names `nftzones/nix-libnet` or `nftzones/nix-nftypes`.
+- **Breaking:** `zones.<name>.cidrs` rejects a CIDR with host bits, such as `10.0.0.5/24`, because libnet's `types.cidr` does. Write the network address, `10.0.0.0/24`.
+- **Breaking:** the statements of `objects.sets.<name>.stmt` and `objects.maps.<name>.stmt` are inline stateful statements, such as `counter { packets = 0; bytes = 0; }`. nftypes rejects a reference to a named object there, such as `counter.ref "hits"`, so Phase 1 no longer checks one.
+- The `snippets` match a single port range with `eq` instead of `inSet`, which nftypes refuses for one range: `snippets.accept.tcp "8000-8100"` gives `tcp dport 8000-8100`.
 - Run the unit and integration tests with nix-unit's flake-parts module, which adds the `nix-unit` input and the `tests` output.
 - **Breaking (development interface):** move the VM tests from `checks.<system>.vm` to one check per test, `checks.<system>.vm-<name>`.
 - **Breaking (development interface):** organize the tests by the devnix-labs test standard. The `nix-unit` check replaces `unit`, `integration`, and `examples`: its unit suites also compile the examples and check the warnings and assertions of the scenarios and the rejections, and `build-scenarios` runs `nft -j --check` on the scenarios. Run one unit suite with `nix-unit --flake .#tests.systems.<system>.unit.<suite>`, and one test with `--attr <test>`.
@@ -27,6 +30,7 @@
 
 - **Breaking:** the `nixpkgs-unstable` input and the `*-unstable` checks. Select another revision with `--override-input nixpkgs`.
 - **Breaking:** the Darwin systems. Outputs are provided for `x86_64-linux` and `aarch64-linux`.
+- **Breaking:** `objects.tunnels`. nftypes' table tree has no tunnel kind, because nft loads a tunnel's JSON ports wrongly, so a rule's `tunnel.ref` reports `objectRefUnknown`.
 - The `git-hooks` input, the `pre-commit` check, and the pre-commit and pre-push hooks installed by the development shell.
 
 ### Fixed
@@ -38,7 +42,7 @@
 
 Replace `inputs.nftzones.lib.${pkgs.system}` with `inputs.nftzones.lib`, for example `inherit (inputs.nftzones.lib.snippets) accept;`.
 
-Update rules written with the nftypes DSL as the nftypes [changelog](https://github.com/petohorvath/nix-nftypes/blob/main/CHANGELOG.md) describes, and give each filter at least one statement, such as `rule = [ accept ];`.
+Update rules written with the nftypes DSL as the nftypes [changelog](https://github.com/petohorvath/nix-nftypes/blob/v0.2.0/CHANGELOG.md) describes, and give each filter at least one statement, such as `rule = [ accept ];`. Drop the host bits from zone CIDRs, and move any `objects.tunnels` out of the nftzones table.
 
 Remove `follows` or overrides for the `nftzones` inputs `nixpkgs-unstable` and `git-hooks`. Keep `nftzones.inputs.nixpkgs.follows`; the `nftypes` input name is unchanged.
 

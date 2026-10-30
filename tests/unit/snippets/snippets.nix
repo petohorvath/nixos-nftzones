@@ -27,7 +27,6 @@ let
     eq
     inSet
     reject
-    within
     ;
   inherit (nftypes.dsl.expr) range;
   inherit (nftypes.dsl.fields)
@@ -77,7 +76,7 @@ in
   testTcpAcceptRangeString = {
     expr = snippets.accept.tcp "8000-8100";
     expected = [
-      (within tcp.dport (range 8000 8100))
+      (eq tcp.dport (range 8000 8100))
       accept
     ];
   };
@@ -85,7 +84,7 @@ in
   testTcpAcceptRangeColon = {
     expr = snippets.accept.tcp "8000:8100";
     expected = [
-      (within tcp.dport (range 8000 8100))
+      (eq tcp.dport (range 8000 8100))
       accept
     ];
   };
@@ -216,7 +215,7 @@ in
     expr = snippets.reject.tcp 22;
     expected = [
       (eq tcp.dport 22)
-      reject.tcpReset
+      (reject { type = "tcp reset"; })
     ];
   };
 

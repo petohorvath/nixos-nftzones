@@ -22,7 +22,7 @@
                             Each section is `nullOr primitives.matchRule`;
                             non-null replaces the corresponding
                             auto-generated clause. The match-only
-                            restriction (via `nftypes.types.matchStatement`)
+                            restriction (via `nftypes.types.statementOf`)
                             rejects verdicts and side-effecting
                             statements at evalModules time — those
                             would silently change dispatch semantics.
@@ -95,10 +95,11 @@ let
     Empty list (`[ ]`) is treated as `null` everywhere — both mean
     "no constraint contributed by this section".
 
-    Content restriction: every section is typed as `primitives.matchRule`
-    (i.e. `listOf nftypes.types.matchStatement`), so only match-clause
-    statements (the `{ match = { left; op; right; }; }` shape produced
-    by `nftypes.dsl.{eq,inSet,within}`) are accepted. Verdicts
+    Content restriction: every section is typed as
+    `primitives.matchRule` (i.e.
+    `listOf (nftypes.types.statementOf [ "match" ])`), so only
+    match-clause statements (the `{ match = { left; op; right; }; }`
+    shape produced by `nftypes.dsl.{eq,inSet}`) are accepted. Verdicts
     (`accept`, `drop`, `jump`, `goto`) and side-effecting statements
     (`counter`, `log`, `limit`, NAT, mangle, mark-set, …) are
     rejected at evalModules time. These sections are spliced as

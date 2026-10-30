@@ -28,7 +28,7 @@
   before Phase 1 reports invalid parent references and cycles. Missing
   zone names are filtered by validators, never invented by emission.
 */
-{ inputs }:
+{ inputs, internal }:
 let
   inherit (inputs) lib libnet nftypes;
   inherit (nftypes.dsl) expr inSet;
@@ -52,14 +52,17 @@ let
           "postrouting"
         ]
       else
-        nftypes.compatibility.hooksWithOifname
+        internal.compatibility.hooksWithOifname
     );
 
   cidrToPrefix =
     isV4: parsed:
     let
       addressString =
-        if isV4 then libnet.ipv4.toString parsed.address else libnet.ipv6.toString parsed.address;
+        if isV4 then
+          libnet.ipv4.toString parsed.networkAddress
+        else
+          libnet.ipv6.toString parsed.networkAddress;
     in
     expr.prefix addressString parsed.prefix;
 

@@ -160,7 +160,7 @@ in
     expr = extractRefs [
       (dsl.setStmt {
         op = "add";
-        elem = fields.ip.saddr;
+        element = fields.ip.saddr;
         set = "blocklist";
       })
     ];
@@ -176,7 +176,7 @@ in
     expr = extractRefs [
       (dsl.mapStmt {
         op = "add";
-        elem = fields.ip.saddr;
+        key = fields.ip.saddr;
         data = "v1";
         map = "verdict-map";
       })
@@ -195,7 +195,7 @@ in
     # The walker strips the `@` prefix from named-reference strings
     # (per libnftables-JSON convention) so refs match
     # `objects.flowtables.<name>` keys.
-    expr = extractRefs [ (dsl.flow { flowtable = "@offload"; }) ];
+    expr = extractRefs [ (dsl.flow "@offload") ];
     expected = [
       {
         kind = "flowtables";
@@ -233,12 +233,12 @@ in
 
   testRefsMapLookupExpr = {
     expr = extractRefs [
-      (dsl.eq (dsl.expr.map fields.ip.saddr "verdict-map") "drop")
+      (dsl.mangle fields.meta.mark (dsl.expr.map fields.ip.saddr "mark-map"))
     ];
     expected = [
       {
         kind = "maps";
-        name = "verdict-map";
+        name = "mark-map";
       }
     ];
   };
@@ -280,18 +280,23 @@ in
     ];
   };
 
-  # ===== extractRefs — refs nested inside set-statement's stmt sub-list =====
+  # ===== extractRefs — refs nested inside a set statement's element =====
 
   testRefsNestedInSetStmt = {
-    # `setStmt.stmt` is a list of statements attached to the
-    # element being added. Refs in there must be picked up by
-    # the recursion.
+    # The element being added is an expression, here a map lookup.
+    # Refs in there must be picked up by the recursion; the inline
+    # counter attached to the element names no object.
     expr = sortRefs (extractRefs [
       (dsl.setStmt {
         op = "add";
-        elem = fields.ip.saddr;
+        element = dsl.expr.map fields.ip.saddr "mark-map";
         set = "tracker";
-        stmt = [ (dsl.counter.ref "additions") ];
+        statements = [
+          (dsl.counter {
+            packets = 0;
+            bytes = 0;
+          })
+        ];
       })
     ]);
     expected = sortRefs [
@@ -300,8 +305,8 @@ in
         name = "tracker";
       }
       {
-        kind = "counters";
-        name = "additions";
+        kind = "maps";
+        name = "mark-map";
       }
     ];
   };

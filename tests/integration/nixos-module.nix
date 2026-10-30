@@ -62,6 +62,9 @@ let
     content directly.
   */
   failingAssertions = config: lib.filter (assertion: !assertion.assertion) config.assertions;
+
+  # How many times `needle` occurs in `text`.
+  occurrences = needle: text: builtins.length (lib.splitString needle text) - 1;
 in
 {
   # ===== module — disabled produces no nftzones-managed table =====
@@ -410,12 +413,10 @@ in
     expected = true;
   };
 
-  # ===== module — table-level `flags` rendered as block prefix =====
-  # `nftypes.toTextBlock` drops the `add table` self-command (the
-  # nixpkgs wrapper supplies `table <fam> <name> { ... }`), so the
-  # module prepends `flags` / `comment` to the block content
-  # itself. Verifies the prefix actually lands in the rendered
-  # text.
+  # ===== module — table-level `flags` and `comment` in the block =====
+  # The nixpkgs wrapper supplies `table <fam> <name> { ... }`;
+  # `nftypes.toTextBlock` writes `flags` / `comment` inside it.
+  # Each must land in the rendered text exactly once.
 
   testModuleRendersTableFlags = {
     expr =
@@ -431,8 +432,8 @@ in
           };
         };
       in
-      lib.hasInfix "flags owner;" cfg.networking.nftables.tables.fw.content;
-    expected = true;
+      occurrences "flags owner;" cfg.networking.nftables.tables.fw.content;
+    expected = 1;
   };
 
   testModuleRendersTableFlagsMulti = {
@@ -452,8 +453,8 @@ in
           };
         };
       in
-      lib.hasInfix "flags dormant, owner;" cfg.networking.nftables.tables.fw.content;
-    expected = true;
+      occurrences "flags dormant, owner;" cfg.networking.nftables.tables.fw.content;
+    expected = 1;
   };
 
   testModuleRendersTableComment = {
@@ -470,8 +471,8 @@ in
           };
         };
       in
-      lib.hasInfix "comment \"main firewall\";" cfg.networking.nftables.tables.fw.content;
-    expected = true;
+      occurrences "comment \"main firewall\";" cfg.networking.nftables.tables.fw.content;
+    expected = 1;
   };
 
   # ===== module — Phase 1 validator throws surface at module eval =====

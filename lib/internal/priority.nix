@@ -13,7 +13,7 @@
   Used by the compile pipeline to resolve `entryPriority` values
   into pure integers before sorting cells. Chain priority
   resolution is a separate concern and is delegated to
-  `nftypes.resolvePriority` (family-aware).
+  `internal.compatibility.resolvePriority` (family-aware).
 */
 _:
 let

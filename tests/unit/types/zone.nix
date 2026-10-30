@@ -173,6 +173,18 @@ in
     expected = true;
   };
 
+  # A CIDR names a block by its network address; host bits belong
+  # to an interface address, not a zone.
+  testZoneCidrsRejectsHostBitsV4 = {
+    expr = evalFails (zoneIn { cidrs = [ "10.0.0.5/24" ]; }).cidrs;
+    expected = true;
+  };
+
+  testZoneCidrsRejectsHostBitsV6 = {
+    expr = evalFails (zoneIn { cidrs = [ "2001:db8::1/64" ]; }).cidrs;
+    expected = true;
+  };
+
   # ===== zone.parent — string-or-null shape =====
 
   testZoneParentAcceptsString = {

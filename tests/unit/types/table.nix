@@ -158,7 +158,6 @@ in
         secmarks
         sets
         synproxies
-        tunnels
         ;
     };
     expected = {
@@ -170,11 +169,16 @@ in
       ctExpectations = { };
       secmarks = { };
       synproxies = { };
-      tunnels = { };
       sets = { };
       maps = { };
       flowtables = { };
     };
+  };
+
+  # nftypes' table tree has no tunnel kind, so the table offers none.
+  testTableObjectsRejectsTunnels = {
+    expr = evalFails (evalTable { objects.tunnels.vpn = { }; }).objects;
+    expected = true;
   };
 
   # ===== objects — container fields are stripped from user surface =====
@@ -196,7 +200,7 @@ in
   };
 
   testTableObjectsCounterAccepted = {
-    # counterObjectBody includes a nullable `comment` field
+    # counterBody includes a nullable `comment` field
     # alongside the user-supplied counters.
     expr =
       (evalTable {

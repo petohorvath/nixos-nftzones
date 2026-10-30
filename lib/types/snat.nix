@@ -26,10 +26,10 @@
   `snatRule` is an `attrTag` of two nftypes-derived submodules:
     - `snat`       — full address translation; fields `addr`,
                      `port?`, `family?`, `flags?`, `type_flags?`.
-                     Reuses `nftypes.types.statements.natBody`.
+                     Reuses `nftypes.types.statementBodies.natBody`.
     - `masquerade` — auto-target via outgoing interface; fields
                      `port?`, `flags?`. Reuses
-                     `nftypes.types.statements.masqueradeBody`.
+                     `nftypes.types.statementBodies.masqueradeBody`.
 
   Reusing nftypes' shapes keeps flag enums (`natFlag`,
   `natTypeFlag`) and field validation in lock-step with
@@ -88,11 +88,11 @@ let
   */
   snatRule = lib.types.attrTag {
     snat = lib.mkOption {
-      type = nftypes.types.statements.natBody;
+      type = nftypes.types.statementBodies.natBody;
       description = "Full source address translation.";
     };
     masquerade = lib.mkOption {
-      type = nftypes.types.statements.masqueradeBody;
+      type = nftypes.types.statementBodies.masqueradeBody;
       description = "Source address taken from the outgoing interface.";
     };
   };

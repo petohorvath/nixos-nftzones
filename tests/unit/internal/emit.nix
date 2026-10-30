@@ -297,6 +297,24 @@ in
     };
   };
 
+  testMkBaseChainSymbolOutsideHookResolvesToInt = {
+    # nftzones names priorities per family; nftypes accepts `srcnat`
+    # only at input and postrouting. Emitting the int keeps an
+    # output-hook srcnat chain loadable.
+    expr =
+      let
+        chain = mkChain { tree = emptyTree "output" "srcnat"; };
+      in
+      {
+        inherit (chain) hook prio type;
+      };
+    expected = {
+      type = "nat";
+      hook = "output";
+      prio = 100;
+    };
+  };
+
   testMkBaseChainSroute = {
     # `type route` is output-only per nftypes' hooksByChainType;
     # sroute (prerouting + mangle) compiles as a regular filter
@@ -702,7 +720,7 @@ in
       comment = "ssh from anywhere";
     };
     expected = {
-      expr = [
+      statements = [
         (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 22)
         nftypes.dsl.accept
       ];
@@ -716,7 +734,7 @@ in
       comment = "lan->wan default-allow";
     };
     expected = {
-      expr = [ nftypes.dsl.accept ];
+      statements = [ nftypes.dsl.accept ];
       comment = "lan->wan default-allow";
     };
   };
@@ -727,7 +745,7 @@ in
       comment = "nat lan to wan";
     };
     expected = {
-      expr = [ (nftypes.dsl.masquerade { }) ];
+      statements = [ (nftypes.dsl.masquerade { }) ];
       comment = "nat lan to wan";
     };
   };
@@ -744,7 +762,7 @@ in
       comment = "web port forward";
     };
     expected = {
-      expr = [
+      statements = [
         (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 80)
         (nftypes.dsl.dnat {
           addr = "10.0.0.5";
@@ -1277,7 +1295,7 @@ in
       in
       lib.attrNames output;
     expected = [
-      "__nftTable"
+      "_type"
       "family"
       "name"
       "sets"
@@ -1351,6 +1369,57 @@ in
     ];
   };
 
+  # ===== emitTable — user objects take nftypes' DSL field names =====
+
+  testEmitTableUserObjectsUseDslFieldNames = {
+    # The object options keep nft's JSON field names, which
+    # `nftypes.dsl.table` rejects.
+    expr =
+      let
+        output =
+          (runEmit {
+            zones.lan = {
+              interfaces = [ "lan0" ];
+            };
+            objects = {
+              sets.blocklist_v4 = {
+                type = "ipv4_addr";
+                elem = [ "1.2.3.4" ];
+              };
+              maps.marks = {
+                type = "ipv4_addr";
+                map = "mark";
+              };
+              limits.slow = {
+                rate = 10;
+                per = "second";
+                rate_unit = "kbytes";
+              };
+            };
+          }).output;
+      in
+      lib.mapAttrs (_: lib.filterAttrs (_: value: value != null)) {
+        set = output.sets.blocklist_v4;
+        map = output.maps.marks;
+        limit = output.limits.slow;
+      };
+    expected = {
+      set = {
+        type = "ipv4_addr";
+        elements = [ "1.2.3.4" ];
+      };
+      map = {
+        type = "ipv4_addr";
+        dataType = "mark";
+      };
+      limit = {
+        rate = 10;
+        per = "second";
+        rateUnit = "kbytes";
+      };
+    };
+  };
+
   testEmitTableEmptyKindsSkipped = {
     expr =
       let
@@ -1370,7 +1439,6 @@ in
         "ctExpectations"
         "secmarks"
         "synproxies"
-        "tunnels"
         "maps"
         "flowtables"
       ];

@@ -15,7 +15,7 @@
                            knobs (stateful / loopback / rpfilter /
                            chainPolicy / localZone / wildcardZone)
     - `tableChainPolicy` — `accept` / `drop` (reuses
-                           `nftypes.types.policy`)
+                           `nftypes.types.chainPolicy`)
     - `tableZones`       — zone declarations
                            (`attrsOf nftzones.types.zone`)
     - `tableNodes`       — node declarations
@@ -30,7 +30,7 @@
     - `tableObjects`     — submodule for user-defined named
                            nftables objects (counters, ct helpers,
                            sets, maps, …); reuses nftypes'
-                           `<kind>ObjectBody` types
+                           `<kind>Body` types
 
   A `table` is the input to the nftzones compile pipeline. It
   bundles all the zone-firewall content (zones, nodes, filters,
@@ -43,7 +43,7 @@
 
   Field categories:
 
-    Metadata (mirrors `nftypes.types.objects.tableBody`):
+    Metadata (mirrors `nftypes.types.objectBodies.tableBody`):
       name, family, flags, comment
 
     settings (`tableSettings` submodule, best-practice defaults):
@@ -121,7 +121,7 @@ let
 
   tableComment = primitives.comment;
 
-  tableChainPolicy = nftypes.types.policy;
+  tableChainPolicy = nftypes.types.chainPolicy;
 
   /*
     Zone-firewall groups (`filters` / `policies` / `snats` /
@@ -148,7 +148,7 @@ let
   tableDroutes = lib.types.attrsOf droute.droute;
 
   /*
-    Helper: take an nftypes `<kind>ObjectBody` submodule and
+    Helper: take an nftypes `<kind>Body` submodule and
     produce a user-facing version that omits the four container
     fields (`family`, `name`, `table`, `handle`). The compile
     pipeline fills those in from context — `family` from the
@@ -178,7 +178,7 @@ let
     pipeline.
 
     Validation boundary: per-kind body validation defers to
-    nftypes' `<kind>ObjectBody` (shape, field types, enums).
+    nftypes' `<kind>Body` (shape, field types, enums).
     Cross-field correlations that require nftables semantic
     knowledge — e.g. that `sets.X.elem` values match the
     declared `sets.X.type`, or that a `maps.Y.elem` key matches
@@ -191,62 +191,57 @@ let
   tableObjects = lib.types.submodule {
     options = {
       counters = lib.mkOption {
-        type = lib.types.attrsOf (asUserBody nftypes.types.objects.counterObjectBody);
+        type = lib.types.attrsOf (asUserBody nftypes.types.objectBodies.counterBody);
         default = { };
         description = "Named counter objects.";
       };
       quotas = lib.mkOption {
-        type = lib.types.attrsOf (asUserBody nftypes.types.objects.quotaObjectBody);
+        type = lib.types.attrsOf (asUserBody nftypes.types.objectBodies.quotaBody);
         default = { };
         description = "Named quota objects.";
       };
       limits = lib.mkOption {
-        type = lib.types.attrsOf (asUserBody nftypes.types.objects.limitObjectBody);
+        type = lib.types.attrsOf (asUserBody nftypes.types.objectBodies.limitBody);
         default = { };
         description = "Named limit objects.";
       };
       ctHelpers = lib.mkOption {
-        type = lib.types.attrsOf (asUserBody nftypes.types.objects.ctHelperObjectBody);
+        type = lib.types.attrsOf (asUserBody nftypes.types.objectBodies.ctHelperBody);
         default = { };
         description = "Named ct-helper objects (FTP, IRC DCC, SIP, …).";
       };
       ctTimeouts = lib.mkOption {
-        type = lib.types.attrsOf (asUserBody nftypes.types.objects.ctTimeoutObjectBody);
+        type = lib.types.attrsOf (asUserBody nftypes.types.objectBodies.ctTimeoutBody);
         default = { };
         description = "Named ct-timeout objects.";
       };
       ctExpectations = lib.mkOption {
-        type = lib.types.attrsOf (asUserBody nftypes.types.objects.ctExpectationObjectBody);
+        type = lib.types.attrsOf (asUserBody nftypes.types.objectBodies.ctExpectationBody);
         default = { };
         description = "Named ct-expectation objects.";
       };
       secmarks = lib.mkOption {
-        type = lib.types.attrsOf (asUserBody nftypes.types.objects.secmarkObjectBody);
+        type = lib.types.attrsOf (asUserBody nftypes.types.objectBodies.secmarkBody);
         default = { };
         description = "Named secmark objects.";
       };
       synproxies = lib.mkOption {
-        type = lib.types.attrsOf (asUserBody nftypes.types.objects.synproxyObjectBody);
+        type = lib.types.attrsOf (asUserBody nftypes.types.objectBodies.synproxyBody);
         default = { };
         description = "Named synproxy objects.";
       };
-      tunnels = lib.mkOption {
-        type = lib.types.attrsOf (asUserBody nftypes.types.objects.tunnelObjectBody);
-        default = { };
-        description = "Named tunnel objects.";
-      };
       sets = lib.mkOption {
-        type = lib.types.attrsOf (asUserBody nftypes.types.objects.setObjectBody);
+        type = lib.types.attrsOf (asUserBody nftypes.types.objectBodies.setBody);
         default = { };
         description = "Named set objects (blocklists, lookups, …).";
       };
       maps = lib.mkOption {
-        type = lib.types.attrsOf (asUserBody nftypes.types.objects.mapObjectBody);
+        type = lib.types.attrsOf (asUserBody nftypes.types.objectBodies.mapBody);
         default = { };
         description = "Named map objects.";
       };
       flowtables = lib.mkOption {
-        type = lib.types.attrsOf (asUserBody nftypes.types.objects.flowtableBody);
+        type = lib.types.attrsOf (asUserBody nftypes.types.objectBodies.flowtableBody);
         default = { };
         description = "Named flowtable objects (hardware offload).";
       };
@@ -521,7 +516,7 @@ let
             Mirrors nftypes' DSL table body container kinds.
 
             Each kind is `attrsOf <body>`, where the body is
-            nftypes' corresponding `<kind>ObjectBody` with the
+            nftypes' corresponding `<kind>Body` with the
             four container fields (`family`, `name`, `table`,
             `handle`) stripped — the compile pipeline fills those
             in from context. Cross-references from rule bodies

@@ -1,5 +1,5 @@
 /*
-  Rejection scenario for nftypes' `nftQuotedString` restriction on
+  Rejection scenario for nftypes' `types.comment` restriction on
   user-supplied object comments. Same threat model as the table-
   level `comment` (see `comment-injection.nix`): nft has no
   string-escape grammar, so a `"` in a rendered comment terminates
@@ -9,10 +9,10 @@
 
   Object-body comments (`objects.<kind>.<name>.comment`) flow
   through `lib/types/table.nix:asUserBody`, which preserves
-  nftypes' `nftQuotedString`-typed `comment` field from
+  nftypes' `types.comment`-typed `comment` field from
   `commonObjectOptions`. This scenario pins that the upstream
   restriction is reached via the nftzones type surface — a future
-  nftypes bump that weakens or removes `nftQuotedString` on
+  nftypes bump that weakens or removes `types.comment` on
   object-body comments would surface here at CI time rather than
   silently shipping a regression to the comment-injection
   defense.

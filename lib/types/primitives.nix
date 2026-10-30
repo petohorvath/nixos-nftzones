@@ -13,7 +13,7 @@
                         zone names and filter names.
     - `comment`       — optional nft-safe quoted string (`null` means
                         no comment). Shared shape for object-level
-                        comments. Aliases `nftypes.types.nftQuotedString`
+                        comments. Aliases `nftypes.types.comment`
                         (rejects `"`, `\`, control chars; ≤128 bytes).
     - `rule`          — list of nftypes statements forming one rule
                         body. Shared shape for `filterRule` and the
@@ -42,6 +42,10 @@
 let
   inherit (inputs) lib nftypes;
 
+  inetPrioritySymbols = builtins.attrNames (
+    lib.mergeAttrsList (builtins.attrValues nftypes.compatibility.prioritiesByFamily.inet)
+  );
+
   identifier = lib.types.strMatching "[a-z][a-z0-9_-]*";
 
   /*
@@ -54,7 +58,7 @@ let
     injects a chain with `policy accept` ahead of the user's
     chain).
 
-    Upstream `nftypes.types.nftQuotedString` already enforces the
+    Upstream `nftypes.types.comment` already enforces the
     safe-byte set (`[^"\\[:cntrl:]]*`) plus the kernel's
     NFTNL_UDATA_COMMENT_MAXLEN cap (128 bytes) at evalModules time,
     with the text renderer asserting the same predicate as defense-
@@ -62,7 +66,7 @@ let
     future upstream tightening (e.g. added parser-meta bytes)
     without manual sync.
   */
-  comment = lib.types.nullOr nftypes.types.nftQuotedString;
+  comment = lib.types.nullOr nftypes.types.comment;
 
   /*
     A list of nftypes statements spliced conjunctively into a
@@ -74,11 +78,11 @@ let
 
   /*
     Match-only counterpart to `rule`. Each leaf must be a
-    `{ match = ...; }` statement (the `eq` / `inSet` / `within`
-    shape from `nftypes.dsl`); verdicts (accept/drop/jump/goto)
-    and side-effecting statements (counter/log/limit/mark-set/
+    `{ match = ...; }` statement (the `eq` / `inSet` shape from
+    `nftypes.dsl`); verdicts (accept/drop/jump/goto) and
+    side-effecting statements (counter/log/limit/mark-set/
     NAT/mangle) are rejected at evalModules time by
-    `nftypes.types.matchStatement`.
+    `nftypes.types.statementOf [ "match" ]`.
 
     Used by `zoneMatchOverrideSide` — those sections are spliced
     as prefix-match clauses into every dispatch rule for the
@@ -87,7 +91,7 @@ let
     PoC) and a side-effect would fire on every zone-matching
     packet rather than just the user's targeted ones.
   */
-  matchRule = lib.types.listOf nftypes.types.matchStatement;
+  matchRule = lib.types.listOf (nftypes.types.statementOf [ "match" ]);
 
   /*
     Entry priority — nftzones-internal sort key for ordering an
@@ -134,15 +138,14 @@ let
       security →  50
       srcnat   →  100
 
-    Symbol values come from `nftypes.compatibility.priorityIntsByFamily.inet`
-    (inet/ip/ip6/arp/netdev family). Bridge family has different
-    mappings; if multi-family ever lands, broaden to the union of
-    `attrNames priorityIntsByFamily.inet` and
-    `attrNames priorityIntsByFamily.bridge`, and let
-    `nftypes.resolvePriority` pick the right table at compile time.
-    Or pass any int directly.
+    Symbol values are the inet family's symbols across all its hooks,
+    from `nftypes.compatibility.prioritiesByFamily.inet` (the same
+    table as ip/ip6). Bridge family has different mappings; if
+    multi-family ever lands, broaden to the union of the inet and
+    bridge symbols, and let `internal.compatibility.resolvePriority`
+    pick the right table at compile time. Or pass any int directly.
   */
-  chainPriority = lib.types.either (lib.types.enum (builtins.attrNames nftypes.compatibility.priorityIntsByFamily.inet)) lib.types.int;
+  chainPriority = lib.types.either (lib.types.enum inetPrioritySymbols) lib.types.int;
 
   /*
     Optional chain-placement override — `null` (the default at

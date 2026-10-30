@@ -3,8 +3,9 @@ let
   /*
     Three-layer module hierarchy:
 
-      base       — leaf helpers (zone, entry, priority, node, refs,
-                   placement); no inter-module dependencies.
+      base       — leaf helpers (compatibility, zone, entry, priority,
+                   node, refs, placement); only zone and placement
+                   depend on another leaf, compatibility.
       withPhases — leaves + per-phase orchestrators (normalize,
                    expand, dispatch, emit); each phase consumes
                    `base` as its `internal` arg.
@@ -15,15 +16,23 @@ let
     as the `internal` arg, mirroring `lib/types/default.nix`'s
     submodule-key namespacing (`nftzones.internal.<module>.<fn>`).
   */
-  zone = import ./zone.nix { inherit inputs; };
+  compatibility = import ./compatibility.nix { inherit inputs; };
+  zone = import ./zone.nix {
+    inherit inputs;
+    internal = { inherit compatibility; };
+  };
   entry = import ./entry.nix { inherit inputs; };
   priority = import ./priority.nix { inherit inputs; };
   node = import ./node.nix { inherit inputs; };
   refs = import ./refs.nix { inherit inputs; };
-  placement = import ./placement.nix { inherit inputs; };
+  placement = import ./placement.nix {
+    inherit inputs;
+    internal = { inherit compatibility; };
+  };
 
   base = {
     inherit
+      compatibility
       entry
       node
       placement
