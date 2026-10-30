@@ -10,12 +10,14 @@
     primitives.nix      no deps — atoms (identifier, comment,
                         rule, nonEmptyRule, matchRule,
                         entryPriority, chainPriority,
-                        chainOverride) and the NAT body
-                        constructor `mkNatRule`
+                        chainOverride), the shared
+                        `entryPriorityDescription`, and the NAT
+                        body constructor `mkNatRule`
     zone.nix            primitives — zone-related types
                         (`zoneName`, `zoneNames`, `zoneParent`,
                         `zoneInterfaces`, `zoneCidrs`,
-                        `zoneMatchOverride`, `zone`)
+                        `zoneMatchOverride`,
+                        `zoneMatchOverrideSide`, `zone`)
     node.nix            primitives + zone — `node`
     filter / snat /     primitives + zone — per-group entry types
       dnat / sroute /

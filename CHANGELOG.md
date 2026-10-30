@@ -6,6 +6,8 @@
 
 - Root formatting and linting through treefmt-nix: `nix fmt` runs nixfmt, deadnix, actionlint, prettier, ruff-format, and ruff-check, configured in `dev/treefmt.nix`. The `treefmt` check fails when `nix fmt` would change a file or a tool reports a finding it cannot fix, and the `lint` check runs statix. Consumers lock the new `treefmt-nix` input, which follows their `nixpkgs`; drop it with `inputs.nftzones.inputs.treefmt-nix.follows = "";`.
 - A shared-policy CI caller and an MIT license.
+- `nftzones.types.zoneMatchOverrideSide`, the type of one side of `zones.<name>.matchOverride`, for modules that build overrides of their own.
+- The `priority` option of filters, snats, dnats, sroutes and droutes documents each symbol's value, such as `first` (1) and `default` (500), and the cutoff at 100 that runs an entry before or after the jumps into child zones.
 - A stability promise for Phase 1 diagnostics, in [docs/compile-pipeline.md](docs/compile-pipeline.md#stability): a diagnostic's tag, its path, and whether it is an error or a warning change only in a breaking release. Its message and its position in a failure can change in any release.
 
 ### Changed

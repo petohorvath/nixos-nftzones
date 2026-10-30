@@ -113,11 +113,7 @@ let
           type = droutePriority;
           default = "default";
           example = "first";
-          description = ''
-            Sort key for ordering rules within their chain.
-            Either a symbol (`first` / `preDispatch` /
-            `postDispatch` / `default` / `last`) or any int.
-          '';
+          description = primitives.entryPriorityDescription;
         };
 
         comment = lib.mkOption {

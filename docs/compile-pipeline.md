@@ -261,7 +261,7 @@ Cells are grouped per base chain (`ctx.groupedByChain`), and each group becomes 
 
 `internal.priority.resolvePriority` resolves entry priority symbols (`first` / `preDispatch` / `postDispatch` / `default` / `last`) to ints (Phase 1 runs this for every entry; the pre-resolved values land in `ctx.resolvedPriorities`). Each sub-chain's slots sort by `(priority asc, name asc)`. Name is the attrset key from the original collection; it acts as a stable tiebreaker.
 
-The cutoff at `100` (between `preDispatch=50` and `postDispatch=100`) splits cells into pre-dispatch (emit before the per-pair dispatch jump) and post-dispatch (emit after) — see Phase 4.
+The cutoff at `100` (between `preDispatch=50` and `postDispatch=100`) splits each sub-chain's cells into two slots: before the child-dispatch jumps and after them — see Phase 4.
 
 ## Phase 4: emit
 

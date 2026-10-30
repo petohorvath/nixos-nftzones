@@ -169,11 +169,8 @@ let
           type = dnatPriority;
           default = "default";
           example = "first";
-          description = ''
-            Sort key for ordering rules within their chain.
-            Either a symbol (`first` / `preDispatch` /
-            `postDispatch` / `default` / `last`) or any int. NOT
-            the nftables chain priority — that's `chain.priority`.
+          description = primitives.entryPriorityDescription + ''
+            NOT the nftables chain priority — that's `chain.priority`.
           '';
         };
 

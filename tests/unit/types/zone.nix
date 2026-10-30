@@ -1,8 +1,9 @@
 /*
   Unit tests for `lib/types/zone.nix` (exposed as
   `nftzones.types.{zone,zoneName,zoneParent,zoneInterfaces,
-  zoneCidrs,zoneMatchOverride}`). Same `testFoo = { expr; expected; }`
-  shape as every other unit test; aggregated by `tests/unit/default.nix`.
+  zoneCidrs,zoneMatchOverride,zoneMatchOverrideSide}`). Same
+  `testFoo = { expr; expected; }` shape as every other unit test;
+  aggregated by `tests/unit/default.nix`.
 */
 {
   helpers,
@@ -208,4 +209,22 @@ in
       expr = zone.matchOverride.ingress.extra;
       expected = [ statement ];
     };
+
+  # ===== zoneMatchOverrideSide — one side, typed on its own =====
+
+  testZoneMatchOverrideSideAcceptsMatch =
+    let
+      statement = nftypes.dsl.eq nftypes.dsl.fields.meta.mark 100;
+    in
+    {
+      expr = (evalType nftzones.types.zoneMatchOverrideSide { extra = [ statement ]; }).extra;
+      expected = [ statement ];
+    };
+
+  testZoneMatchOverrideSideRejectsVerdict = {
+    expr =
+      evalFails
+        (evalType nftzones.types.zoneMatchOverrideSide { extra = [ nftypes.dsl.accept ]; }).extra;
+    expected = true;
+  };
 }

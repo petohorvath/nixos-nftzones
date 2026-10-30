@@ -71,7 +71,7 @@ in
     };
   };
 
-  # ===== pre-dispatch — symbols below 100 emit before per-zone jumps =====
+  # ===== pre-dispatch — symbols below 100 run before child-dispatch jumps =====
 
   testFirstIsPreDispatch = {
     expr = resolvePriority "first" < 100;
@@ -83,7 +83,7 @@ in
     expected = true;
   };
 
-  # ===== post-dispatch — symbols >= 100 emit after per-zone jumps =====
+  # ===== post-dispatch — symbols >= 100 run after child-dispatch jumps =====
 
   testPostDispatchIsPostDispatch = {
     expr = resolvePriority "postDispatch" >= 100;
