@@ -153,9 +153,9 @@ A **Diagnostic** is a record `{ tag; path; message; }`:
 - `path` is a list of strings naming the one declaration the diagnostic concerns: attribute names, and list indices as strings, such as `[ "filters" "ssh" "from" "0" ]`.
 - `message` is human prose. It never repeats the path.
 
-A diagnostic about several declarations, such as an overlap, a collision or a cycle, carries one path and names the others in its message. The path is the lexically first declaration involved, unless one is clearly the one to edit: a zone/node name collision blames the node, and a parent cycle blames the `parent` of its lexically smallest zone. Diagnostics about a zone lowered from a node use a path under the lowered zone, `zones.<node>`, which the user never wrote.
+A diagnostic about several declarations, such as an overlap, a collision or a cycle, carries one path and names the others in its message. The path is the lexically first declaration involved, unless one is clearly the one to edit: a zone/node name collision blames the node, and a parent cycle blames the `parent` of its lexically smallest zone. Diagnostics about a zone lowered from a node use a path under the lowered zone, `zones.<node>`, which the user never wrote ([#31](https://github.com/petohorvath/nixos-nftzones/issues/31)).
 
-`diagnose` sorts both lists by path, then tag; the order is part of the interface. Path elements, list indices included, are strings and sort as text, so `extra.10` sorts before `extra.2`. `normalizeTable` renders each diagnostic as `[tag] path.joined.with.dots: message`:
+`diagnose` sorts both lists by path, then tag, and its tests rely on that order, but the order is not part of the stable surface. Path elements, list indices included, are strings and sort as text, so `extra.10` sorts before `extra.2`. `normalizeTable` renders each diagnostic as `[tag] path.joined.with.dots: message`:
 
 ```text
 nftzones.normalize: validation failed:
@@ -166,6 +166,17 @@ nftzones.normalize: validation failed:
 Warnings go through `lib.warn` as `nftzones.normalize: [tag] path: message`.
 
 Checks enforced by the table type fail during module evaluation, before Phase 1 runs, and are not diagnostics.
+
+#### Stability
+
+Users see a diagnostic as the rendered `[tag] path: message` line of a failed evaluation or a warning. From 0.1.0, its tag and path are a stable interface:
+
+- **Stable:** each tag's name, the path each tag is reported at, and whether a tag is an error or a warning. Changing any of them is a breaking change with a CHANGELOG entry.
+- **Not stable:** the message prose, and the order of diagnostics in a failure. Match on the tag and the path, not on the prose or the position of a line.
+
+A mistake in a node is the exception: it can also be reported at the zone the node lowers to, under `zones.<node>`, often as a second diagnostic that follows from the first ([#31](https://github.com/petohorvath/nixos-nftzones/issues/31)). Those paths, and the second diagnostic, change when #31 is fixed.
+
+`internal.normalize.diagnose` returns the same records as data, but like the rest of `internal` it has no semver guarantee.
 
 #### Errors
 
