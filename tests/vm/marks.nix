@@ -160,7 +160,7 @@ pkgs.testers.runNixOSTest {
               snats.lan-snat = {
                 from = [ "lan" ];
                 to = [ "wan" ];
-                rule.masquerade = { };
+                rule.action.masquerade = { };
               };
 
               # The point of the test — sroute sets meta mark

@@ -437,7 +437,7 @@ in
         snats.s = {
           from = [ "lan" ];
           to = [ "wan" ];
-          rule.masquerade = { };
+          rule.action.masquerade = { };
           priority = "default";
         };
         dnats.d = {
@@ -490,7 +490,7 @@ in
         snats.sn = {
           from = [ "ghost" ];
           to = [ "ghost" ];
-          rule.masquerade = { };
+          rule.action.masquerade = { };
         };
         dnats.d = {
           from = [ "ghost" ];

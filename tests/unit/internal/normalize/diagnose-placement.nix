@@ -52,7 +52,7 @@ in
       snats.masq = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.masquerade = { };
+        rule.action.masquerade = { };
       };
     };
     expected = clean;
@@ -67,7 +67,7 @@ in
       snats.masq = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.masquerade = { };
+        rule.action.masquerade = { };
       };
     };
     expected = {
@@ -94,7 +94,7 @@ in
       snats.masq = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.masquerade = { };
+        rule.action.masquerade = { };
         chain = {
           hook = "forward";
           priority = "srcnat";
@@ -171,7 +171,7 @@ in
       snats.masq = {
         from = [ "lan" ];
         to = [ "host" ];
-        rule.masquerade = { };
+        rule.action.masquerade = { };
       };
       droutes.mark = {
         to = [ "lan" ];
@@ -352,7 +352,7 @@ in
       snats.masq = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.masquerade = { };
+        rule.action.masquerade = { };
       };
       dnats.fwd = {
         from = [ "wan" ];
@@ -422,7 +422,7 @@ in
       snats.early = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.masquerade = { };
+        rule.action.masquerade = { };
         chain = {
           hook = "postrouting";
           priority = "mangle";
@@ -451,7 +451,7 @@ in
       snats.s1 = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.masquerade = { };
+        rule.action.masquerade = { };
         chain = {
           hook = "postrouting";
           priority = "srcnat";
@@ -460,7 +460,7 @@ in
       snats.s2 = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.masquerade = { };
+        rule.action.masquerade = { };
         chain = {
           hook = "postrouting";
           priority = 100;
@@ -493,7 +493,7 @@ in
       snats.s = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.masquerade = { };
+        rule.action.masquerade = { };
         chain = {
           hook = "postrouting";
           priority = "filter";
@@ -994,7 +994,7 @@ in
       snats.outbound = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.snat.addr = "203.0.113.5";
+        rule.action.snat.addr = "203.0.113.5";
       };
     };
     expected = clean;
@@ -1006,7 +1006,7 @@ in
       snats.outbound = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.masquerade = { };
+        rule.action.masquerade = { };
       };
     };
     expected = clean;
@@ -1020,7 +1020,7 @@ in
       snats.outbound = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.snat.port = 8080;
+        rule.action.snat.port = 8080;
       };
     };
     expected = {
@@ -1030,6 +1030,10 @@ in
           path = [
             "snats"
             "outbound"
+            "rule"
+            "action"
+            "snat"
+            "addr"
           ];
         }
       ];
@@ -1093,7 +1097,7 @@ in
       snats.bad-s = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule.snat.port = 8080;
+        rule.action.snat.port = 8080;
       };
       dnats.bad-d = {
         from = [ "wan" ];
@@ -1117,6 +1121,10 @@ in
           path = [
             "snats"
             "bad-s"
+            "rule"
+            "action"
+            "snat"
+            "addr"
           ];
         }
       ];

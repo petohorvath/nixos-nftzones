@@ -613,6 +613,7 @@ in
 
   testMkRuleBodyFilter = {
     expr = mkRuleBody {
+      group = "filters";
       rule = [
         (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 22)
         nftypes.dsl.accept
@@ -627,9 +628,13 @@ in
 
   testMkRuleBodySnatAddr = {
     expr = mkRuleBody {
-      rule.snat = {
-        addr = "203.0.113.5";
-        port = 8080;
+      group = "snats";
+      rule = {
+        match = [ ];
+        action.snat = {
+          addr = "203.0.113.5";
+          port = 8080;
+        };
       };
       comment = null;
     };
@@ -643,14 +648,35 @@ in
 
   testMkRuleBodySnatMasquerade = {
     expr = mkRuleBody {
-      rule.masquerade = { };
+      group = "snats";
+      rule = {
+        match = [ ];
+        action.masquerade = { };
+      };
       comment = null;
     };
     expected = [ (nftypes.dsl.masquerade { }) ];
   };
 
+  testMkRuleBodySnatMatch = {
+    # An snat's match statements come before its action.
+    expr = mkRuleBody {
+      group = "snats";
+      rule = {
+        match = [ (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 443) ];
+        action.masquerade = { };
+      };
+      comment = null;
+    };
+    expected = [
+      (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 443)
+      (nftypes.dsl.masquerade { })
+    ];
+  };
+
   testMkRuleBodyDnat = {
     expr = mkRuleBody {
+      group = "dnats";
       rule = {
         match = [ (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 443) ];
         action.dnat = {
@@ -671,6 +697,7 @@ in
 
   testMkRuleBodyDnatRedirect = {
     expr = mkRuleBody {
+      group = "dnats";
       rule = {
         match = [ ];
         action.redirect = {
@@ -684,6 +711,7 @@ in
 
   testMkRuleBodySroute = {
     expr = mkRuleBody {
+      group = "sroutes";
       rule = [
         (nftypes.dsl.mangle nftypes.dsl.fields.meta.mark 100)
       ];
@@ -696,6 +724,7 @@ in
 
   testMkRuleBodyPolicyAccept = {
     expr = mkRuleBody {
+      group = "policies";
       verdict = "accept";
       comment = null;
     };
@@ -704,6 +733,7 @@ in
 
   testMkRuleBodyPolicyDrop = {
     expr = mkRuleBody {
+      group = "policies";
       verdict = "drop";
       comment = null;
     };
@@ -714,6 +744,7 @@ in
 
   testMkRuleBodyFilterWithComment = {
     expr = mkRuleBody {
+      group = "filters";
       rule = [
         (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 22)
         nftypes.dsl.accept
@@ -731,6 +762,7 @@ in
 
   testMkRuleBodyPolicyWithComment = {
     expr = mkRuleBody {
+      group = "policies";
       verdict = "accept";
       comment = "lan->wan default-allow";
     };
@@ -742,7 +774,11 @@ in
 
   testMkRuleBodySnatMasqueradeWithComment = {
     expr = mkRuleBody {
-      rule.masquerade = { };
+      group = "snats";
+      rule = {
+        match = [ ];
+        action.masquerade = { };
+      };
       comment = "nat lan to wan";
     };
     expected = {
@@ -753,6 +789,7 @@ in
 
   testMkRuleBodyDnatWithComment = {
     expr = mkRuleBody {
+      group = "dnats";
       rule = {
         match = [ (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 80) ];
         action.dnat = {
@@ -785,6 +822,7 @@ in
         preChildCells = [ ];
         postChildCells = [
           {
+            group = "filters";
             rule = [ nftypes.dsl.accept ];
             comment = null;
           }
@@ -816,12 +854,14 @@ in
         to = "local";
         preChildCells = [
           {
+            group = "filters";
             rule = [ nftypes.dsl.accept ];
             comment = null;
           }
         ];
         postChildCells = [
           {
+            group = "filters";
             rule = [ nftypes.dsl.drop ];
             comment = null;
           }
@@ -986,7 +1026,7 @@ in
             snats.lan-out = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule.masquerade = { };
+              rule.action.masquerade = { };
             };
           }).output.chains."postrouting-at-srcnat__lan-TO-wan";
       in

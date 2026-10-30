@@ -55,6 +55,7 @@ in
     settings-toggles = import ./scenarios/settings-toggles.nix libraryArgs;
     snat-explicit-rewrite = import ./scenarios/snat-explicit-rewrite.nix libraryArgs;
     snat-masquerade = import ./scenarios/snat-masquerade.nix libraryArgs;
+    snat-match-masquerade = import ./scenarios/snat-match-masquerade.nix libraryArgs;
     snippets-acceptance = import ./scenarios/snippets-acceptance.nix libraryArgs;
     sroute-mark = import ./scenarios/sroute-mark.nix libraryArgs;
     sroute-multi-zone = import ./scenarios/sroute-multi-zone.nix libraryArgs;
@@ -81,6 +82,7 @@ in
     node-address-missing = import ./rejections/node-address-missing.nix rejectionArgs;
     object-comment-injection = import ./rejections/object-comment-injection.nix rejectionArgs;
     object-refs = import ./rejections/object-refs.nix rejectionArgs;
+    object-refs-snat-match = import ./rejections/object-refs-snat-match.nix rejectionArgs;
     parent-cycles = import ./rejections/parent-cycles.nix rejectionArgs;
     parent-local-zone = import ./rejections/parent-local-zone.nix rejectionArgs;
     parent-refs = import ./rejections/parent-refs.nix rejectionArgs;

@@ -173,7 +173,7 @@ pkgs.testers.runNixOSTest {
               snats.lan-snat = {
                 from = [ "lan" ];
                 to = [ "wan" ];
-                rule.masquerade = { };
+                rule.action.masquerade = { };
               };
             };
           };

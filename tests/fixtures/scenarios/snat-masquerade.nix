@@ -1,7 +1,8 @@
 /*
   SNAT scenario — masquerade lan-out traffic. Lands in the
-  postrouting@srcnat base chain with type=nat. Exercises the
-  snat-via-rule.masquerade dispatch path.
+  postrouting@srcnat base chain with type=nat. Exercises
+  `rule.action.masquerade` with the default empty `match`, so the
+  rule body is the masquerade statement alone.
 */
 { nftypes, ... }:
 let
@@ -17,7 +18,7 @@ in
     snats.lan-out = {
       from = [ "lan" ];
       to = [ "wan" ];
-      rule.masquerade = { };
+      rule.action.masquerade = { };
     };
   };
 

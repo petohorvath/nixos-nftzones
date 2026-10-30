@@ -5,14 +5,16 @@
   shape as every other unit test; aggregated by
   `tests/unit/default.nix`.
 */
-{ helpers, ... }:
+{ helpers, nftypes, ... }:
 let
   inherit (helpers) evalFails evalTable;
+  inherit (nftypes.dsl) eq;
+  inherit (nftypes.dsl.fields) tcp;
 
   masqueradeBody = {
     from = [ "lan" ];
     to = [ "wan" ];
-    rule.masquerade = { };
+    rule.action.masquerade = { };
   };
 
   snatIn =
@@ -41,12 +43,31 @@ in
     expected = true;
   };
 
-  # ===== snat.rule — attrTag {snat, masquerade} =====
+  # ===== snat.rule — { match; action; } NAT body =====
 
-  testSnatRuleMasqueradeEmpty = {
+  testSnatRuleMatchDefaultEmpty = {
+    expr = (snatIn masqueradeBody).rule.match;
+    expected = [ ];
+  };
+
+  testSnatRuleMatchAccepted = {
+    expr =
+      (snatIn (
+        masqueradeBody
+        // {
+          rule = {
+            match = [ (eq tcp.dport 443) ];
+            action.masquerade = { };
+          };
+        }
+      )).rule.match;
+    expected = [ (eq tcp.dport 443) ];
+  };
+
+  testSnatRuleActionMasqueradeEmpty = {
     # nftypes' masqueradeBody fills its optional fields with
     # null defaults at submodule-eval time.
-    expr = (snatIn masqueradeBody).rule;
+    expr = (snatIn masqueradeBody).rule.action;
     expected = {
       masquerade = {
         flags = null;
@@ -55,19 +76,19 @@ in
     };
   };
 
-  testSnatRuleSnatBody = {
+  testSnatRuleActionSnatBody = {
     # Same — natBody adds `family`/`flags`/`type_flags` null
     # defaults alongside the user-supplied `addr`/`port`.
     expr =
       (snatIn (
         masqueradeBody
         // {
-          rule.snat = {
+          rule.action.snat = {
             addr = "203.0.113.5";
             port = 8080;
           };
         }
-      )).rule;
+      )).rule.action;
     expected = {
       snat = {
         addr = "203.0.113.5";
@@ -79,24 +100,30 @@ in
     };
   };
 
-  testSnatRuleRejectsBothVariants = {
+  testSnatRuleActionRejectsBothVariants = {
     # attrTag enforces "exactly one of {snat, masquerade}".
     expr =
       evalFails
         (snatIn (
           masqueradeBody
           // {
-            rule = {
+            rule.action = {
               snat.addr = "203.0.113.5";
               masquerade = { };
             };
           }
-        )).rule;
+        )).rule.action;
     expected = true;
   };
 
-  testSnatRuleRejectsUnknownTag = {
-    expr = evalFails (snatIn (masqueradeBody // { rule.redirect = { }; })).rule;
+  testSnatRuleActionRejectsUnknownTag = {
+    expr = evalFails (snatIn (masqueradeBody // { rule.action.redirect = { }; })).rule.action;
+    expected = true;
+  };
+
+  testSnatRuleRejectsBareTag = {
+    # The tag lives under `action`; a bare `rule.masquerade` fails.
+    expr = evalFails (snatIn (masqueradeBody // { rule.masquerade = { }; })).rule;
     expected = true;
   };
 

@@ -27,9 +27,11 @@ let
     { table, ctx }:
     let
       /*
-        Build the cell list for one rule group. `withPriority`
-        toggles whether `ctx.resolvedPriorities` is overlaid —
-        policies don't carry a `priority` field and are excluded.
+        Build the cell list for one rule group. Each cell records
+        its `group`, which Phase 4 reads to pick the rule body's
+        shape. `withPriority` toggles whether
+        `ctx.resolvedPriorities` is overlaid — policies don't carry
+        a `priority` field and are excluded.
       */
       cellsForGroup =
         groupName: withPriority:
@@ -42,6 +44,7 @@ let
               entry
               // expanded
               // {
+                group = groupName;
                 name = entryName;
               }
               // (lib.optionalAttrs withPriority {

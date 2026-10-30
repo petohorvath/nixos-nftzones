@@ -307,10 +307,10 @@ Verbose but readable: each name joins the base chain name and the zones, so the 
 
 **Body:** pre-child cells, one child-dispatch jump per child × from-side variant of the child's match, then post-child cells and the policy tail rule (if any). The cells arrive sorted from Phase 3; transparent dispatchers hold only the jumps.
 
-**Rule body emission per group:**
+**Rule body emission per group.** Each cell records its `group`, and emission picks the body's shape by group, not by which keys the body has:
 
 - **filter / sroute / droute** — `cell.rule` is `list-of-statements`; splice as one rule.
-- **snat** — `cell.rule.snat = { addr; port?; ... }` or `cell.rule.masquerade = { ... }` → single statement.
+- **snat** — `cell.rule.match = [...]; cell.rule.action.{snat|masquerade} = { ... }` → match conditions ++ action statement.
 - **dnat** — `cell.rule.match = [...]; cell.rule.action.{dnat|redirect} = { ... }` → match conditions ++ action statement.
 - **policy** — `cell.verdict = "accept" | "drop"` → single verdict statement (always the tail rule).
 

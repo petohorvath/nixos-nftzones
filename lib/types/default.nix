@@ -10,7 +10,8 @@
     primitives.nix      no deps — atoms (identifier, comment,
                         rule, nonEmptyRule, matchRule,
                         entryPriority, chainPriority,
-                        chainOverride)
+                        chainOverride) and the NAT body
+                        constructor `mkNatRule`
     zone.nix            primitives — zone-related types
                         (`zoneName`, `zoneNames`, `zoneParent`,
                         `zoneInterfaces`, `zoneCidrs`,

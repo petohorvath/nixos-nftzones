@@ -105,7 +105,7 @@ in
       "guest"
     ];
     to = [ "wan" ];
-    rule.masquerade = { };
+    rule.action.masquerade = { };
   };
 
   # No `policies` block: the chain-policy default (`drop`)

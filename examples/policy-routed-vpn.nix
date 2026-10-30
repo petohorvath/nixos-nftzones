@@ -165,7 +165,7 @@ in
       "guest"
     ];
     to = [ "wan" ];
-    rule.masquerade = { };
+    rule.action.masquerade = { };
   };
 
   # Default-deny inbound. The chain-policy default is `drop`

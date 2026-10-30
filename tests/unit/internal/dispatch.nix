@@ -152,7 +152,7 @@ in
             snats.lan-out = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule.masquerade = { };
+              rule.action.masquerade = { };
             };
           }).dispatchTrees."postrouting-at-srcnat";
       in
@@ -537,7 +537,7 @@ in
           snats.lan-out = {
             from = [ "lan" ];
             to = [ "wan" ];
-            rule.masquerade = { };
+            rule.action.masquerade = { };
           };
         };
       in

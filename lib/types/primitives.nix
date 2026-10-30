@@ -16,7 +16,8 @@
                         comments. Aliases `nftypes.types.comment`
                         (rejects `"`, `\`, control chars; ≤128 bytes).
     - `rule`          — list of nftypes statements, possibly empty.
-                        Shape for a dnat's `match`.
+                        Shape for a NAT body's `match`, on snats
+                        and dnats.
     - `nonEmptyRule`  — non-empty `rule`: the statements forming one
                         rule body. Shared shape for `filterRule`,
                         `srouteRule` and `drouteRule`.
@@ -39,6 +40,9 @@
                         specific base chain instead of the group's
                         default placement. `null` (the default at
                         each consumer) keeps the default.
+    - `mkNatRule`     — constructor for the `{ match; action; }`
+                        body that snats and dnats share (ADR-0012),
+                        parameterised by the group's action tags.
 */
 { inputs }:
 let
@@ -188,6 +192,38 @@ let
       };
     }
   );
+
+  /*
+    The `{ match; action; }` body of a NAT entry (ADR-0012). Takes
+    `actions`, one `lib.mkOption` per action tag, each named after
+    the nftables statement it compiles to; `actionDescription`; and
+    `matchDescription`, which says which packet the match sees at
+    the group's hook. `match` defaults to `[ ]`. The `action`
+    wrapper exists because `attrTag` accepts exactly one key from
+    its tag set, so `match` cannot sit beside the tag.
+  */
+  mkNatRule =
+    {
+      actions,
+      actionDescription,
+      matchDescription,
+    }:
+    lib.types.submodule {
+      options = {
+        match = lib.mkOption {
+          type = rule;
+          default = [ ];
+          example = lib.literalExpression ''
+            [ (eq tcp.dport 443) ]
+          '';
+          description = matchDescription;
+        };
+        action = lib.mkOption {
+          type = lib.types.attrTag actions;
+          description = actionDescription;
+        };
+      };
+    };
 in
 {
   inherit
@@ -197,6 +233,7 @@ in
     entryPriority
     identifier
     matchRule
+    mkNatRule
     nonEmptyRule
     rule
     ;

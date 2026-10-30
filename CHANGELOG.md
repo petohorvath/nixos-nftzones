@@ -25,6 +25,8 @@
 - **`internal` only:** Phase 3 builds one dispatch tree per base chain in `ctx.dispatchTrees`, replacing `ctx.chainBuckets` and `ctx.effectiveSubChainsByBucket`. `internal.emit` drops `buildEffectiveSubChains`, `computeEffectiveSubChains` and `mkChildDispatchJumpRules`, and `mkRootJumpRules`, `mkSubChain`, `mkBaseChain` and `mkBaseChains` take the tree instead of a bucket. The generated ruleset is unchanged.
 - **Breaking (validation messages):** Phase 1 errors and warnings render as `[tag] path: message`, for example `[zoneParentUnknown] zones.lan.parent: references unknown zone 'ghost'`, and the failure lists its errors sorted by path, then tag ([#22](https://github.com/petohorvath/nixos-nftzones/issues/22)). Every diagnostic names one declaration by its dotted path, including overlaps, collisions and cycles, and warnings gain tags as well. Validation itself is unchanged.
 - **`internal` only:** `internal.normalize` exports only `diagnose`, which returns Phase 1's errors and warnings as `{ tag; path; message; }` data, and `normalizeTable`. Its compute steps and validators are private, and `normalizeTable`'s `ctx` keeps only `zoneMembership`, `expandedGroups` and `resolvedPriorities`.
+- **Breaking:** an snat's body has the dnat shape, `rule = { match; action; }`, so an snat can translate only some traffic, such as one protocol or port range ([ADR-0012](docs/adr/0012-nat-entries-share-match-action-body.md)). `match` is a list of statements and defaults to `[ ]`; `action` holds exactly one of `snat` or `masquerade`. The compiled rule is the match statements followed by the action. The `natBodyMissingAddr` error for an snat names `snats.<name>.rule.action.snat.addr`.
+- **`internal` only:** each Phase 2 cell in `ctx.cells` carries a `group` field, the name of the rule group it came from, such as `snats`. `internal.emit.mkRuleBody` picks a cell's statements by its `group` instead of probing the shape of its `rule`, because snat and dnat bodies now both have an `action` key.
 
 ### Removed
 
@@ -46,6 +48,8 @@ Replace `inputs.nftzones.lib.${pkgs.system}` with `inputs.nftzones.lib`, for exa
 Update rules written with the nftypes DSL as the nftypes [changelog](https://github.com/petohorvath/nix-nftypes/blob/v0.2.0/CHANGELOG.md) describes, and give each filter at least one statement, such as `rule = [ accept ];`. Drop the host bits from zone CIDRs, and move any `objects.tunnels` out of the nftzones table.
 
 Give every sroute and droute a `rule`; a filter's `rule` must not be empty.
+
+Rewrite each snat's `rule.masquerade` as `rule.action.masquerade` and `rule.snat` as `rule.action.snat`.
 
 Remove `follows` or overrides for the `nftzones` inputs `nixpkgs-unstable` and `git-hooks`. Keep `nftzones.inputs.nixpkgs.follows`; the `nftypes` input name is unchanged.
 

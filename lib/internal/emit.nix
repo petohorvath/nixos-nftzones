@@ -90,40 +90,44 @@ let
   toNatArgs =
     body: builtins.removeAttrs body [ "type_flags" ] // { typeFlags = body.type_flags or null; };
 
-  /*
-    Emit one cell's rule entry. A non-null `cell.comment` wraps the
-    statement list as `{ statements; comment; }` — the alternate rule-list
-    element shape per nftypes' `dsl/structure/table.nix`.
+  # Each NAT action tag compiles to the nftables statement it names.
+  natActionStatements = {
+    inherit masquerade redirect;
+    dnat = body: dnat (toNatArgs body);
+    snat = body: snat (toNatArgs body);
+  };
 
-    Cell shape dispatch:
-      - `cell ? verdict`            → policy
-      - `cell.rule ? snat`          → snat with address translation
-      - `cell.rule ? masquerade`    → snat masquerade
-      - `cell.rule ? action`        → dnat (action.dnat | action.redirect)
-      - else (`cell.rule` is list)  → filter / sroute / droute
+  # A NAT entry's `{ match; action; }` body (ADR-0012): the match
+  # statements, then the statement for the action's one tag.
+  natRuleStatements =
+    cell:
+    let
+      tag = builtins.head (builtins.attrNames cell.rule.action);
+    in
+    cell.rule.match ++ [ (natActionStatements.${tag} cell.rule.action.${tag}) ];
+
+  # The statement list of one cell, keyed by the cell's group.
+  # Policies carry a verdict; NAT groups a `{ match; action; }`
+  # body; the other groups a statement list.
+  ruleStatementsByGroup = {
+    dnats = natRuleStatements;
+    droutes = cell: cell.rule;
+    filters = cell: cell.rule;
+    policies = cell: [ policyVerdictStmts.${cell.verdict} ];
+    snats = natRuleStatements;
+    sroutes = cell: cell.rule;
+  };
+
+  /*
+    Emit one cell's rule entry, with the statements its group's body
+    compiles to. A non-null `cell.comment` wraps the statement list as
+    `{ statements; comment; }` — the alternate rule-list element
+    shape per nftypes' `dsl/structure/table.nix`.
   */
   mkRuleBody =
     cell:
     let
-      stmts =
-        if cell ? verdict then
-          [ policyVerdictStmts.${cell.verdict} ]
-        else if cell.rule ? snat then
-          [ (snat (toNatArgs cell.rule.snat)) ]
-        else if cell.rule ? masquerade then
-          [ (masquerade cell.rule.masquerade) ]
-        else if cell.rule ? action then
-          cell.rule.match
-          ++ [
-            (
-              if cell.rule.action ? dnat then
-                dnat (toNatArgs cell.rule.action.dnat)
-              else
-                redirect cell.rule.action.redirect
-            )
-          ]
-        else
-          cell.rule;
+      stmts = ruleStatementsByGroup.${cell.group} cell;
     in
     if cell.comment != null then
       {

@@ -123,7 +123,7 @@ in
   snats.uplink = {
     from = [ "lan" ];
     to = [ "wan" ];
-    rule.masquerade = { };
+    rule.action.masquerade = { };
   };
 
   # Default-deny inbound. The chain-policy default is already

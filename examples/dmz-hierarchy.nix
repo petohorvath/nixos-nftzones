@@ -127,6 +127,6 @@ in
       "dmz"
     ];
     to = [ "wan" ];
-    rule.masquerade = { };
+    rule.action.masquerade = { };
   };
 }

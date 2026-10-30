@@ -12,8 +12,8 @@
 
   A dnat is a directed `from` zone NAT rule that applies in
   prerouting (`type nat hook prerouting priority dstnat`). It
-  carries match conditions on the original packet, a structured
-  rewrite spec, an ordering key, and an optional comment. Consumers
+  carries match conditions on the original packet, an action, an
+  ordering key, and an optional comment. Consumers
   wire it as `lib.mkOption { type = lib.types.attrsOf
   nftzones.types.dnat; }`.
 
@@ -31,7 +31,8 @@
   attrset. The `chain` field is the shared
   `primitives.chainOverride`.
 
-  `dnatRule` has two fields:
+  `dnatRule` is the `{ match; action; }` NAT body shared with snat
+  (`primitives.mkNatRule`, ADR-0012), with two fields:
     - `match`  — a list of nftypes statements matched against the
                  original (pre-DNAT) packet, e.g.
                  `[ (eq tcp.dport 443) ]`. Defaults to `[ ]`
@@ -95,53 +96,29 @@ let
 
   dnatComment = primitives.comment;
 
-  /*
-    Two fields: `match` (defaults to `[ ]`) and `action` (the
-    rewrite). The
-    `action` wrapper exists because `attrTag` requires its attrset
-    to contain exactly one tagged key from its fixed set with no
-    extras — putting `match` next to `dnat` / `redirect` directly
-    would violate that. So `action` carries the attrTag alone,
-    with `match` as its sibling at the parent level. The cost is
-    one extra dot at the user's write site
-    (`rule.action.dnat = …` instead of `rule.dnat = …`); the
-    benefit is type-level enforcement of "exactly one of
-    dnat / redirect".
-  */
-  dnatRule = lib.types.submodule {
-    options = {
-      match = lib.mkOption {
-        type = primitives.rule;
-        default = [ ];
-        example = lib.literalExpression ''
-          [ (eq tcp.dport 443) ]
-        '';
-        description = ''
-          Match conditions on the original (pre-DNAT) packet.
-          Defaults to `[ ]` (unfiltered DNAT from the source
-          zone); typical port-forwarding rules should set this
-          explicitly, e.g. `[ (eq tcp.dport 443) ]`.
-        '';
+  dnatRule = primitives.mkNatRule {
+    actions = {
+      dnat = lib.mkOption {
+        type = nftypes.types.statementBodies.natBody;
+        description = "Full destination address translation.";
       };
-      action = lib.mkOption {
-        type = lib.types.attrTag {
-          dnat = lib.mkOption {
-            type = nftypes.types.statementBodies.natBody;
-            description = "Full destination address translation.";
-          };
-          redirect = lib.mkOption {
-            type = nftypes.types.statementBodies.masqueradeBody;
-            description = "Redirect to the local host.";
-          };
-        };
-        description = ''
-          Rewrite spec — exactly one of `dnat` (full address
-          translation) or `redirect` (auto-target localhost).
-          Inner submodule shapes are reused from nftypes'
-          `natBody` and `masqueradeBody`.
-        '';
+      redirect = lib.mkOption {
+        type = nftypes.types.statementBodies.masqueradeBody;
+        description = "Redirect to the local host.";
       };
     };
+    actionDescription = ''
+      The action — exactly one of `dnat` (full address
+      translation) or `redirect` (auto-target localhost).
+      Inner submodule shapes are reused from nftypes'
+      `natBody` and `masqueradeBody`.
+    '';
+    matchDescription = ''
+      Match conditions on the original (pre-DNAT) packet.
+      Defaults to `[ ]` (unfiltered DNAT from the source
+      zone); typical port-forwarding rules should set this
+      explicitly, e.g. `[ (eq tcp.dport 443) ]`.
+    '';
   };
 
   dnatPriority = primitives.entryPriority;
@@ -182,7 +159,7 @@ let
             }
           '';
           description = ''
-            Match conditions and the rewrite. See `dnatRule` for
+            Match conditions and the action. See `dnatRule` for
             the field layout.
           '';
         };
