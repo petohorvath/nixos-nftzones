@@ -7,8 +7,8 @@
 
   Split across three tables to avoid family-mismatch issues with
   ICMP under `inet`: TCP+UDP land in an `inet` table (both
-  families, both L4 protocols), v4 ICMP lands in an `ip` table,
-  v6 ICMP lands in an `ip6` table. All twelve filters share one
+  families, both L4 protocols), `icmp` lands in an `ip` table,
+  `icmpv6` lands in an `ip6` table. All twelve filters share one
   zone shape (single source zone → `local`) — the only thing
   varying is the rule body produced by the snippet.
 
@@ -61,9 +61,9 @@ in
         family = "ip";
         zones = mkZones "eth1";
         filters = {
-          accept-icmp = toLocal (accept.icmp.v4 8);
-          drop-icmp = toLocal (drop.icmp.v4 9);
-          reject-icmp = toLocal (reject.icmp.v4 8);
+          accept-icmp = toLocal (accept.icmp 8);
+          drop-icmp = toLocal (drop.icmp 9);
+          reject-icmp = toLocal (reject.icmp 8);
         };
       };
     }
@@ -74,9 +74,9 @@ in
         family = "ip6";
         zones = mkZones "eth2";
         filters = {
-          accept-icmp = toLocal (accept.icmp.v6 128);
-          drop-icmp = toLocal (drop.icmp.v6 134);
-          reject-icmp = toLocal (reject.icmp.v6 128);
+          accept-icmp = toLocal (accept.icmpv6 128);
+          drop-icmp = toLocal (drop.icmpv6 134);
+          reject-icmp = toLocal (reject.icmpv6 128);
         };
       };
     }

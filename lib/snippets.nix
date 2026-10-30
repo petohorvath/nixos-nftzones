@@ -12,8 +12,8 @@
 
     nftzones.snippets.{accept|drop|reject}.tcp ports
     nftzones.snippets.{accept|drop|reject}.udp ports
-    nftzones.snippets.{accept|drop|reject}.icmp.v4 types
-    nftzones.snippets.{accept|drop|reject}.icmp.v6 types
+    nftzones.snippets.{accept|drop|reject}.icmp types
+    nftzones.snippets.{accept|drop|reject}.icmpv6 types
 
   `ports` accepts ints, decimal strings, range strings (`"8000-8100"`
   or `"8000:8100"`), `libnet.port` values, `libnet.portRange`
@@ -25,15 +25,15 @@
   Reject variant per protocol:
     - `reject.tcp`     → `reject { type = "tcp reset"; }` (TCP RST)
     - `reject.udp`     → `reject { }` (ICMP port-unreachable)
-    - `reject.icmp.v4` → `reject { }` (family-aware default)
-    - `reject.icmp.v6` → `reject { }` (family-aware default)
+    - `reject.icmp`    → `reject { }` (family-aware default)
+    - `reject.icmpv6`  → `reject { }` (family-aware default)
 
   Field-name mapping:
-    - `icmp.v4` → `nftypes.dsl.fields.icmp.type`
-    - `icmp.v6` → `nftypes.dsl.fields.icmpv6.type`
-    The leaf keys (`v4` / `v6`) match the existing nftzones zone
-    convention (`zones.<name>.v4` / `<zone>_v4` sets); the `icmpv6`
-    spelling at the field path is nftypes' own.
+    - `icmp`   → `nftypes.dsl.fields.icmp.type`
+    - `icmpv6` → `nftypes.dsl.fields.icmpv6.type`
+    The snippet names are the nftables protocol names, so they
+    match the `icmp.type` and `icmpv6.type` fields of a
+    hand-written rule.
 */
 { inputs }:
 let
@@ -52,68 +52,46 @@ let
 
   matchers = import ./snippets/matchers.nix { inherit inputs; };
   inherit (matchers) mkIcmpMatch mkPortMatch;
+
+  /*
+    One verdict's snippet set: each protocol's match followed by
+    `verdict`. `tcpVerdict` replaces `verdict` after the TCP port
+    match, for a verdict whose TCP form differs, as `reject`'s TCP
+    reset does.
+  */
+  mkVerdictSnippets =
+    {
+      verdict,
+      tcpVerdict ? verdict,
+    }:
+    {
+      tcp = ports: [
+        (mkPortMatch tcp.dport ports)
+        tcpVerdict
+      ];
+      udp = ports: [
+        (mkPortMatch udp.dport ports)
+        verdict
+      ];
+      icmp = types: [
+        (mkIcmpMatch icmp.type types)
+        verdict
+      ];
+      icmpv6 = types: [
+        (mkIcmpMatch icmpv6.type types)
+        verdict
+      ];
+    };
 in
 {
-  accept = {
-    tcp = ports: [
-      (mkPortMatch tcp.dport ports)
-      accept
-    ];
-    udp = ports: [
-      (mkPortMatch udp.dport ports)
-      accept
-    ];
-    icmp = {
-      v4 = types: [
-        (mkIcmpMatch icmp.type types)
-        accept
-      ];
-      v6 = types: [
-        (mkIcmpMatch icmpv6.type types)
-        accept
-      ];
-    };
-  };
+  accept = mkVerdictSnippets { verdict = accept; };
 
-  drop = {
-    tcp = ports: [
-      (mkPortMatch tcp.dport ports)
-      drop
-    ];
-    udp = ports: [
-      (mkPortMatch udp.dport ports)
-      drop
-    ];
-    icmp = {
-      v4 = types: [
-        (mkIcmpMatch icmp.type types)
-        drop
-      ];
-      v6 = types: [
-        (mkIcmpMatch icmpv6.type types)
-        drop
-      ];
-    };
-  };
+  drop = mkVerdictSnippets { verdict = drop; };
 
-  reject = {
-    tcp = ports: [
-      (mkPortMatch tcp.dport ports)
-      (reject { type = "tcp reset"; })
-    ];
-    udp = ports: [
-      (mkPortMatch udp.dport ports)
-      (reject { })
-    ];
-    icmp = {
-      v4 = types: [
-        (mkIcmpMatch icmp.type types)
-        (reject { })
-      ];
-      v6 = types: [
-        (mkIcmpMatch icmpv6.type types)
-        (reject { })
-      ];
-    };
+  # `reject { }` is the family-aware default reject, used after the
+  # UDP, ICMP and ICMPv6 matches; a TCP match answers with a reset.
+  reject = mkVerdictSnippets {
+    verdict = reject { };
+    tcpVerdict = reject { type = "tcp reset"; };
   };
 }

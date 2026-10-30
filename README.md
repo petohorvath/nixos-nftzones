@@ -236,7 +236,7 @@ in
     allow-ping = {
       from = [ "all" ];
       to = [ "local" ];
-      rule = snippets.accept.icmp.v4 "echo-request";
+      rule = snippets.accept.icmp "echo-request";
     };
     reject-rdp = {
       from = [ "wan" ];
@@ -247,7 +247,7 @@ in
 }
 ```
 
-Each of `accept`, `drop`, and `reject` provides `tcp`, `udp`, `icmp.v4`, and `icmp.v6`. Port arguments take an integer, a decimal string, a range string such as `"8000-8100"` or `"8000:8100"`, a `libnet` port or port range, or a list of these. ICMP arguments take type numbers from 0 to 255 or names such as `"echo-request"`, or a list of one form. `reject.tcp` answers with a TCP reset; the other `reject` variants send the nftables default ICMP port-unreachable reply. [`lib/snippets.nix`](lib/snippets.nix) and the files in [`lib/snippets/`](lib/snippets/) document the full contract.
+Each of `accept`, `drop`, and `reject` provides `tcp`, `udp`, `icmp`, and `icmpv6`. Port arguments take an integer, a decimal string, a range string such as `"8000-8100"` or `"8000:8100"`, a `libnet` port or port range, or a list of these. ICMP arguments take type numbers from 0 to 255 or names such as `"echo-request"`, or a list of one form. `reject.tcp` answers with a TCP reset; the other `reject` variants send the nftables default ICMP port-unreachable reply. [`lib/snippets.nix`](lib/snippets.nix) and the files in [`lib/snippets/`](lib/snippets/) document the full contract.
 
 ## Compose several tables
 
