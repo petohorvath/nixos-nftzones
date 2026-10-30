@@ -943,7 +943,7 @@ let
                 "snat"
                 "addr"
               ]
-              "rule.action.snat.addr is null — `snat` requires a target address. Use `rule.action.masquerade = { }` for auto-target via the outgoing interface, or set `rule.action.snat.addr` explicitly."
+              "is null — `snat` requires a target address. Use `rule.action.masquerade = { }` for auto-target via the outgoing interface, or set `rule.action.snat.addr` explicitly."
           )
         ) table.snats
       );
@@ -952,8 +952,16 @@ let
         lib.mapAttrsToList (
           name: entry:
           lib.optional ((entry.rule.action ? dnat) && entry.rule.action.dnat.addr == null) (
-            mkDiagnostic "natBodyMissingAddr" [ "dnats" name ]
-              "rule.action.dnat.addr is null — `dnat` requires a target address. Use `rule.action.redirect = { port = N; }` for redirect-to-localhost, or set `rule.action.dnat.addr` explicitly."
+            mkDiagnostic "natBodyMissingAddr"
+              [
+                "dnats"
+                name
+                "rule"
+                "action"
+                "dnat"
+                "addr"
+              ]
+              "is null — `dnat` requires a target address. Use `rule.action.redirect = { port = N; }` for redirect-to-localhost, or set `rule.action.dnat.addr` explicitly."
           )
         ) table.dnats
       );

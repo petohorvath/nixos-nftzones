@@ -1084,6 +1084,10 @@ in
           path = [
             "dnats"
             "bad-fwd"
+            "rule"
+            "action"
+            "dnat"
+            "addr"
           ];
         }
       ];
@@ -1114,6 +1118,10 @@ in
           path = [
             "dnats"
             "bad-d"
+            "rule"
+            "action"
+            "dnat"
+            "addr"
           ];
         }
         {

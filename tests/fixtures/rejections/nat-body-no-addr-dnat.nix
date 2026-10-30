@@ -14,6 +14,10 @@ _: {
       path = [
         "dnats"
         "bad-fwd"
+        "rule"
+        "action"
+        "dnat"
+        "addr"
       ];
     }
   ];
