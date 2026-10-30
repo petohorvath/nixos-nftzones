@@ -184,7 +184,7 @@ in
     expr = diagnosticsFor {
       zones.dmz.cidrs = [ "10.0.0.0/24" ];
       nodes.web-server = {
-        zone = "dmz";
+        parent = "dmz";
         address.ipv4 = "10.0.0.5";
       };
     };
@@ -253,7 +253,7 @@ in
       zones.lan.interfaces = [ "lan0" ];
       zones.vpn.interfaces = [ "vpn0" ];
       nodes.web = {
-        zone = "lan";
+        parent = "lan";
         address.ipv4 = "10.0.0.5";
       };
     };

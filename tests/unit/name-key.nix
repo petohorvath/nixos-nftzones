@@ -55,7 +55,7 @@ let
     equal key-derived values merge and it resolves to the key ("z").
 
     Only `.name` is forced, so required sibling fields (e.g.
-    `node.zone`) are never evaluated and an empty body suffices for
+    `node.parent`) are never evaluated and an empty body suffices for
     every type.
   */
   copySafeName =

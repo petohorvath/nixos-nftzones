@@ -40,7 +40,7 @@ in
     zones.lan.interfaces = [ "lan0" ];
 
     nodes.web = {
-      zone = "lan";
+      parent = "lan";
       address.ipv4 = "10.0.0.5";
     };
 

@@ -139,7 +139,7 @@ pkgs.testers.runNixOSTest {
               # claiming a duplicate iface for a second zone
               # (which the interfaceOverlap validator rejects).
               nodes.marked-host = {
-                zone = "lan";
+                parent = "lan";
                 address.ipv4 = clientMarkedIp;
               };
 

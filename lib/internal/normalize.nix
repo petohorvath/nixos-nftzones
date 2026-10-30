@@ -415,11 +415,11 @@ let
       collectNodeParentRefs =
         nodes:
         lib.mapAttrsToList (entryName: entry: {
-          inherit (entry) zone;
+          zone = entry.parent;
           path = [
             "nodes"
             entryName
-            "zone"
+            "parent"
           ];
         }) nodes;
 

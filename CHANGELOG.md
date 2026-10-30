@@ -27,6 +27,7 @@
 - **`internal` only:** `internal.normalize` exports only `diagnose`, which returns Phase 1's errors and warnings as `{ tag; path; message; }` data, and `normalizeTable`. Its compute steps and validators are private, and `normalizeTable`'s `ctx` keeps only `zoneMembership`, `expandedGroups` and `resolvedPriorities`.
 - **Breaking:** an snat's body has the dnat shape, `rule = { match; action; }`, so an snat can translate only some traffic, such as one protocol or port range ([ADR-0012](docs/adr/0012-nat-entries-share-match-action-body.md)). `match` is a list of statements and defaults to `[ ]`; `action` holds exactly one of `snat` or `masquerade`. The compiled rule is the match statements followed by the action. The `natBodyMissingAddr` error for an snat names `snats.<name>.rule.action.snat.addr`.
 - **`internal` only:** each Phase 2 cell in `ctx.cells` carries a `group` field, the name of the rule group it came from, such as `snats`. `internal.emit.mkRuleBody` picks a cell's statements by its `group` instead of probing the shape of its `rule`, because snat and dnat bodies now both have an `action` key.
+- **Breaking:** a node names its parent zone with `nodes.<name>.parent`, as a zone does, instead of `nodes.<name>.zone`. The `zone` option is removed without an alias, so a node that still sets it fails at evaluation, and an unknown parent is reported as `invalidZoneRef` at `nodes.<name>.parent`.
 
 ### Removed
 
@@ -50,6 +51,8 @@ Update rules written with the nftypes DSL as the nftypes [changelog](https://git
 Give every sroute and droute a `rule`; a filter's `rule` must not be empty.
 
 Rewrite each snat's `rule.masquerade` as `rule.action.masquerade` and `rule.snat` as `rule.action.snat`.
+
+Rename `nodes.<name>.zone` to `nodes.<name>.parent`.
 
 Remove `follows` or overrides for the `nftzones` inputs `nixpkgs-unstable` and `git-hooks`. Keep `nftzones.inputs.nixpkgs.follows`; the `nftypes` input name is unchanged.
 

@@ -82,6 +82,10 @@ Diagnostic at `zones.<zone>.parent`:
   parent (`zoneParentLocalZone`).
 - No cycles in the parent chain (`zoneParentCycle`).
 
+A node names its parent zone with `nodes.<node>.parent`, as a zone
+does. A parent that names no zone, node or `settings.localZone` is
+reported as `invalidZoneRef` at `nodes.<node>.parent`.
+
 ## Worked example
 
 (Assumes `inherit (nix-nftypes.lib.dsl) eq accept limit;` and
@@ -94,7 +98,7 @@ zones.dmz = {
 };
 
 nodes.web-server = {
-  zone = "dmz";              # → lowered zone with parent = "dmz"
+  parent = "dmz";            # → lowered zone with parent = "dmz"
   address.ipv4 = "10.0.0.5";
 };
 

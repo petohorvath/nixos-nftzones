@@ -749,7 +749,7 @@ in
             name = "fw";
             zones.dmz.interfaces = [ "dmz0" ];
             nodes.web-server = {
-              zone = "dmz";
+              parent = "dmz";
               address.ipv4 = "10.0.0.5";
             };
             filters.allow-http = {
@@ -793,7 +793,7 @@ in
             zones.wan.interfaces = [ "wan0" ];
             zones.vpn.cidrs = [ "10.8.0.0/24" ];
             nodes.web-server = {
-              zone = "dmz";
+              parent = "dmz";
               address.ipv4 = "10.0.0.5";
             };
             filters.dmz-out = {
@@ -835,15 +835,15 @@ in
             name = "fw";
             zones.dmz.interfaces = [ "dmz0" ];
             nodes.db = {
-              zone = "dmz";
+              parent = "dmz";
               address.ipv4 = "10.0.0.6";
             };
             nodes.mail = {
-              zone = "dmz";
+              parent = "dmz";
               address.ipv4 = "10.0.0.7";
             };
             nodes.web-server = {
-              zone = "dmz";
+              parent = "dmz";
               address.ipv4 = "10.0.0.5";
             };
             filters.dmz-ssh = {

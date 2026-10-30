@@ -87,14 +87,14 @@ in
 
   /*
     Pinned as is, though wrong: a node lowers into a zone whose parent
-    is `node.zone`, so one unknown `nodes.web.zone` is reported twice,
+    is `node.parent`, so one unknown `nodes.web.parent` is reported twice,
     once at the path the user wrote and once at `zones.web.parent`,
     a path the user never wrote.
   */
   testParentRefUnknownFromNodeCascades = {
     expr = diagnosticsFor {
       nodes.web = {
-        zone = "ghost";
+        parent = "ghost";
         address.ipv4 = "10.0.0.5";
       };
     };
@@ -105,7 +105,7 @@ in
           path = [
             "nodes"
             "web"
-            "zone"
+            "parent"
           ];
         }
         {
@@ -213,7 +213,7 @@ in
     expr = diagnosticsFor {
       zones.lan.interfaces = [ "lan0" ];
       nodes.web = {
-        zone = "lan";
+        parent = "lan";
         address.ipv4 = "1.1.1.1";
       };
     };
@@ -228,7 +228,7 @@ in
         web = { };
       };
       nodes.web = {
-        zone = "lan";
+        parent = "lan";
         address.ipv4 = "1.1.1.1";
       };
     };
@@ -256,11 +256,11 @@ in
       };
       nodes = {
         a = {
-          zone = "x";
+          parent = "x";
           address.ipv4 = "1.1.1.1";
         };
         c = {
-          zone = "x";
+          parent = "x";
           address.ipv4 = "2.2.2.2";
         };
       };
@@ -325,7 +325,7 @@ in
       zones.lan.interfaces = [ "lan0" ];
       nodes.web = {
         name = "other";
-        zone = "lan";
+        parent = "lan";
         address.ipv4 = "10.0.0.5";
       };
     };
@@ -377,7 +377,7 @@ in
     expr = diagnosticsFor {
       zones.lan.interfaces = [ "lan0" ];
       nodes.web = {
-        zone = "lan";
+        parent = "lan";
         address.ipv4 = "1.1.1.1";
       };
     };
@@ -427,7 +427,7 @@ in
     expr = diagnosticsFor {
       zones.lan.interfaces = [ "lan0" ];
       nodes.local = {
-        zone = "lan";
+        parent = "lan";
         address.ipv4 = "1.1.1.1";
       };
     };
@@ -700,12 +700,12 @@ in
     };
   };
 
-  # `nodes.<name>.zone` names a parent; it matches no traffic.
-  testZoneMatchableSkipsNodeZone = {
+  # `nodes.<name>.parent` names a parent; it matches no traffic.
+  testZoneMatchableSkipsNodeParent = {
     expr = diagnosticsFor {
       zones.empty = { };
       nodes.api = {
-        zone = "empty";
+        parent = "empty";
         address.ipv4 = "10.0.0.5";
       };
     };
@@ -718,7 +718,7 @@ in
     expr = diagnosticsFor {
       zones.dmz.interfaces = [ "dmz0" ];
       nodes.web = {
-        zone = "dmz";
+        parent = "dmz";
         address.ipv4 = "10.0.0.5";
       };
     };
@@ -729,7 +729,7 @@ in
     expr = diagnosticsFor {
       zones.dmz.interfaces = [ "dmz0" ];
       nodes.web = {
-        zone = "dmz";
+        parent = "dmz";
         address.ipv6 = "fe80::1";
       };
     };
@@ -740,7 +740,7 @@ in
     expr = diagnosticsFor {
       zones.dmz.interfaces = [ "dmz0" ];
       nodes.web = {
-        zone = "dmz";
+        parent = "dmz";
         address = { };
       };
     };
@@ -763,15 +763,15 @@ in
       zones.dmz.interfaces = [ "dmz0" ];
       nodes = {
         a = {
-          zone = "dmz";
+          parent = "dmz";
           address = { };
         };
         b = {
-          zone = "dmz";
+          parent = "dmz";
           address = { };
         };
         c = {
-          zone = "dmz";
+          parent = "dmz";
           address.ipv4 = "10.0.0.5";
         };
       };

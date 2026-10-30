@@ -18,7 +18,7 @@
   zone value mirroring the `nftzones.types.zone` submodule's
   evaluated form:
     name          = node.name;
-    parent        = node.zone;
+    parent        = node.parent;
     interfaces    = [ ];
     cidrs         = optional ipv4 "${ipv4}/32"
                  ++ optional ipv6 "${ipv6}/128";
@@ -29,7 +29,7 @@
   merge.
 
   At the type layer:
-    - `zone` (parent reference) is required.
+    - `parent` (parent zone reference) is required.
     - `address` is a submodule with two nullable fields. The
       "at least one of `ipv4` / `ipv6` must be set" constraint
       is NOT enforced at the type layer — `addCheck` operates
@@ -42,7 +42,7 @@
   Cross-cutting concerns (Phase 1 diagnostics):
     - Node names must not collide with zone names (shared
       namespace at compile time) — `zoneNameCollision`.
-    - `node.zone` must reference an existing zone —
+    - `node.parent` must reference an existing zone —
       `invalidZoneRef`.
     - At least one of `address.ipv4` / `address.ipv6` is set —
       `nodeAddressMissing`.
@@ -57,11 +57,11 @@
     config.zones.lan = { interfaces = [ "eth2" ]; };
     config.nodes = {
       web-server = {
-        zone = "dmz";
+        parent = "dmz";
         address.ipv4 = "10.0.0.5";
       };
       admin-laptop = {
-        zone = "lan";
+        parent = "lan";
         address = {
           ipv4 = "10.0.0.50";
           ipv6 = "fe80::1";
@@ -128,7 +128,7 @@ let
           '';
         };
 
-        zone = lib.mkOption {
+        parent = lib.mkOption {
           type = zoneName;
           example = "dmz";
           description = ''

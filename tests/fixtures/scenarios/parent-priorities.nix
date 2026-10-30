@@ -18,7 +18,7 @@ in
     };
 
     nodes.web-server = {
-      zone = "dmz";
+      parent = "dmz";
       address.ipv4 = "10.0.0.5";
     };
 

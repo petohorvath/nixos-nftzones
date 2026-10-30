@@ -54,7 +54,7 @@ in
           (ctxFor {
             zones.dmz.interfaces = [ "eth1" ];
             nodes.web = {
-              zone = "dmz";
+              parent = "dmz";
               address = {
                 ipv4 = "10.0.0.5";
                 ipv6 = "fe80::1";
@@ -107,11 +107,11 @@ in
             zones.z1.interfaces = [ "z1" ];
             zones.z2.interfaces = [ "z2" ];
             nodes.a = {
-              zone = "z1";
+              parent = "z1";
               address.ipv4 = "1.1.1.1";
             };
             nodes.b = {
-              zone = "z2";
+              parent = "z2";
               address.ipv6 = "fe80::1";
             };
           }).zoneMembership;
@@ -183,7 +183,7 @@ in
       zones.lan.interfaces = [ "lan0" ];
       zones.web.interfaces = [ "lan0" ];
       nodes.web = {
-        zone = "lan";
+        parent = "lan";
         address.ipv4 = "10.0.0.5";
       };
     };
@@ -220,7 +220,7 @@ in
         table = evalTable {
           zones.lan.interfaces = [ "lan0" ];
           nodes.web = {
-            zone = "lan";
+            parent = "lan";
             address.ipv4 = "10.0.0.5";
           };
           filters.f = {
@@ -287,7 +287,7 @@ in
         zones.lan.interfaces = [ "lan0" ];
         zones.wan.interfaces = [ "wan0" ];
         nodes.web = {
-          zone = "lan";
+          parent = "lan";
           address.ipv4 = "10.0.0.5";
         };
         filters.f = {
@@ -572,18 +572,18 @@ in
     ];
   };
 
-  # Each node's zone is a reference too. The lowered zone's unknown
+  # Each node's parent is a reference too. The lowered zone's unknown
   # parent cascades into a second error on a path the user never
   # wrote; pinned as is (#22 leaves node-derived paths unfixed).
-  testZoneRefCollectionCoversNodeZones = {
+  testZoneRefCollectionCoversNodeParents = {
     expr =
       (diagnosticsFor {
         nodes.api = {
-          zone = "ghost";
+          parent = "ghost";
           address.ipv4 = "1.1.1.1";
         };
         nodes.web = {
-          zone = "ghost";
+          parent = "ghost";
           address.ipv4 = "2.2.2.2";
         };
       }).errors;
@@ -591,12 +591,12 @@ in
       (invalidZoneRefAt [
         "nodes"
         "api"
-        "zone"
+        "parent"
       ])
       (invalidZoneRefAt [
         "nodes"
         "web"
-        "zone"
+        "parent"
       ])
       {
         tag = "zoneParentUnknown";
@@ -656,7 +656,7 @@ in
       zones.lan.interfaces = [ "lan0" ];
       zones.wan.interfaces = [ "wan0" ];
       nodes.web = {
-        zone = "lan";
+        parent = "lan";
         address.ipv4 = "10.0.0.5";
       };
       filters.f = {

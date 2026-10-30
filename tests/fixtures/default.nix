@@ -80,6 +80,7 @@ in
     nat-body-no-addr-dnat = import ./rejections/nat-body-no-addr-dnat.nix rejectionArgs;
     nat-body-no-addr-snat = import ./rejections/nat-body-no-addr-snat.nix rejectionArgs;
     node-address-missing = import ./rejections/node-address-missing.nix rejectionArgs;
+    node-zone-option = import ./rejections/node-zone-option.nix rejectionArgs;
     object-comment-injection = import ./rejections/object-comment-injection.nix rejectionArgs;
     object-refs = import ./rejections/object-refs.nix rejectionArgs;
     object-refs-snat-match = import ./rejections/object-refs-snat-match.nix rejectionArgs;

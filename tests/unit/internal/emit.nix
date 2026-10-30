@@ -149,7 +149,7 @@ in
         output =
           (runEmit {
             nodes.api = {
-              zone = "dmz";
+              parent = "dmz";
               address = {
                 ipv4 = "10.0.0.5";
                 ipv6 = "fe80::1";
@@ -878,7 +878,7 @@ in
       zoneMembership = membershipFor {
         zones.dmz.interfaces = [ "dmz0" ];
         nodes.web-server = {
-          zone = "dmz";
+          parent = "dmz";
           address.ipv4 = "10.0.0.5";
         };
       };
@@ -1501,7 +1501,7 @@ in
               cidrs = [ "10.0.0.0/24" ];
             };
             nodes.web-server = {
-              zone = "dmz";
+              parent = "dmz";
               address.ipv4 = "10.0.0.5";
             };
             filters.allow-http = {

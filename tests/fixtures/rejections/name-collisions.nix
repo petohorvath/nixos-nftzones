@@ -4,7 +4,7 @@
   with the other in the zone namespace; Phase 1 must reject so
   the user fixes the ambiguity.
 
-  The lowered node clobbers the zone, so the node's `zone = "web"`
+  The lowered node clobbers the zone, so the node's `parent = "web"`
   also reads as a self-parent cycle. The expected errors pin that
   cascade (#7); fixing the clobber removes the second error.
 */
@@ -35,7 +35,7 @@ _: {
     };
 
     nodes.web = {
-      zone = "web";
+      parent = "web";
       address.ipv4 = "10.0.0.5";
     };
   };

@@ -98,7 +98,7 @@ in
         parent = "ghost";
       };
       zones.web.interfaces = [ "web0" ];
-      nodes.web.zone = "lan";
+      nodes.web.parent = "lan";
       filters.f = {
         from = [ "nowhere" ];
         to = [ "local" ];
@@ -187,7 +187,7 @@ in
             parent = "a";
           };
         };
-        nodes.web.zone = "lan";
+        nodes.web.parent = "lan";
         filters.f = {
           from = [ "ghost" ];
           to = [ "local" ];

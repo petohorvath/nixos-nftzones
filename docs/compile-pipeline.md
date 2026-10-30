@@ -110,7 +110,7 @@ The merged zone namespace, the in-scope zone names, the collected zone reference
 `internal.node.toZone` converts each node to a zone definition:
 
 ```
-{ name = "web-server"; zone = "dmz";
+{ name = "web-server"; parent = "dmz";
   address = { ipv4 = "10.0.0.5"; ipv6 = null; }; }
 ↓
 { parent = "dmz"; interfaces = [ ]; cidrs = [ "10.0.0.5/32" ]; }
@@ -177,7 +177,7 @@ Checks enforced by the table type fail during module evaluation, before Phase 1 
 | `zoneNameCollision`        | `nodes.<node>`                                                                                   | A node named like a zone; lowering would overwrite the zone.                                                                                                                                                                                         |
 | `nameKeyMismatch`          | `<group>.<key>.name`                                                                             | An explicit `name` that differs from its attribute key, in `zones`, `nodes` or a rule group.                                                                                                                                                         |
 | `settingsConflict`         | `settings.localZone`, or the `zones.<zone>` or `nodes.<node>` that shadows a setting             | `localZone` equal to `wildcardZone`, or a zone or node named like either one.                                                                                                                                                                        |
-| `invalidZoneRef`           | `<group>.<entry>.<direction>.<index>` or `nodes.<node>.zone`                                     | A zone reference that names no zone, node or `settings.localZone`.                                                                                                                                                                                   |
+| `invalidZoneRef`           | `<group>.<entry>.<direction>.<index>` or `nodes.<node>.parent`                                   | A zone reference that names no zone, node or `settings.localZone`.                                                                                                                                                                                   |
 | `zoneNotMatchable`         | `<group>.<entry>.<direction>.<index>`                                                            | A `from` / `to` reference to a zone with no interfaces, CIDRs or active override of its own on that side. Descendant sets do not make an empty grouping zone directly referenceable.                                                                 |
 | `chainOverrideUnreachable` | `<group>.<entry>.<direction>`                                                                    | A `chain` override at a hook where a referenced zone has no usable match, because interface fields are unavailable there.                                                                                                                            |
 | `invalidChainPlacement`    | `<group>.<entry>`                                                                                | A `(family, chain type, hook)` triple the kernel refuses (via `nftypes.compatibility.validChainPlacement`), such as bridge nat, bridge sroute / droute (no `mangle` priority), or a `srcnat` / `dstnat` priority at a hook where `nat` can't attach. |

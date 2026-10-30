@@ -32,27 +32,38 @@ in
   testNodeNameDerivedFromKey = {
     expr =
       (nodeIn {
-        zone = "dmz";
+        parent = "dmz";
         address.ipv4 = "10.0.0.5";
       }).name;
     expected = "web-server";
   };
 
-  # ===== node.zone — required (no default) =====
+  # ===== node.parent — required (no default) =====
 
-  testNodeZoneRequired = {
-    # zone is required — omitting throws "option not defined".
-    expr = evalFails (nodeIn { address.ipv4 = "10.0.0.5"; }).zone;
+  testNodeParentRequired = {
+    # parent is required — omitting throws "option not defined".
+    expr = evalFails (nodeIn { address.ipv4 = "10.0.0.5"; }).parent;
     expected = true;
   };
 
-  testNodeZoneAccepted = {
+  testNodeParentAccepted = {
     expr =
       (nodeIn {
-        zone = "dmz";
+        parent = "dmz";
         address.ipv4 = "10.0.0.5";
-      }).zone;
+      }).parent;
     expected = "dmz";
+  };
+
+  # `zone` is the old spelling, removed with no alias.
+  testNodeZoneRejected = {
+    expr =
+      evalFails
+        (nodeIn {
+          zone = "dmz";
+          address.ipv4 = "10.0.0.5";
+        }).address;
+    expected = true;
   };
 
   # ===== node.address — at least one of ipv4 / ipv6 (apply throws) =====
@@ -60,7 +71,7 @@ in
   testNodeAddressV4Only = {
     expr =
       (nodeIn {
-        zone = "dmz";
+        parent = "dmz";
         address.ipv4 = "10.0.0.5";
       }).address;
     expected = {
@@ -72,7 +83,7 @@ in
   testNodeAddressV6Only = {
     expr =
       (nodeIn {
-        zone = "dmz";
+        parent = "dmz";
         address.ipv6 = "fe80::1";
       }).address;
     expected = {
@@ -84,7 +95,7 @@ in
   testNodeAddressBoth = {
     expr =
       (nodeIn {
-        zone = "dmz";
+        parent = "dmz";
         address = {
           ipv4 = "10.0.0.5";
           ipv6 = "fe80::1";
@@ -105,7 +116,7 @@ in
     # for the rejection tests.
     expr =
       (nodeIn {
-        zone = "dmz";
+        parent = "dmz";
         address = { };
       }).address;
     expected = {
@@ -120,7 +131,7 @@ in
     expr =
       evalFails
         (nodeIn {
-          zone = "dmz";
+          parent = "dmz";
           address.ipv4 = "999.0.0.1";
         }).address;
     expected = true;
@@ -132,7 +143,7 @@ in
     expr =
       evalFails
         (nodeIn {
-          zone = "dmz";
+          parent = "dmz";
           address.ipv4 = "10.0.0.5/32";
         }).address;
     expected = true;
@@ -142,7 +153,7 @@ in
     expr =
       evalFails
         (nodeIn {
-          zone = "dmz";
+          parent = "dmz";
           address.ipv6 = "not-an-address";
         }).address;
     expected = true;
