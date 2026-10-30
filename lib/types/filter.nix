@@ -19,7 +19,7 @@
   of `zoneName` strings) — see `lib/types/zone.nix`. Whether each
   entry resolves to a declared zone, `settings.localZone`, or
   `settings.wildcardZone` is a cross-cutting check that Phase 1
-  performs, reporting an unresolved entry as an `invalidZoneRef`
+  performs, reporting an unresolved entry as a `zoneRefUnknown`
   diagnostic.
 
   `filterRule` entries pass through nftypes' attrTag validation, so
@@ -115,7 +115,7 @@ let
             either a declared zone name, the configured
             `settings.localZone` (default `"local"`), or
             `settings.wildcardZone` (default `"all"`). Phase 1
-            reports any other name as an `invalidZoneRef`
+            reports any other name as a `zoneRefUnknown`
             diagnostic.
           '';
         };

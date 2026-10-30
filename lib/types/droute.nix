@@ -90,7 +90,7 @@ let
             entry is either a declared zone name, the configured
             `settings.localZone` (default `"local"`), or
             `settings.wildcardZone` (default `"all"`). Phase 1
-            reports any other name as an `invalidZoneRef`
+            reports any other name as a `zoneRefUnknown`
             diagnostic.
           '';
         };

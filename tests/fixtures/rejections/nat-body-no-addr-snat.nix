@@ -1,16 +1,16 @@
 /*
-  Rejection scenario for `natBodyMissingAddr` — `rule.action.snat`
+  Rejection scenario for `natAddrMissing` — `rule.action.snat`
   with a port and no `addr`. nftypes' `natBody` type accepts it (it
   needs an `addr` or a `port`), but nftzones requires a target
   address, pointing to `rule.action.masquerade` as the no-address
   alternative. Phase 1 catches it early with a clear error.
 */
 _: {
-  description = "natBodyMissingAddr: rule.action.snat with null addr";
+  description = "natAddrMissing: rule.action.snat with null addr";
 
   errors = [
     {
-      tag = "natBodyMissingAddr";
+      tag = "natAddrMissing";
       path = [
         "snats"
         "outbound"

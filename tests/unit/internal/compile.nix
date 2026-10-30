@@ -58,7 +58,7 @@ in
 
   testCompileThrowsOnPhase1Error = {
     # `from = [ "missing" ]` references an unknown zone — Phase 1
-    # reports `invalidZoneRef`; `normalizeTable` aggregates errors
+    # reports `zoneRefUnknown`; `normalizeTable` aggregates errors
     # and throws.
     expr =
       let

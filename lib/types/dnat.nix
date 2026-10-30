@@ -27,8 +27,8 @@
   `from` uses the shared `zoneNames` type and the same wildcard
   / localZone behaviour as filter and snat — see
   `types/filter.nix` for the full discussion. Phase 1 runs
-  the cross-cutting checks, reporting an unresolved zone as an
-  `invalidZoneRef` diagnostic. The `chain` field is the shared
+  the cross-cutting checks, reporting an unresolved zone as a
+  `zoneRefUnknown` diagnostic. The `chain` field is the shared
   `primitives.chainOverride`.
 
   `dnatRule` is the `{ match; action; }` NAT body shared with snat
@@ -146,7 +146,7 @@ let
             either a declared zone name, the configured
             `settings.localZone` (default `"local"`), or
             `settings.wildcardZone` (default `"all"`). Phase 1
-            reports any other name as an `invalidZoneRef`
+            reports any other name as a `zoneRefUnknown`
             diagnostic.
           '';
         };

@@ -550,7 +550,7 @@ let
 
       mkError =
         group: placement: reason:
-        mkDiagnostic "invalidChainPlacement" [ group placement.entryName ]
+        mkDiagnostic "chainPlacementInvalid" [ group placement.entryName ]
           "would emit a base chain at (family=${family}, hook=${placement.hook}, priority=${toString placement.priority}) — ${reason}";
 
       classify =
@@ -934,7 +934,7 @@ let
         lib.mapAttrsToList (
           name: entry:
           lib.optional ((entry.rule.action ? snat) && entry.rule.action.snat.addr == null) (
-            mkDiagnostic "natBodyMissingAddr"
+            mkDiagnostic "natAddrMissing"
               [
                 "snats"
                 name
@@ -952,7 +952,7 @@ let
         lib.mapAttrsToList (
           name: entry:
           lib.optional ((entry.rule.action ? dnat) && entry.rule.action.dnat.addr == null) (
-            mkDiagnostic "natBodyMissingAddr"
+            mkDiagnostic "natAddrMissing"
               [
                 "dnats"
                 name
@@ -1068,13 +1068,13 @@ let
     { table, ctx }:
     let
       inherit (ctx) allZoneNames zoneRefs;
-      invalidZoneRefs = builtins.filter (ref: !(builtins.elem ref.zone allZoneNames)) zoneRefs;
+      unknownZoneRefs = builtins.filter (ref: !(builtins.elem ref.zone allZoneNames)) zoneRefs;
       knownZoneNames = lib.concatStringsSep ", " (lib.sort (a: b: a < b) allZoneNames);
       newErrors = map (
         ref:
-        mkDiagnostic "invalidZoneRef" ref.path
+        mkDiagnostic "zoneRefUnknown" ref.path
           "references unknown zone '${ref.zone}' (known: ${knownZoneNames})"
-      ) invalidZoneRefs;
+      ) unknownZoneRefs;
     in
     {
       inherit table;

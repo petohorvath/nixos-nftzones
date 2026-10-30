@@ -1,5 +1,5 @@
 /*
-  Rejection scenario for `invalidChainPlacement` — bridge family
+  Rejection scenario for `chainPlacementInvalid` — bridge family
   with an sroute rule. Bridge has no `mangle` priority symbol,
   so source-route mangling is unsupported at the kernel level.
   The complementary case (bridge + snat, which exercises the
@@ -13,11 +13,11 @@ let
   inherit (nftypes.dsl.fields) meta;
 in
 {
-  description = "invalidChainPlacement: bridge family + sroute (no mangle priority)";
+  description = "chainPlacementInvalid: bridge family + sroute (no mangle priority)";
 
   errors = [
     {
-      tag = "invalidChainPlacement";
+      tag = "chainPlacementInvalid";
       path = [
         "sroutes"
         "mark-it"

@@ -84,7 +84,7 @@ Diagnostic at `zones.<zone>.parent`:
 
 A node names its parent zone with `nodes.<node>.parent`, as a zone
 does. A parent that names no zone, node or `settings.localZone` is
-reported as `invalidZoneRef` at `nodes.<node>.parent`.
+reported as `zoneRefUnknown` at `nodes.<node>.parent`.
 
 ## Worked example
 
