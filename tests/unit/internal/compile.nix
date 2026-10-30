@@ -18,6 +18,8 @@ let
     ;
 
   inherit (helpers) evalTable;
+
+  inherit (nftypes.dsl) accept;
 in
 {
   # ===== compile — runs all four phases, ctx carries every artifact =====
@@ -68,7 +70,7 @@ in
             filters.f = {
               from = [ "missing" ];
               to = [ "lan" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           })
         );

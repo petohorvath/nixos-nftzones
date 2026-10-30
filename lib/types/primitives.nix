@@ -15,9 +15,11 @@
                         no comment). Shared shape for object-level
                         comments. Aliases `nftypes.types.comment`
                         (rejects `"`, `\`, control chars; ≤128 bytes).
-    - `rule`          — list of nftypes statements forming one rule
-                        body. Shared shape for `filterRule` and the
-                        inner list of `zoneMatchVariants`.
+    - `rule`          — list of nftypes statements, possibly empty.
+                        Shape for a dnat's `match`.
+    - `nonEmptyRule`  — non-empty `rule`: the statements forming one
+                        rule body. Shared shape for `filterRule`,
+                        `srouteRule` and `drouteRule`.
     - `matchRule`     — list restricted to match-clause statements
                         only (`{ match = ...; }`). Shape for
                         `zoneMatchOverrideSide`'s section types,
@@ -75,6 +77,17 @@ let
     libnftables-json shapes.
   */
   rule = lib.types.listOf nftypes.types.statement;
+
+  /*
+    Non-empty counterpart to `rule`, for the bodies of filters,
+    sroutes and droutes. nftypes refuses a rule with no statements,
+    and would report it at a generated chain the user never wrote;
+    rejecting `[ ]` here reports it at the option instead, as
+    `zoneNames` does for empty fan-out. `nonEmptyListOf` also has no
+    empty value, so leaving the option out fails rather than falling
+    back to `[ ]`.
+  */
+  nonEmptyRule = lib.types.nonEmptyListOf nftypes.types.statement;
 
   /*
     Match-only counterpart to `rule`. Each leaf must be a
@@ -184,6 +197,7 @@ in
     entryPriority
     identifier
     matchRule
+    nonEmptyRule
     rule
     ;
 }

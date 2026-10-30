@@ -6,6 +6,7 @@
 {
   helpers,
   lib,
+  nftypes,
   nftzones,
   ...
 }:
@@ -16,6 +17,9 @@ let
   inherit (nftzones.internal.normalize) normalizeTable;
 
   inherit (helpers) evalTable;
+
+  inherit (nftypes.dsl) accept mangle;
+  inherit (nftypes.dsl.fields) meta;
 
   # Run Phase 1 + Phase 2 + Phase 3 against an evalModules-produced
   # table and return the final `ctx`. Tests inspect `ctx.dispatchTrees`.
@@ -51,7 +55,7 @@ in
             filters.allow-ssh = {
               from = [ "wan" ];
               to = [ "local" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).dispatchTrees."input-at-filter";
       in
@@ -80,7 +84,7 @@ in
             filters.outbound = {
               from = [ "local" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).dispatchTrees."output-at-filter";
       in
@@ -114,7 +118,7 @@ in
             filters.web-out = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).dispatchTrees."forward-at-filter";
       in
@@ -224,7 +228,7 @@ in
             };
             droutes.mark-vpn = {
               to = [ "vpn" ];
-              rule = [ ];
+              rule = [ (mangle meta.mark 1) ];
             };
           }).dispatchTrees."output-at-mangle";
         subChain = tree.subChains."output-at-mangle__vpn";
@@ -260,7 +264,7 @@ in
             filters.rpfilter = {
               from = [ "wan" ];
               to = [ "local" ];
-              rule = [ ];
+              rule = [ accept ];
               chain = {
                 hook = "prerouting";
                 priority = "raw";
@@ -300,12 +304,12 @@ in
               default-form = {
                 from = [ "wan" ];
                 to = [ "local" ];
-                rule = [ ];
+                rule = [ accept ];
               };
               int-override = {
                 from = [ "wan" ];
                 to = [ "local" ];
-                rule = [ ];
+                rule = [ accept ];
                 chain = {
                   hook = "input";
                   priority = 0;
@@ -344,7 +348,7 @@ in
             filters.early = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
               priority = "first";
             };
           }).dispatchTrees."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
@@ -379,7 +383,7 @@ in
             filters.late = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
               priority = "last";
             };
           }).dispatchTrees."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
@@ -415,7 +419,7 @@ in
             filters.regular = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).dispatchTrees."forward-at-filter".subChains."forward-at-filter__lan-TO-wan";
       in
@@ -450,19 +454,19 @@ in
             zebra = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
               priority = 500;
             };
             alpha = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
               priority = 500;
             };
             high = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
               priority = 200;
             };
           };
@@ -493,7 +497,7 @@ in
           filters.allow-https = {
             from = [ "lan" ];
             to = [ "wan" ];
-            rule = [ ];
+            rule = [ accept ];
           };
           policies.lan-to-wan = {
             from = [ "lan" ];
@@ -528,7 +532,7 @@ in
           filters.web = {
             from = [ "lan" ];
             to = [ "wan" ];
-            rule = [ ];
+            rule = [ accept ];
           };
           snats.lan-out = {
             from = [ "lan" ];
@@ -577,13 +581,13 @@ in
               regular = {
                 from = [ "lan" ];
                 to = [ "wan" ];
-                rule = [ ];
+                rule = [ accept ];
               };
               # Explicit override for the same chain coordinates.
               override = {
                 from = [ "lan" ];
                 to = [ "wan" ];
-                rule = [ ];
+                rule = [ accept ];
                 chain = {
                   hook = "forward";
                   priority = "filter";
@@ -617,18 +621,18 @@ in
               early = {
                 from = [ "lan" ];
                 to = [ "wan" ];
-                rule = [ ];
+                rule = [ accept ];
                 priority = "preDispatch";
               };
               regular = {
                 from = [ "lan" ];
                 to = [ "wan" ];
-                rule = [ ];
+                rule = [ accept ];
               };
               late = {
                 from = [ "lan" ];
                 to = [ "wan" ];
-                rule = [ ];
+                rule = [ accept ];
                 priority = "last";
               };
             };
@@ -711,7 +715,7 @@ in
             filters.f = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).dispatchTrees."forward-at-filter";
       in
@@ -751,7 +755,7 @@ in
             filters.allow-http = {
               from = [ "web-server" ];
               to = [ "local" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).dispatchTrees."input-at-filter";
         dispatcher = tree.subChains."input-at-filter__dmz-TO-local";
@@ -795,16 +799,16 @@ in
             filters.dmz-out = {
               from = [ "dmz" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
             };
             filters.web-out = {
               from = [ "web-server" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
             };
             droutes.to-vpn = {
               to = [ "vpn" ];
-              rule = [ ];
+              rule = [ (mangle meta.mark 1) ];
             };
           }).dispatchTrees;
       in
@@ -845,17 +849,17 @@ in
             filters.dmz-ssh = {
               from = [ "dmz" ];
               to = [ "local" ];
-              rule = [ ];
+              rule = [ accept ];
             };
             filters.db-backup = {
               from = [ "db" ];
               to = [ "local" ];
-              rule = [ ];
+              rule = [ accept ];
             };
             filters.web-http = {
               from = [ "web-server" ];
               to = [ "local" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).dispatchTrees."input-at-filter";
         dmz = tree.subChains."input-at-filter__dmz-TO-local";

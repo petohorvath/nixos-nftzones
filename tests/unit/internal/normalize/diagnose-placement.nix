@@ -47,7 +47,7 @@ in
       filters.allow = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
       };
       snats.masq = {
         from = [ "lan" ];
@@ -123,7 +123,7 @@ in
       zones.lan.interfaces = [ "lan0" ];
       sroutes.mark = {
         from = [ "lan" ];
-        rule = [ ];
+        rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
       };
     };
     expected = {
@@ -147,7 +147,7 @@ in
       filters.allow = {
         from = [ "lan" ];
         to = [ "lan" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
       };
     };
     expected = clean;
@@ -162,7 +162,7 @@ in
       filters.early = {
         from = [ "lan" ];
         to = [ "host" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
         chain = {
           hook = "prerouting";
           priority = "mangle";
@@ -175,7 +175,7 @@ in
       };
       droutes.mark = {
         to = [ "lan" ];
-        rule = [ ];
+        rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
       };
     };
     expected = {
@@ -214,7 +214,7 @@ in
       filters.f = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
         chain = {
           hook = "forward";
           priority = "filter";
@@ -236,7 +236,7 @@ in
       filters.f = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
         chain = rawPrerouting;
       };
     };
@@ -253,7 +253,7 @@ in
       filters.early-drop = {
         from = [ "wan" ];
         to = [ "host" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
         chain = rawPrerouting;
       };
     };
@@ -278,7 +278,7 @@ in
       filters.f = {
         from = [ "wan" ];
         to = [ "local" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
         chain = rawPrerouting;
       };
     };
@@ -299,7 +299,7 @@ in
       filters.f = {
         from = [ "wan" ];
         to = [ "host" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
         chain = rawPrerouting;
       };
     };
@@ -320,7 +320,7 @@ in
       filters.f = {
         from = [ "wan" ];
         to = [ "all" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
         chain = rawPrerouting;
       };
     };
@@ -347,7 +347,7 @@ in
       filters.allow-ssh = {
         from = [ "wan" ];
         to = [ "local" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
       };
       snats.masq = {
         from = [ "lan" ];
@@ -368,7 +368,7 @@ in
       filters.late = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
         chain = {
           hook = "postrouting";
           priority = "srcnat";
@@ -476,7 +476,7 @@ in
       filters.f = {
         from = [ "lan" ];
         to = [ "wan" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
         chain = {
           hook = "postrouting";
           priority = "srcnat";
@@ -550,7 +550,7 @@ in
       filters.early-drop = {
         from = [ "wan" ];
         to = [ "wan" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
         chain = rawPrerouting;
       };
     };
@@ -566,7 +566,7 @@ in
       filters.early-drop = {
         from = [ "wan" ];
         to = [ "wan" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
         chain = rawPrerouting;
       };
     };
@@ -592,7 +592,7 @@ in
       filters.early-drop = {
         from = [ "wan" ];
         to = [ "wan" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
         chain = {
           hook = "prerouting";
           priority = -300;
@@ -827,7 +827,7 @@ in
           "all"
           "wan"
         ];
-        rule = [ ];
+        rule = [ dsl.accept ];
       };
       dnats.d = {
         from = [
@@ -903,7 +903,7 @@ in
           "local"
         ];
         to = [ "wan" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
       };
     };
     expected = {
@@ -1132,7 +1132,7 @@ in
       filters.f = {
         from = [ "lan" ];
         to = [ "lan" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
       };
     };
     expected = clean;

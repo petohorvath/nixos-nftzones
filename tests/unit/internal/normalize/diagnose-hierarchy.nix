@@ -456,6 +456,7 @@ in
       filters.f = {
         from = [ "lan" ];
         to = [ "wan" ];
+        rule = [ dsl.accept ];
       };
     };
     expected = clean;
@@ -467,6 +468,7 @@ in
       filters.f = {
         from = [ "lan" ];
         to = [ "missing" ];
+        rule = [ dsl.accept ];
       };
     };
     expected = {
@@ -496,6 +498,7 @@ in
       filters.f = {
         from = [ "lan" ];
         to = [ "wan" ];
+        rule = [ dsl.accept ];
       };
     };
     expected = clean;
@@ -510,6 +513,7 @@ in
       filters.f = {
         from = [ "lan" ];
         to = [ "wan" ];
+        rule = [ dsl.accept ];
       };
     };
     expected = clean;
@@ -526,6 +530,7 @@ in
       filters.f = {
         from = [ "custom" ];
         to = [ "custom" ];
+        rule = [ dsl.accept ];
       };
     };
     expected = clean;
@@ -540,6 +545,7 @@ in
       filters.f = {
         from = [ "empty" ];
         to = [ "wan" ];
+        rule = [ dsl.accept ];
       };
     };
     expected = {
@@ -567,6 +573,7 @@ in
       filters.f = {
         from = [ "lan" ];
         to = [ "empty" ];
+        rule = [ dsl.accept ];
       };
     };
     expected = {
@@ -592,6 +599,7 @@ in
       filters.f = {
         from = [ "partial" ];
         to = [ "partial" ];
+        rule = [ dsl.accept ];
       };
     };
     expected = {
@@ -617,6 +625,7 @@ in
       filters.f = {
         from = [ "empty-section" ];
         to = [ "empty-section" ];
+        rule = [ dsl.accept ];
       };
     };
     expected = {
@@ -653,10 +662,12 @@ in
         in-rule = {
           from = [ "wan" ];
           to = [ "local" ];
+          rule = [ dsl.accept ];
         };
         out-rule = {
           from = [ "local" ];
           to = [ "wan" ];
+          rule = [ dsl.accept ];
         };
       };
     };
@@ -670,6 +681,7 @@ in
       filters.f = {
         from = [ "lan" ];
         to = [ "missing" ];
+        rule = [ dsl.accept ];
       };
     };
     expected = {

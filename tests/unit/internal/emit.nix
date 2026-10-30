@@ -12,7 +12,8 @@
 }:
 let
 
-  inherit (nftypes.dsl) expr;
+  inherit (nftypes.dsl) accept expr mangle;
+  inherit (nftypes.dsl.fields) meta;
   inherit (nftzones.internal.dispatch) dispatchAndSort;
   inherit (nftzones.internal.emit)
     assembleTable
@@ -496,7 +497,7 @@ in
           filters.f = {
             from = [ "lan" ];
             to = [ "wan" ];
-            rule = [ ];
+            rule = [ accept ];
           };
         }).output.chains;
     expected = [
@@ -521,7 +522,7 @@ in
             filters.f = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).output.chains.forward-at-filter;
       in
@@ -552,7 +553,7 @@ in
             filters.rpfilter-rule = {
               from = [ "wan" ];
               to = [ "local" ];
-              rule = [ ];
+              rule = [ accept ];
               chain = {
                 hook = "prerouting";
                 priority = "raw";
@@ -590,7 +591,7 @@ in
             filters.f = {
               from = [ "lan" ];
               to = [ "local" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).output.chains;
       in
@@ -1119,7 +1120,7 @@ in
             filters.f = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).output;
         baseRules = output.chains."forward-at-filter".rules;
@@ -1172,7 +1173,7 @@ in
             filters.allow-ssh = {
               from = [ "wan" ];
               to = [ "local" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).output;
         # input chain: stateful (2) + loopback (1) + jump (1) = 4 rules
@@ -1202,18 +1203,18 @@ in
               early = {
                 from = [ "wan" ];
                 to = [ "local" ];
-                rule = [ ];
+                rule = [ accept ];
                 priority = "first";
               };
               normal = {
                 from = [ "wan" ];
                 to = [ "local" ];
-                rule = [ ];
+                rule = [ accept ];
               };
               late = {
                 from = [ "wan" ];
                 to = [ "local" ];
-                rule = [ ];
+                rule = [ accept ];
                 priority = "last";
               };
             };
@@ -1239,7 +1240,7 @@ in
             zones.lan.interfaces = [ "lan0" ];
             droutes.mark-lan = {
               to = [ "lan" ];
-              rule = [ ];
+              rule = [ (mangle meta.mark 1) ];
             };
           }).output.chains;
       in
@@ -1266,7 +1267,7 @@ in
             zones.wan.interfaces = [ "wan0" ];
             sroutes.mark-wan = {
               from = [ "wan" ];
-              rule = [ ];
+              rule = [ (mangle meta.mark 1) ];
             };
           }).output.chains;
       in

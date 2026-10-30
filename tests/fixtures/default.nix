@@ -86,6 +86,9 @@ in
     parent-refs = import ./rejections/parent-refs.nix rejectionArgs;
     policy-uniqueness = import ./rejections/policy-uniqueness.nix rejectionArgs;
     policy-wildcard-conflict = import ./rejections/policy-wildcard-conflict.nix rejectionArgs;
+    rule-empty-droute = import ./rejections/rule-empty-droute.nix rejectionArgs;
+    rule-empty-filter = import ./rejections/rule-empty-filter.nix rejectionArgs;
+    rule-missing-sroute = import ./rejections/rule-missing-sroute.nix rejectionArgs;
     set-elem-comment-injection = import ./rejections/set-elem-comment-injection.nix rejectionArgs;
     set-name-collisions = import ./rejections/set-name-collisions.nix rejectionArgs;
     settings-local-shadow = import ./rejections/settings-local-shadow.nix rejectionArgs;

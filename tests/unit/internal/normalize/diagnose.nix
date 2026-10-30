@@ -1,8 +1,14 @@
 # Unit tests for Phase 1's diagnostics interface: `diagnose` and the
 # throwing `normalizeTable` adapter over it. Tests compare the
 # `{ tag; path; }` projection of each diagnostic list, never messages.
-{ helpers, nftzones, ... }:
+{
+  helpers,
+  nftypes,
+  nftzones,
+  ...
+}:
 let
+  inherit (nftypes) dsl;
   inherit (nftzones.internal.normalize) diagnose normalizeTable;
 
   inherit (helpers) diagnosticsFor evalTable;
@@ -17,6 +23,7 @@ let
     filters.f = {
       from = [ "nowhere" ];
       to = [ "local" ];
+      rule = [ dsl.accept ];
     };
   };
 
@@ -51,6 +58,7 @@ in
       filters.ssh = {
         from = [ "lan" ];
         to = [ "local" ];
+        rule = [ dsl.accept ];
       };
     };
     expected = {
@@ -94,6 +102,7 @@ in
       filters.f = {
         from = [ "nowhere" ];
         to = [ "local" ];
+        rule = [ dsl.accept ];
       };
     };
     expected = {
@@ -182,6 +191,7 @@ in
         filters.f = {
           from = [ "ghost" ];
           to = [ "local" ];
+          rule = [ dsl.accept ];
         };
         policies = {
           p1 = {

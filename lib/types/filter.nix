@@ -4,7 +4,8 @@
   Exported types:
     - `filter`         — submodule for one filter definition
     - `filterName`     — string identifier for a filter
-    - `filterRule`     — list of nftypes DSL statements (rule body)
+    - `filterRule`     — non-empty list of nftypes DSL statements
+                         (rule body)
     - `filterPriority` — symbol-or-int entry sort key (lower runs first)
     - `filterComment`  — optional free-form comment
 
@@ -86,7 +87,7 @@ let
 
   filterComment = primitives.comment;
 
-  filterRule = primitives.rule;
+  filterRule = primitives.nonEmptyRule;
 
   filterPriority = primitives.entryPriority;
 
@@ -138,10 +139,10 @@ let
             ]
           '';
           description = ''
-            Body of the nftables rule, expressed as a list of
-            nftypes DSL statements. Spans both match conditions and
-            the verdict; entries are spliced conjunctively into a
-            single nftables rule.
+            Body of the nftables rule, expressed as a non-empty
+            list of nftypes DSL statements. Spans both match
+            conditions and the verdict; entries are spliced
+            conjunctively into a single nftables rule.
           '';
         };
 

@@ -7,8 +7,14 @@
   Zone-reference collection and the in-scope zone names leave no such
   key; their tests observe them through `invalidZoneRef` Diagnostics.
 */
-{ helpers, nftzones, ... }:
+{
+  helpers,
+  nftypes,
+  nftzones,
+  ...
+}:
 let
+  inherit (nftypes) dsl;
   inherit (nftzones.internal.normalize) normalizeTable;
 
   inherit (helpers) diagnosticsFor evalTable;
@@ -220,6 +226,7 @@ in
           filters.f = {
             from = [ "all" ];
             to = [ "lan" ];
+            rule = [ dsl.accept ];
           };
         };
       in
@@ -237,6 +244,7 @@ in
         filters.f = {
           from = [ "lan" ];
           to = [ "wan" ];
+          rule = [ dsl.accept ];
         };
       }).expandedGroups.filters.f;
     expected = {
@@ -257,6 +265,7 @@ in
             "all"
           ];
           to = [ "wan" ];
+          rule = [ dsl.accept ];
         };
       }).expandedGroups.filters.f;
     expected = {
@@ -284,6 +293,7 @@ in
         filters.f = {
           from = [ "all" ];
           to = [ "all" ];
+          rule = [ dsl.accept ];
         };
       }).expandedGroups.filters.f;
     expected = {
@@ -309,6 +319,7 @@ in
         filters.f = {
           from = [ "all" ];
           to = [ "host" ];
+          rule = [ dsl.accept ];
         };
       }).expandedGroups.filters.f.from;
     expected = [
@@ -332,8 +343,14 @@ in
                 action.redirect.port = 22;
               };
             };
-            sroutes.s.from = [ "all" ];
-            droutes.dr.to = [ "all" ];
+            sroutes.s = {
+              from = [ "all" ];
+              rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
+            };
+            droutes.dr = {
+              to = [ "all" ];
+              rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
+            };
           })
           expandedGroups
           ;
@@ -384,6 +401,7 @@ in
             (_: priority: {
               from = [ "lan" ];
               to = [ "local" ];
+              rule = [ dsl.accept ];
               inherit priority;
             })
             {
@@ -414,6 +432,7 @@ in
           from = [ "lan" ];
           to = [ "wan" ];
           priority = "first";
+          rule = [ dsl.accept ];
         };
         snats.s = {
           from = [ "lan" ];
@@ -432,10 +451,12 @@ in
         sroutes.sr = {
           from = [ "lan" ];
           priority = "preDispatch";
+          rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
         };
         droutes.dr = {
           to = [ "wan" ];
           priority = "postDispatch";
+          rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
         };
       }).resolvedPriorities;
     expected = {
@@ -460,6 +481,7 @@ in
             "ghost"
           ];
           to = [ "ghost" ];
+          rule = [ dsl.accept ];
         };
         policies.p = {
           from = [ "ghost" ];
@@ -477,8 +499,14 @@ in
             action.redirect.port = 22;
           };
         };
-        sroutes.sr.from = [ "ghost" ];
-        droutes.dr.to = [ "ghost" ];
+        sroutes.sr = {
+          from = [ "ghost" ];
+          rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
+        };
+        droutes.dr = {
+          to = [ "ghost" ];
+          rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
+        };
       }).errors;
     expected = map invalidZoneRefAt [
       [
@@ -601,6 +629,7 @@ in
             "phantom"
           ];
           to = [ "all" ];
+          rule = [ dsl.accept ];
         };
       }).errors;
     expected = map invalidZoneRefAt [
@@ -639,6 +668,7 @@ in
           "wan"
           "local"
         ];
+        rule = [ dsl.accept ];
       };
     };
     expected = {
@@ -659,6 +689,7 @@ in
             "host"
             "local"
           ];
+          rule = [ dsl.accept ];
         };
       }).errors;
     expected = [
