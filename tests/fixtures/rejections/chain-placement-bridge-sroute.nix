@@ -7,7 +7,12 @@
   this one pins the null-priority-symbol branch via the route
   path.
 */
-_: {
+{ nftypes }:
+let
+  inherit (nftypes.dsl) mangle;
+  inherit (nftypes.dsl.fields) meta;
+in
+{
   description = "invalidChainPlacement: bridge family + sroute (no mangle priority)";
 
   errors = [
@@ -27,7 +32,7 @@ _: {
 
     sroutes.mark-it = {
       from = [ "lan" ];
-      rule = [ ];
+      rule = [ (mangle meta.mark 1) ];
     };
   };
 }

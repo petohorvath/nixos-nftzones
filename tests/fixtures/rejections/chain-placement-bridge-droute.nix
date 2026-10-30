@@ -5,7 +5,12 @@
   mangling is unsupported at the kernel level. Pins that
   placement is checked for the droute group too, not just sroute.
 */
-_: {
+{ nftypes }:
+let
+  inherit (nftypes.dsl) mangle;
+  inherit (nftypes.dsl.fields) meta;
+in
+{
   description = "invalidChainPlacement: bridge family + droute (no mangle priority)";
 
   errors = [
@@ -25,7 +30,7 @@ _: {
 
     droutes.mark-it = {
       to = [ "lan" ];
-      rule = [ ];
+      rule = [ (mangle meta.mark 1) ];
     };
   };
 }

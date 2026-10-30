@@ -4,32 +4,41 @@
   Exported types:
     - `snat`         — submodule for one snat definition
     - `snatName`     — string identifier for an snat
-    - `snatRule`     — attrTag union of `snat` and `masquerade`
-                       bodies (the rule body)
+    - `snatRule`     — submodule with `match` (default `[ ]`) and
+                       `action` (attrTag of `snat` / `masquerade`)
     - `snatPriority` — symbol-or-int entry sort key (`first` /
                        `preDispatch` / `default` / …)
     - `snatComment`  — optional free-form comment
 
   An snat is a directed `from → to` zone-pair NAT rule that applies
   in postrouting (`type nat hook postrouting priority srcnat`). It
-  carries a structured rewrite spec, an ordering key, and an
+  carries match conditions, an action, an ordering key, and an
   optional comment. Consumers wire it as `lib.mkOption {
   type = lib.types.attrsOf nftzones.types.snat; }`.
 
   `from` / `to` use the shared `zoneNames` type and the same
   wildcard / localZone behaviour as filter — see
-  `types/filter.nix` for the full discussion. Cross-cutting
-  checks belong in module assertions on the enclosing `snats`
-  attrset. The `chain` field is the shared
+  `types/filter.nix` for the full discussion. Phase 1 runs
+  the cross-cutting checks, reporting an unresolved zone as an
+  `invalidZoneRef` diagnostic. The `chain` field is the shared
   `primitives.chainOverride`.
 
-  `snatRule` is an `attrTag` of two nftypes-derived submodules:
-    - `snat`       — full address translation; fields `addr`,
-                     `port?`, `family?`, `flags?`, `type_flags?`.
-                     Reuses `nftypes.types.statementBodies.natBody`.
-    - `masquerade` — auto-target via outgoing interface; fields
-                     `port?`, `flags?`. Reuses
-                     `nftypes.types.statementBodies.masqueradeBody`.
+  `snatRule` is the `{ match; action; }` NAT body shared with dnat
+  (`primitives.mkNatRule`, ADR-0012), with two fields:
+    - `match`  — a list of nftypes statements, e.g.
+                 `[ (eq meta.l4proto "tcp") ]`. Defaults to `[ ]`
+                 (every packet of the zone pair). The match runs at
+                 postrouting, after DNAT and routing, so it sees the
+                 translated destination and can use the output
+                 interface.
+    - `action` — exactly one of:
+                 - `snat`       — full address translation; fields
+                   `addr`, `port?`, `family?`, `flags?`,
+                   `type_flags?`. Reuses
+                   `nftypes.types.statementBodies.natBody`.
+                 - `masquerade` — auto-target via outgoing
+                   interface; fields `port?`, `flags?`. Reuses
+                   `nftypes.types.statementBodies.masqueradeBody`.
 
   Reusing nftypes' shapes keeps flag enums (`natFlag`,
   `natTypeFlag`) and field validation in lock-step with
@@ -54,15 +63,18 @@
     config.snats.lan-masquerade = {
       from = [ "lan" "guest" ];
       to = [ "wan" ];
-      rule.masquerade = { };
+      rule.action.masquerade = { };
       comment = "outbound NAT";
     };
     config.snats.web-snat = {
       from = [ "lan" ];
       to = [ "wan" ];
-      rule.snat = {
-        addr = "203.0.113.5";
-        port = 8080;
+      rule = {
+        match = [ (eq tcp.dport 443) ];
+        action.snat = {
+          addr = "203.0.113.5";
+          port = 8080;
+        };
       };
     };
 */
@@ -80,21 +92,30 @@ let
 
   snatComment = primitives.comment;
 
-  /*
-    Tagged union of the two postrouting-NAT body shapes. `attrTag`
-    enforces "exactly one of {snat, masquerade}" at the type level.
-    Both inner submodules are reused from nftypes, so flag enums
-    and field validation stay in lock-step with libnftables-json.
-  */
-  snatRule = lib.types.attrTag {
-    snat = lib.mkOption {
-      type = nftypes.types.statementBodies.natBody;
-      description = "Full source address translation.";
+  snatRule = primitives.mkNatRule {
+    actions = {
+      snat = lib.mkOption {
+        type = nftypes.types.statementBodies.natBody;
+        description = "Full source address translation.";
+      };
+      masquerade = lib.mkOption {
+        type = nftypes.types.statementBodies.masqueradeBody;
+        description = "Source address taken from the outgoing interface.";
+      };
     };
-    masquerade = lib.mkOption {
-      type = nftypes.types.statementBodies.masqueradeBody;
-      description = "Source address taken from the outgoing interface.";
-    };
+    actionDescription = ''
+      The action — exactly one of `snat` (full address
+      translation) or `masquerade` (auto-target via the
+      outgoing interface). Inner submodule shapes are reused
+      from nftypes' `natBody` and `masqueradeBody`.
+    '';
+    matchDescription = ''
+      Match conditions selecting the packets to translate.
+      Defaults to `[ ]` (every packet of the zone pair). The
+      match runs at postrouting, after DNAT and routing, so it
+      sees the translated destination and can use the output
+      interface.
+    '';
   };
 
   snatPriority = primitives.entryPriority;
@@ -121,8 +142,9 @@ let
             Source zones for the snat — non-empty. Each entry is
             either a declared zone name, the configured
             `settings.localZone` (default `"local"`), or
-            `settings.wildcardZone` (default `"all"`); resolution
-            is enforced at module level, not by the type.
+            `settings.wildcardZone` (default `"all"`). Phase 1
+            reports any other name as an `invalidZoneRef`
+            diagnostic.
           '';
         };
 
@@ -138,13 +160,14 @@ let
         rule = lib.mkOption {
           type = snatRule;
           example = lib.literalExpression ''
-            { masquerade = { }; }
+            {
+              match = [ (eq tcp.dport 443) ];
+              action.masquerade = { };
+            }
           '';
           description = ''
-            Rewrite spec — exactly one of `snat` (full address
-            translation) or `masquerade` (auto-target via the
-            outgoing interface). Inner submodule shapes are
-            reused from nftypes' `natBody` and `masqueradeBody`.
+            Match conditions and the action. See `snatRule` for
+            the field layout.
           '';
         };
 

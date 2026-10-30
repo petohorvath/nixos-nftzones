@@ -4,8 +4,8 @@
   Exported types:
     - `droute`         — submodule for one droute definition
     - `drouteName`     — string identifier for a droute
-    - `drouteRule`     — list of nftypes statements (mangle / match
-                         body)
+    - `drouteRule`     — non-empty list of nftypes statements
+                         (mangle / match body)
     - `droutePriority` — symbol-or-int entry sort key (lower runs first)
     - `drouteComment`  — optional free-form comment
 
@@ -27,10 +27,11 @@
   localZone behaviour as filter / snat / dnat / sroute — see
   `types/filter.nix` for the full discussion.
 
-  `drouteRule` is a flat list of nftypes statements — typically
-  match conditions plus mangle statements like `meta mark set N`.
-  No verdict is expected; the chain triggers routing
-  re-evaluation, not a verdict.
+  `drouteRule` is a flat, non-empty list of nftypes statements —
+  typically match conditions plus mangle statements like
+  `meta mark set N`. `rule` is required: a droute without
+  statements marks nothing. No verdict is expected; the chain
+  triggers routing re-evaluation, not a verdict.
 
   `droutePriority` orders rules sharing the same `to` zone: lower
   values run first.
@@ -62,7 +63,7 @@ let
 
   drouteComment = primitives.comment;
 
-  drouteRule = primitives.rule;
+  drouteRule = primitives.nonEmptyRule;
 
   droutePriority = primitives.entryPriority;
 
@@ -88,22 +89,23 @@ let
             Destination zones for the droute — non-empty. Each
             entry is either a declared zone name, the configured
             `settings.localZone` (default `"local"`), or
-            `settings.wildcardZone` (default `"all"`); resolution
-            is enforced at module level, not by the type.
+            `settings.wildcardZone` (default `"all"`). Phase 1
+            reports any other name as an `invalidZoneRef`
+            diagnostic.
           '';
         };
 
         rule = lib.mkOption {
           type = drouteRule;
-          default = [ ];
           example = lib.literalExpression ''
             [ (mangle meta.mark 200) ]
           '';
           description = ''
-            Flat list of nftypes statements — typically match
-            conditions plus mangle / mark operations. No verdict
-            expected; the chain triggers a routing re-evaluation
-            when it exits, not a verdict-based decision.
+            Flat, non-empty list of nftypes statements — typically
+            match conditions plus mangle / mark operations.
+            Required. No verdict expected; the chain triggers a
+            routing re-evaluation when it exits, not a
+            verdict-based decision.
           '';
         };
 

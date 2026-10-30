@@ -74,7 +74,7 @@ in
     expected = true;
   };
 
-  # ===== filter.rule — list of nftypes statements (rejects raw shapes) =====
+  # ===== filter.rule — required, non-empty list of nftypes statements =====
 
   testFilterRuleAccepted = {
     expr = (filterIn basicBody).rule;
@@ -84,12 +84,23 @@ in
     ];
   };
 
+  testFilterRuleRequired = {
+    expr = evalFails (filterIn (removeAttrs basicBody [ "rule" ])).rule;
+    expected = true;
+  };
+
+  testFilterRuleEmptyRejected = {
+    expr = evalFails (filterIn (basicBody // { rule = [ ]; })).rule;
+    expected = true;
+  };
+
   testFilterRuleRejectsBogusStatement = {
-    # primitives.rule = listOf nftypes.types.statement; a list
-    # element that doesn't pass nftypes' attrTag validation is
-    # rejected. (Note: `{ accept = null; }` is the *actual* shape
-    # nftypes.dsl.accept produces, so it would pass — pick a tag
-    # nftypes doesn't recognize.)
+    # primitives.nonEmptyRule is a nonEmptyListOf
+    # nftypes.types.statement; a list element that doesn't pass
+    # nftypes' attrTag validation is rejected. (Note:
+    # `{ accept = null; }` is the *actual* shape nftypes.dsl.accept
+    # produces, so it would pass — pick a tag nftypes doesn't
+    # recognize.)
     expr = evalFails (filterIn (basicBody // { rule = [ "not-a-statement" ]; })).rule;
     expected = true;
   };

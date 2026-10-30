@@ -107,7 +107,7 @@ in
     wan-ping = {
       from = [ "wan" ];
       to = [ "local" ];
-      rule = snippets.accept.icmp.v4 8;
+      rule = snippets.accept.icmp 8;
     };
 
     # Post-DNAT half of the WAN→internal port-forward below.
@@ -165,7 +165,7 @@ in
       "guest"
     ];
     to = [ "wan" ];
-    rule.masquerade = { };
+    rule.action.masquerade = { };
   };
 
   # Default-deny inbound. The chain-policy default is `drop`

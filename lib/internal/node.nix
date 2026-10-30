@@ -16,12 +16,11 @@ let
   toZone =
     {
       name,
-      zone,
+      parent,
       address,
       ...
     }:
     let
-      parent = zone;
       interfaces = [ ];
       cidrs =
         lib.optional (address.ipv4 != null) "${address.ipv4}/32"

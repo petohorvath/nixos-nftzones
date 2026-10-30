@@ -4,7 +4,8 @@
   Exported types:
     - `filter`         — submodule for one filter definition
     - `filterName`     — string identifier for a filter
-    - `filterRule`     — list of nftypes DSL statements (rule body)
+    - `filterRule`     — non-empty list of nftypes DSL statements
+                         (rule body)
     - `filterPriority` — symbol-or-int entry sort key (lower runs first)
     - `filterComment`  — optional free-form comment
 
@@ -17,8 +18,9 @@
   `from` / `to` use the shared `zoneNames` type (non-empty list
   of `zoneName` strings) — see `lib/types/zone.nix`. Whether each
   entry resolves to a declared zone, `settings.localZone`, or
-  `settings.wildcardZone` is a cross-cutting check that belongs in
-  module assertions on the enclosing `filters` attrset.
+  `settings.wildcardZone` is a cross-cutting check that Phase 1
+  performs, reporting an unresolved entry as an `invalidZoneRef`
+  diagnostic.
 
   `filterRule` entries pass through nftypes' attrTag validation, so
   consumers cannot smuggle hand-rolled libnftables-json shapes. The
@@ -86,7 +88,7 @@ let
 
   filterComment = primitives.comment;
 
-  filterRule = primitives.rule;
+  filterRule = primitives.nonEmptyRule;
 
   filterPriority = primitives.entryPriority;
 
@@ -112,8 +114,9 @@ let
             Source zones for the filter — non-empty. Each entry is
             either a declared zone name, the configured
             `settings.localZone` (default `"local"`), or
-            `settings.wildcardZone` (default `"all"`); resolution
-            is enforced at module level, not by the type.
+            `settings.wildcardZone` (default `"all"`). Phase 1
+            reports any other name as an `invalidZoneRef`
+            diagnostic.
           '';
         };
 
@@ -138,10 +141,10 @@ let
             ]
           '';
           description = ''
-            Body of the nftables rule, expressed as a list of
-            nftypes DSL statements. Spans both match conditions and
-            the verdict; entries are spliced conjunctively into a
-            single nftables rule.
+            Body of the nftables rule, expressed as a non-empty
+            list of nftypes DSL statements. Spans both match
+            conditions and the verdict; entries are spliced
+            conjunctively into a single nftables rule.
           '';
         };
 
@@ -156,7 +159,7 @@ let
             Cells are emitted in `(priority asc, name asc)` order.
             See `primitives.entryPriority` for symbol → int
             mapping. NOT the nftables chain priority — that's
-            `hook.priority`.
+            `chain.priority`.
           '';
         };
 

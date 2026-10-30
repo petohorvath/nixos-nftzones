@@ -664,7 +664,7 @@ in
           interfaces = [ "lan0" ];
         };
         nodes.web = {
-          zone = "lan";
+          parent = "lan";
           address.ipv4 = "10.0.0.5";
         };
       }).directionVariants
@@ -738,7 +738,7 @@ in
           interfaces = [ "guest0" ];
         };
         nodes.web = {
-          zone = "internal";
+          parent = "internal";
           address.ipv4 = "10.0.0.5";
         };
       }).directionVariants
@@ -869,7 +869,7 @@ in
           zones.dmz.interfaces = [ "dmz0" ];
           zones.group.parent = "dmz";
           nodes.web = {
-            zone = "group";
+            parent = "group";
             address.ipv4 = "10.0.0.5";
           };
           zones.wan.interfaces = [ "wan0" ];
@@ -920,7 +920,7 @@ in
       (membershipFor {
         zones.lan_guest.interfaces = [ "guest0" ];
         nodes.web = {
-          zone = "lan_guest";
+          parent = "lan_guest";
           address.ipv4 = "10.0.0.5";
         };
       }).setOwners;
@@ -938,7 +938,7 @@ in
         membership = membershipFor {
           zones.group = { };
           nodes.web = {
-            zone = "group";
+            parent = "group";
             address.ipv4 = "10.0.0.5";
           };
         };

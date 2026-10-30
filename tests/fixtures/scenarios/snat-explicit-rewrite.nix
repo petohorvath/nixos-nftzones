@@ -2,7 +2,7 @@
   SNAT scenario — explicit address rewrite (non-masquerade)
   with multi-zone fanout. Two `from` zones share one rule,
   producing two sub-chains under `postrouting-at-srcnat`.
-  Exercises the `rule.snat = { ... }` path (full address
+  Exercises the `rule.action.snat = { ... }` path (full address
   translation) that `snat-masquerade.nix` doesn't cover, plus
   the from-side cartesian for SNATs.
 */
@@ -26,7 +26,7 @@ in
       to = [ "wan" ];
       # `family = "ip"` is required in `inet`-family tables —
       # nft otherwise can't disambiguate ip-vs-ip6 snat targets.
-      rule.snat = {
+      rule.action.snat = {
         family = "ip";
         addr = "203.0.113.5";
       };

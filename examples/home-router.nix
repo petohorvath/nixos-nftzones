@@ -84,7 +84,7 @@ in
     wan-ping = {
       from = [ "wan" ];
       to = [ "local" ];
-      rule = snippets.accept.icmp.v4 8;
+      rule = snippets.accept.icmp 8;
     };
 
     # The post-DNAT half of the port-forward below. `dnats`
@@ -123,7 +123,7 @@ in
   snats.uplink = {
     from = [ "lan" ];
     to = [ "wan" ];
-    rule.masquerade = { };
+    rule.action.masquerade = { };
   };
 
   # Default-deny inbound. The chain-policy default is already

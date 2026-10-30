@@ -18,7 +18,7 @@
   zone value mirroring the `nftzones.types.zone` submodule's
   evaluated form:
     name          = node.name;
-    parent        = node.zone;
+    parent        = node.parent;
     interfaces    = [ ];
     cidrs         = optional ipv4 "${ipv4}/32"
                  ++ optional ipv6 "${ipv6}/128";
@@ -28,8 +28,13 @@
   needed downstream. Phase 1 of the compile pipeline performs the
   merge.
 
+  A node has no `comment` option, for the same reason as a zone: its
+  lowered zone compiles to several sets and dispatch rules rather
+  than to one nftables object, so there is no single object a
+  comment could attach to.
+
   At the type layer:
-    - `zone` (parent reference) is required.
+    - `parent` (parent zone reference) is required.
     - `address` is a submodule with two nullable fields. The
       "at least one of `ipv4` / `ipv6` must be set" constraint
       is NOT enforced at the type layer — `addCheck` operates
@@ -42,8 +47,10 @@
   Cross-cutting concerns (Phase 1 diagnostics):
     - Node names must not collide with zone names (shared
       namespace at compile time) — `zoneNameCollision`.
-    - `node.zone` must reference an existing zone —
+    - `node.parent` must reference an existing zone —
       `invalidZoneRef`.
+    - `node.parent` must not be `settings.localZone` —
+      `zoneParentLocalZone`.
     - At least one of `address.ipv4` / `address.ipv6` is set —
       `nodeAddressMissing`.
 
@@ -57,11 +64,11 @@
     config.zones.lan = { interfaces = [ "eth2" ]; };
     config.nodes = {
       web-server = {
-        zone = "dmz";
+        parent = "dmz";
         address.ipv4 = "10.0.0.5";
       };
       admin-laptop = {
-        zone = "lan";
+        parent = "lan";
         address = {
           ipv4 = "10.0.0.50";
           ipv6 = "fe80::1";
@@ -128,13 +135,14 @@ let
           '';
         };
 
-        zone = lib.mkOption {
+        parent = lib.mkOption {
           type = zoneName;
           example = "dmz";
           description = ''
-            Parent zone name. Must reference an existing zone in
-            the same firewall config; the check is enforced at
-            module level, not by the type.
+            Parent zone name. Phase 1 reports a zone that isn't
+            declared as an `invalidZoneRef` diagnostic, and the
+            `settings.localZone` sentinel as a
+            `zoneParentLocalZone` diagnostic.
           '';
         };
 

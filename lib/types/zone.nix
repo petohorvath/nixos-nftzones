@@ -14,8 +14,7 @@
                             dnats / sroutes / droutes / policies).
                             Empty fan-out is never meaningful, so
                             emptiness is rejected at the type
-                            level rather than deferred to module
-                            assertions.
+                            level rather than deferred to Phase 1.
     - `zoneMatchOverride` — per-direction, per-section match override
                             (`{ ingress; egress; }` × four sections:
                             `interfaces`, `ipv4`, `ipv6`, `extra`).
@@ -31,6 +30,10 @@
 
   Consumers wire the zone type as `lib.mkOption { type =
   lib.types.attrsOf nftzones.types.zone; }`.
+
+  A zone has no `comment` option. It compiles to several sets and
+  dispatch rules rather than to one nftables object, so there is no
+  single object a comment could attach to.
 
   `zoneName` only validates string shape; cross-cutting concerns —
   that a `parent` reference resolves to an existing zone, or that

@@ -415,11 +415,11 @@ let
       collectNodeParentRefs =
         nodes:
         lib.mapAttrsToList (entryName: entry: {
-          inherit (entry) zone;
+          zone = entry.parent;
           path = [
             "nodes"
             entryName
-            "zone"
+            "parent"
           ];
         }) nodes;
 
@@ -921,11 +921,11 @@ let
     };
 
   /*
-    Reject `snats.<x>.rule.snat` and `dnats.<x>.rule.action.dnat`
-    where `addr` is null. nftypes' `natBody` rejects an empty body
-    but accepts one with only a `port`; nftzones requires a target
-    address, and points to `masquerade` / `redirect` as the
-    no-address alternative.
+    Reject `snats.<x>.rule.action.snat` and
+    `dnats.<x>.rule.action.dnat` where `addr` is null. nftypes'
+    `natBody` rejects an empty body but accepts one with only a
+    `port`; nftzones requires a target address, and points to
+    `masquerade` / `redirect` as the no-address alternative.
   */
   checkNatBodies =
     { table, ctx }:
@@ -933,9 +933,17 @@ let
       snatErrors = lib.concatLists (
         lib.mapAttrsToList (
           name: entry:
-          lib.optional ((entry.rule ? snat) && entry.rule.snat.addr == null) (
-            mkDiagnostic "natBodyMissingAddr" [ "snats" name ]
-              "rule.snat.addr is null — `snat` requires a target address. Use `rule.masquerade = { }` for auto-target via the outgoing interface, or set `rule.snat.addr` explicitly."
+          lib.optional ((entry.rule.action ? snat) && entry.rule.action.snat.addr == null) (
+            mkDiagnostic "natBodyMissingAddr"
+              [
+                "snats"
+                name
+                "rule"
+                "action"
+                "snat"
+                "addr"
+              ]
+              "rule.action.snat.addr is null — `snat` requires a target address. Use `rule.action.masquerade = { }` for auto-target via the outgoing interface, or set `rule.action.snat.addr` explicitly."
           )
         ) table.snats
       );

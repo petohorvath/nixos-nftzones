@@ -6,6 +6,7 @@
 {
   helpers,
   lib,
+  nftypes,
   nftzones,
   ...
 }:
@@ -14,6 +15,9 @@ let
   inherit (nftzones.internal.expand) expandTable;
 
   inherit (helpers) evalTable;
+
+  inherit (nftypes.dsl) accept mangle;
+  inherit (nftypes.dsl.fields) meta;
 
   runExpand = body: (expandTable (normalizeTable (evalTable body))).ctx;
 in
@@ -63,7 +67,7 @@ in
               "wan"
               "vpn"
             ];
-            rule = [ ];
+            rule = [ accept ];
           };
         }).cells.filters;
     expected = [
@@ -110,7 +114,7 @@ in
           filters.f = {
             from = [ "all" ];
             to = [ "wan" ];
-            rule = [ ];
+            rule = [ accept ];
           };
         }).cells.filters
     );
@@ -154,7 +158,7 @@ in
               "wan"
               "lan"
             ];
-            rule = [ ];
+            rule = [ (mangle meta.mark 1) ];
           };
         };
       in
@@ -200,7 +204,7 @@ in
               filters.f = {
                 from = [ "lan" ];
                 to = [ "wan" ];
-                rule = [ ];
+                rule = [ accept ];
                 comment = "preserved";
                 priority = "first";
               };
@@ -271,7 +275,7 @@ in
               "lan"
             ];
             to = [ "wan" ];
-            rule = [ ];
+            rule = [ accept ];
           };
         }).cells.filters
     );
@@ -301,7 +305,7 @@ in
             filters.f = {
               from = [ "all" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           })
         );

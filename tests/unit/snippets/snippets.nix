@@ -195,16 +195,16 @@ in
     ];
   };
 
-  testIcmpV4Drop = {
-    expr = snippets.drop.icmp.v4 8;
+  testIcmpDrop = {
+    expr = snippets.drop.icmp 8;
     expected = [
       (eq icmp.type 8)
       drop
     ];
   };
 
-  testIcmpV6Drop = {
-    expr = snippets.drop.icmp.v6 128;
+  testIcmpv6Drop = {
+    expr = snippets.drop.icmpv6 128;
     expected = [
       (eq icmpv6.type 128)
       drop
@@ -228,42 +228,42 @@ in
   };
 
   # ICMP reject uses the plain variant (no TCP-RST analog).
-  testIcmpV4RejectUsesPlain = {
-    expr = snippets.reject.icmp.v4 8;
+  testIcmpRejectUsesPlain = {
+    expr = snippets.reject.icmp 8;
     expected = [
       (eq icmp.type 8)
       (reject { })
     ];
   };
 
-  testIcmpV6RejectUsesPlain = {
-    expr = snippets.reject.icmp.v6 128;
+  testIcmpv6RejectUsesPlain = {
+    expr = snippets.reject.icmpv6 128;
     expected = [
       (eq icmpv6.type 128)
       (reject { })
     ];
   };
 
-  # ===== ICMP v4 — input forms =====
+  # ===== ICMP — input forms =====
 
-  testIcmpV4AcceptInt = {
-    expr = snippets.accept.icmp.v4 8;
+  testIcmpAcceptInt = {
+    expr = snippets.accept.icmp 8;
     expected = [
       (eq icmp.type 8)
       accept
     ];
   };
 
-  testIcmpV4AcceptString = {
-    expr = snippets.accept.icmp.v4 "echo-request";
+  testIcmpAcceptString = {
+    expr = snippets.accept.icmp "echo-request";
     expected = [
       (eq icmp.type "echo-request")
       accept
     ];
   };
 
-  testIcmpV4AcceptList = {
-    expr = snippets.accept.icmp.v4 [
+  testIcmpAcceptList = {
+    expr = snippets.accept.icmp [
       0
       8
     ];
@@ -276,19 +276,19 @@ in
     ];
   };
 
-  testIcmpV4AcceptViaRegistry = {
+  testIcmpAcceptViaRegistry = {
     # Registry path goes through the same int branch as a bare 8.
-    expr = snippets.accept.icmp.v4 libnet.registry.icmpTypes.ipv4.echoRequest;
+    expr = snippets.accept.icmp libnet.registry.icmpTypes.ipv4.echoRequest;
     expected = [
       (eq icmp.type 8)
       accept
     ];
   };
 
-  # ===== ICMP v6 uses the icmpv6 field, not icmp =====
+  # ===== icmpv6 uses the icmpv6 field, not icmp =====
 
-  testIcmpV6UsesIcmpv6Field = {
-    expr = snippets.accept.icmp.v6 128;
+  testIcmpv6UsesIcmpv6Field = {
+    expr = snippets.accept.icmpv6 128;
     expected = [
       (eq icmpv6.type 128)
       accept
@@ -310,7 +310,7 @@ in
   };
 
   testInvalidIcmpTypeThrows = {
-    expr = evalDeep (snippets.accept.icmp.v4 256);
+    expr = evalDeep (snippets.accept.icmp 256);
     expected = throwExpected;
   };
 
@@ -318,7 +318,7 @@ in
     # Mixed int+string ICMP types throw — see normalizeIcmpTypes
     # for the rationale (no safe cross-form dedup).
     expr = evalDeep (
-      snippets.accept.icmp.v4 [
+      snippets.accept.icmp [
         8
         "echo-reply"
       ]

@@ -38,7 +38,7 @@
     snats.bad-bridge-nat = {
       from = [ "lan" ];
       to = [ "wan" ];
-      rule.masquerade = { };
+      rule.action.masquerade = { };
     };
   };
 }

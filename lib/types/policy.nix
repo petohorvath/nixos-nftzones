@@ -31,8 +31,8 @@
 
   Cardinality:
     At most one policy per directed `(from, to)` pair. Two
-    policies for the same pair is a configuration error; the
-    check is enforced at module level (not by the type itself).
+    policies for the same pair is a configuration error, which
+    Phase 1 reports as a `policyConflict` diagnostic.
 
     Wildcard policies (`policies.catchall = { from = [ "all" ];
     to = [ "all" ]; verdict = "drop"; }`) rely on upstream
@@ -121,8 +121,9 @@ let
             Source zones for the policy — non-empty. Each entry
             is either a declared zone name, the configured
             `settings.localZone` (default `"local"`), or
-            `settings.wildcardZone` (default `"all"`); resolution
-            is enforced at module level, not by the type.
+            `settings.wildcardZone` (default `"all"`). Phase 1
+            reports any other name as an `invalidZoneRef`
+            diagnostic.
           '';
         };
 

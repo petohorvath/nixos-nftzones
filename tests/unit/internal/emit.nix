@@ -12,7 +12,8 @@
 }:
 let
 
-  inherit (nftypes.dsl) expr;
+  inherit (nftypes.dsl) accept expr mangle;
+  inherit (nftypes.dsl.fields) meta;
   inherit (nftzones.internal.dispatch) dispatchAndSort;
   inherit (nftzones.internal.emit)
     assembleTable
@@ -148,7 +149,7 @@ in
         output =
           (runEmit {
             nodes.api = {
-              zone = "dmz";
+              parent = "dmz";
               address = {
                 ipv4 = "10.0.0.5";
                 ipv6 = "fe80::1";
@@ -496,7 +497,7 @@ in
           filters.f = {
             from = [ "lan" ];
             to = [ "wan" ];
-            rule = [ ];
+            rule = [ accept ];
           };
         }).output.chains;
     expected = [
@@ -521,7 +522,7 @@ in
             filters.f = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).output.chains.forward-at-filter;
       in
@@ -552,7 +553,7 @@ in
             filters.rpfilter-rule = {
               from = [ "wan" ];
               to = [ "local" ];
-              rule = [ ];
+              rule = [ accept ];
               chain = {
                 hook = "prerouting";
                 priority = "raw";
@@ -590,7 +591,7 @@ in
             filters.f = {
               from = [ "lan" ];
               to = [ "local" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).output.chains;
       in
@@ -612,6 +613,7 @@ in
 
   testMkRuleBodyFilter = {
     expr = mkRuleBody {
+      group = "filters";
       rule = [
         (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 22)
         nftypes.dsl.accept
@@ -626,9 +628,13 @@ in
 
   testMkRuleBodySnatAddr = {
     expr = mkRuleBody {
-      rule.snat = {
-        addr = "203.0.113.5";
-        port = 8080;
+      group = "snats";
+      rule = {
+        match = [ ];
+        action.snat = {
+          addr = "203.0.113.5";
+          port = 8080;
+        };
       };
       comment = null;
     };
@@ -642,14 +648,35 @@ in
 
   testMkRuleBodySnatMasquerade = {
     expr = mkRuleBody {
-      rule.masquerade = { };
+      group = "snats";
+      rule = {
+        match = [ ];
+        action.masquerade = { };
+      };
       comment = null;
     };
     expected = [ (nftypes.dsl.masquerade { }) ];
   };
 
+  testMkRuleBodySnatMatch = {
+    # An snat's match statements come before its action.
+    expr = mkRuleBody {
+      group = "snats";
+      rule = {
+        match = [ (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 443) ];
+        action.masquerade = { };
+      };
+      comment = null;
+    };
+    expected = [
+      (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 443)
+      (nftypes.dsl.masquerade { })
+    ];
+  };
+
   testMkRuleBodyDnat = {
     expr = mkRuleBody {
+      group = "dnats";
       rule = {
         match = [ (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 443) ];
         action.dnat = {
@@ -670,6 +697,7 @@ in
 
   testMkRuleBodyDnatRedirect = {
     expr = mkRuleBody {
+      group = "dnats";
       rule = {
         match = [ ];
         action.redirect = {
@@ -683,6 +711,7 @@ in
 
   testMkRuleBodySroute = {
     expr = mkRuleBody {
+      group = "sroutes";
       rule = [
         (nftypes.dsl.mangle nftypes.dsl.fields.meta.mark 100)
       ];
@@ -695,6 +724,7 @@ in
 
   testMkRuleBodyPolicyAccept = {
     expr = mkRuleBody {
+      group = "policies";
       verdict = "accept";
       comment = null;
     };
@@ -703,6 +733,7 @@ in
 
   testMkRuleBodyPolicyDrop = {
     expr = mkRuleBody {
+      group = "policies";
       verdict = "drop";
       comment = null;
     };
@@ -713,6 +744,7 @@ in
 
   testMkRuleBodyFilterWithComment = {
     expr = mkRuleBody {
+      group = "filters";
       rule = [
         (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 22)
         nftypes.dsl.accept
@@ -730,6 +762,7 @@ in
 
   testMkRuleBodyPolicyWithComment = {
     expr = mkRuleBody {
+      group = "policies";
       verdict = "accept";
       comment = "lan->wan default-allow";
     };
@@ -741,7 +774,11 @@ in
 
   testMkRuleBodySnatMasqueradeWithComment = {
     expr = mkRuleBody {
-      rule.masquerade = { };
+      group = "snats";
+      rule = {
+        match = [ ];
+        action.masquerade = { };
+      };
       comment = "nat lan to wan";
     };
     expected = {
@@ -752,6 +789,7 @@ in
 
   testMkRuleBodyDnatWithComment = {
     expr = mkRuleBody {
+      group = "dnats";
       rule = {
         match = [ (nftypes.dsl.eq nftypes.dsl.fields.tcp.dport 80) ];
         action.dnat = {
@@ -784,6 +822,7 @@ in
         preChildCells = [ ];
         postChildCells = [
           {
+            group = "filters";
             rule = [ nftypes.dsl.accept ];
             comment = null;
           }
@@ -815,12 +854,14 @@ in
         to = "local";
         preChildCells = [
           {
+            group = "filters";
             rule = [ nftypes.dsl.accept ];
             comment = null;
           }
         ];
         postChildCells = [
           {
+            group = "filters";
             rule = [ nftypes.dsl.drop ];
             comment = null;
           }
@@ -837,7 +878,7 @@ in
       zoneMembership = membershipFor {
         zones.dmz.interfaces = [ "dmz0" ];
         nodes.web-server = {
-          zone = "dmz";
+          parent = "dmz";
           address.ipv4 = "10.0.0.5";
         };
       };
@@ -985,7 +1026,7 @@ in
             snats.lan-out = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule.masquerade = { };
+              rule.action.masquerade = { };
             };
           }).output.chains."postrouting-at-srcnat__lan-TO-wan";
       in
@@ -1119,7 +1160,7 @@ in
             filters.f = {
               from = [ "lan" ];
               to = [ "wan" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).output;
         baseRules = output.chains."forward-at-filter".rules;
@@ -1172,7 +1213,7 @@ in
             filters.allow-ssh = {
               from = [ "wan" ];
               to = [ "local" ];
-              rule = [ ];
+              rule = [ accept ];
             };
           }).output;
         # input chain: stateful (2) + loopback (1) + jump (1) = 4 rules
@@ -1202,18 +1243,18 @@ in
               early = {
                 from = [ "wan" ];
                 to = [ "local" ];
-                rule = [ ];
+                rule = [ accept ];
                 priority = "first";
               };
               normal = {
                 from = [ "wan" ];
                 to = [ "local" ];
-                rule = [ ];
+                rule = [ accept ];
               };
               late = {
                 from = [ "wan" ];
                 to = [ "local" ];
-                rule = [ ];
+                rule = [ accept ];
                 priority = "last";
               };
             };
@@ -1239,7 +1280,7 @@ in
             zones.lan.interfaces = [ "lan0" ];
             droutes.mark-lan = {
               to = [ "lan" ];
-              rule = [ ];
+              rule = [ (mangle meta.mark 1) ];
             };
           }).output.chains;
       in
@@ -1266,7 +1307,7 @@ in
             zones.wan.interfaces = [ "wan0" ];
             sroutes.mark-wan = {
               from = [ "wan" ];
-              rule = [ ];
+              rule = [ (mangle meta.mark 1) ];
             };
           }).output.chains;
       in
@@ -1460,7 +1501,7 @@ in
               cidrs = [ "10.0.0.0/24" ];
             };
             nodes.web-server = {
-              zone = "dmz";
+              parent = "dmz";
               address.ipv4 = "10.0.0.5";
             };
             filters.allow-http = {

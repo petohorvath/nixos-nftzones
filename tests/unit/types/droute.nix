@@ -5,12 +5,16 @@
   `testFoo = { expr; expected; }` shape as every other unit test;
   aggregated by `tests/unit/default.nix`.
 */
-{ helpers, ... }:
+{ helpers, nftypes, ... }:
 let
   inherit (helpers) evalFails evalTable;
 
+  inherit (nftypes.dsl) mangle;
+  inherit (nftypes.dsl.fields) meta;
+
   basicBody = {
     to = [ "lan-remote" ];
+    rule = [ (mangle meta.mark 200) ];
   };
 
   drouteIn =
@@ -44,11 +48,21 @@ in
     expected = true;
   };
 
-  # ===== droute.rule — defaults to [ ] =====
+  # ===== droute.rule — required, non-empty =====
 
-  testDrouteRuleDefault = {
+  testDrouteRuleAccepted = {
     expr = (drouteIn basicBody).rule;
-    expected = [ ];
+    expected = [ (mangle meta.mark 200) ];
+  };
+
+  testDrouteRuleRequired = {
+    expr = evalFails (drouteIn (removeAttrs basicBody [ "rule" ])).rule;
+    expected = true;
+  };
+
+  testDrouteRuleEmptyRejected = {
+    expr = evalFails (drouteIn (basicBody // { rule = [ ]; })).rule;
+    expected = true;
   };
 
   # ===== droute.priority — default "default" =====

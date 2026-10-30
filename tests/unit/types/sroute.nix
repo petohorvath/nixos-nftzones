@@ -5,12 +5,16 @@
   `testFoo = { expr; expected; }` shape as every other unit test;
   aggregated by `tests/unit/default.nix`.
 */
-{ helpers, ... }:
+{ helpers, nftypes, ... }:
 let
   inherit (helpers) evalFails evalTable;
 
+  inherit (nftypes.dsl) mangle;
+  inherit (nftypes.dsl.fields) meta;
+
   basicBody = {
     from = [ "guest" ];
+    rule = [ (mangle meta.mark 100) ];
   };
 
   srouteIn =
@@ -44,11 +48,21 @@ in
     expected = true;
   };
 
-  # ===== sroute.rule — defaults to [ ] =====
+  # ===== sroute.rule — required, non-empty =====
 
-  testSrouteRuleDefault = {
+  testSrouteRuleAccepted = {
     expr = (srouteIn basicBody).rule;
-    expected = [ ];
+    expected = [ (mangle meta.mark 100) ];
+  };
+
+  testSrouteRuleRequired = {
+    expr = evalFails (srouteIn (removeAttrs basicBody [ "rule" ])).rule;
+    expected = true;
+  };
+
+  testSrouteRuleEmptyRejected = {
+    expr = evalFails (srouteIn (basicBody // { rule = [ ]; })).rule;
+    expected = true;
   };
 
   testSrouteRuleRejectsBogusStatement = {

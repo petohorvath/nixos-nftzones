@@ -61,16 +61,16 @@ in
     };
   };
 
-  # Per-host child zones. A node's `zone` field names its
-  # parent; its `address` lowers to a /32 the dispatcher keys
+  # Per-host child zones. A node's `parent` field names its
+  # parent zone; its `address` lowers to a /32 the dispatcher keys
   # on. Referenced by name in `from` / `to` like any zone.
   nodes = {
     web-server = {
-      zone = "dmz";
+      parent = "dmz";
       address.ipv4 = "192.168.2.10";
     };
     mail-server = {
-      zone = "dmz";
+      parent = "dmz";
       address.ipv4 = "192.168.2.20";
     };
   };
@@ -127,6 +127,6 @@ in
       "dmz"
     ];
     to = [ "wan" ];
-    rule.masquerade = { };
+    rule.action.masquerade = { };
   };
 }

@@ -55,6 +55,7 @@ in
     settings-toggles = import ./scenarios/settings-toggles.nix libraryArgs;
     snat-explicit-rewrite = import ./scenarios/snat-explicit-rewrite.nix libraryArgs;
     snat-masquerade = import ./scenarios/snat-masquerade.nix libraryArgs;
+    snat-match-masquerade = import ./scenarios/snat-match-masquerade.nix libraryArgs;
     snippets-acceptance = import ./scenarios/snippets-acceptance.nix libraryArgs;
     sroute-mark = import ./scenarios/sroute-mark.nix libraryArgs;
     sroute-multi-zone = import ./scenarios/sroute-multi-zone.nix libraryArgs;
@@ -79,13 +80,18 @@ in
     nat-body-no-addr-dnat = import ./rejections/nat-body-no-addr-dnat.nix rejectionArgs;
     nat-body-no-addr-snat = import ./rejections/nat-body-no-addr-snat.nix rejectionArgs;
     node-address-missing = import ./rejections/node-address-missing.nix rejectionArgs;
+    node-zone-option = import ./rejections/node-zone-option.nix rejectionArgs;
     object-comment-injection = import ./rejections/object-comment-injection.nix rejectionArgs;
     object-refs = import ./rejections/object-refs.nix rejectionArgs;
+    object-refs-snat-match = import ./rejections/object-refs-snat-match.nix rejectionArgs;
     parent-cycles = import ./rejections/parent-cycles.nix rejectionArgs;
     parent-local-zone = import ./rejections/parent-local-zone.nix rejectionArgs;
     parent-refs = import ./rejections/parent-refs.nix rejectionArgs;
     policy-uniqueness = import ./rejections/policy-uniqueness.nix rejectionArgs;
     policy-wildcard-conflict = import ./rejections/policy-wildcard-conflict.nix rejectionArgs;
+    rule-empty-droute = import ./rejections/rule-empty-droute.nix rejectionArgs;
+    rule-empty-filter = import ./rejections/rule-empty-filter.nix rejectionArgs;
+    rule-missing-sroute = import ./rejections/rule-missing-sroute.nix rejectionArgs;
     set-elem-comment-injection = import ./rejections/set-elem-comment-injection.nix rejectionArgs;
     set-name-collisions = import ./rejections/set-name-collisions.nix rejectionArgs;
     settings-local-shadow = import ./rejections/settings-local-shadow.nix rejectionArgs;

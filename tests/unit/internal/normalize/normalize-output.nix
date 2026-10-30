@@ -7,8 +7,14 @@
   Zone-reference collection and the in-scope zone names leave no such
   key; their tests observe them through `invalidZoneRef` Diagnostics.
 */
-{ helpers, nftzones, ... }:
+{
+  helpers,
+  nftypes,
+  nftzones,
+  ...
+}:
 let
+  inherit (nftypes) dsl;
   inherit (nftzones.internal.normalize) normalizeTable;
 
   inherit (helpers) diagnosticsFor evalTable;
@@ -48,7 +54,7 @@ in
           (ctxFor {
             zones.dmz.interfaces = [ "eth1" ];
             nodes.web = {
-              zone = "dmz";
+              parent = "dmz";
               address = {
                 ipv4 = "10.0.0.5";
                 ipv6 = "fe80::1";
@@ -101,11 +107,11 @@ in
             zones.z1.interfaces = [ "z1" ];
             zones.z2.interfaces = [ "z2" ];
             nodes.a = {
-              zone = "z1";
+              parent = "z1";
               address.ipv4 = "1.1.1.1";
             };
             nodes.b = {
-              zone = "z2";
+              parent = "z2";
               address.ipv6 = "fe80::1";
             };
           }).zoneMembership;
@@ -177,7 +183,7 @@ in
       zones.lan.interfaces = [ "lan0" ];
       zones.web.interfaces = [ "lan0" ];
       nodes.web = {
-        zone = "lan";
+        parent = "lan";
         address.ipv4 = "10.0.0.5";
       };
     };
@@ -214,12 +220,13 @@ in
         table = evalTable {
           zones.lan.interfaces = [ "lan0" ];
           nodes.web = {
-            zone = "lan";
+            parent = "lan";
             address.ipv4 = "10.0.0.5";
           };
           filters.f = {
             from = [ "all" ];
             to = [ "lan" ];
+            rule = [ dsl.accept ];
           };
         };
       in
@@ -237,6 +244,7 @@ in
         filters.f = {
           from = [ "lan" ];
           to = [ "wan" ];
+          rule = [ dsl.accept ];
         };
       }).expandedGroups.filters.f;
     expected = {
@@ -257,6 +265,7 @@ in
             "all"
           ];
           to = [ "wan" ];
+          rule = [ dsl.accept ];
         };
       }).expandedGroups.filters.f;
     expected = {
@@ -278,12 +287,13 @@ in
         zones.lan.interfaces = [ "lan0" ];
         zones.wan.interfaces = [ "wan0" ];
         nodes.web = {
-          zone = "lan";
+          parent = "lan";
           address.ipv4 = "10.0.0.5";
         };
         filters.f = {
           from = [ "all" ];
           to = [ "all" ];
+          rule = [ dsl.accept ];
         };
       }).expandedGroups.filters.f;
     expected = {
@@ -309,6 +319,7 @@ in
         filters.f = {
           from = [ "all" ];
           to = [ "host" ];
+          rule = [ dsl.accept ];
         };
       }).expandedGroups.filters.f.from;
     expected = [
@@ -332,8 +343,14 @@ in
                 action.redirect.port = 22;
               };
             };
-            sroutes.s.from = [ "all" ];
-            droutes.dr.to = [ "all" ];
+            sroutes.s = {
+              from = [ "all" ];
+              rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
+            };
+            droutes.dr = {
+              to = [ "all" ];
+              rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
+            };
           })
           expandedGroups
           ;
@@ -384,6 +401,7 @@ in
             (_: priority: {
               from = [ "lan" ];
               to = [ "local" ];
+              rule = [ dsl.accept ];
               inherit priority;
             })
             {
@@ -414,11 +432,12 @@ in
           from = [ "lan" ];
           to = [ "wan" ];
           priority = "first";
+          rule = [ dsl.accept ];
         };
         snats.s = {
           from = [ "lan" ];
           to = [ "wan" ];
-          rule.masquerade = { };
+          rule.action.masquerade = { };
           priority = "default";
         };
         dnats.d = {
@@ -432,10 +451,12 @@ in
         sroutes.sr = {
           from = [ "lan" ];
           priority = "preDispatch";
+          rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
         };
         droutes.dr = {
           to = [ "wan" ];
           priority = "postDispatch";
+          rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
         };
       }).resolvedPriorities;
     expected = {
@@ -460,6 +481,7 @@ in
             "ghost"
           ];
           to = [ "ghost" ];
+          rule = [ dsl.accept ];
         };
         policies.p = {
           from = [ "ghost" ];
@@ -468,7 +490,7 @@ in
         snats.sn = {
           from = [ "ghost" ];
           to = [ "ghost" ];
-          rule.masquerade = { };
+          rule.action.masquerade = { };
         };
         dnats.d = {
           from = [ "ghost" ];
@@ -477,8 +499,14 @@ in
             action.redirect.port = 22;
           };
         };
-        sroutes.sr.from = [ "ghost" ];
-        droutes.dr.to = [ "ghost" ];
+        sroutes.sr = {
+          from = [ "ghost" ];
+          rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
+        };
+        droutes.dr = {
+          to = [ "ghost" ];
+          rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
+        };
       }).errors;
     expected = map invalidZoneRefAt [
       [
@@ -544,18 +572,18 @@ in
     ];
   };
 
-  # Each node's zone is a reference too. The lowered zone's unknown
+  # Each node's parent is a reference too. The lowered zone's unknown
   # parent cascades into a second error on a path the user never
   # wrote; pinned as is (#22 leaves node-derived paths unfixed).
-  testZoneRefCollectionCoversNodeZones = {
+  testZoneRefCollectionCoversNodeParents = {
     expr =
       (diagnosticsFor {
         nodes.api = {
-          zone = "ghost";
+          parent = "ghost";
           address.ipv4 = "1.1.1.1";
         };
         nodes.web = {
-          zone = "ghost";
+          parent = "ghost";
           address.ipv4 = "2.2.2.2";
         };
       }).errors;
@@ -563,12 +591,12 @@ in
       (invalidZoneRefAt [
         "nodes"
         "api"
-        "zone"
+        "parent"
       ])
       (invalidZoneRefAt [
         "nodes"
         "web"
-        "zone"
+        "parent"
       ])
       {
         tag = "zoneParentUnknown";
@@ -601,6 +629,7 @@ in
             "phantom"
           ];
           to = [ "all" ];
+          rule = [ dsl.accept ];
         };
       }).errors;
     expected = map invalidZoneRefAt [
@@ -627,7 +656,7 @@ in
       zones.lan.interfaces = [ "lan0" ];
       zones.wan.interfaces = [ "wan0" ];
       nodes.web = {
-        zone = "lan";
+        parent = "lan";
         address.ipv4 = "10.0.0.5";
       };
       filters.f = {
@@ -639,6 +668,7 @@ in
           "wan"
           "local"
         ];
+        rule = [ dsl.accept ];
       };
     };
     expected = {
@@ -659,6 +689,7 @@ in
             "host"
             "local"
           ];
+          rule = [ dsl.accept ];
         };
       }).errors;
     expected = [

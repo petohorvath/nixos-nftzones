@@ -64,6 +64,10 @@ _Avoid_: Rule set (for this meaning), collection
 One named item inside a group. Its body is the rule.
 _Avoid_: Rule (for the wrapper)
 
+**Action**:
+The address rewrite a NAT entry applies to the packets its match selects.
+_Avoid_: Rewrite spec
+
 **Direction**:
 An entry's source or destination selection, named `from` or `to`.
 

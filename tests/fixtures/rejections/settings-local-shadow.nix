@@ -23,7 +23,7 @@ _: {
     # Default localZone is "local"; lowering nodes.local to a
     # zone named "local" is the collision.
     nodes.local = {
-      zone = "lan";
+      parent = "lan";
       address.ipv4 = "10.0.0.1";
     };
   };

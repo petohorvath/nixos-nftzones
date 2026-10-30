@@ -8,8 +8,10 @@
   explicitly here so the graph stays inspectable at this level:
 
     primitives.nix      no deps — atoms (identifier, comment,
-                        rule, entryPriority, chainPriority,
-                        chainOverride, mkNameOption)
+                        rule, nonEmptyRule, matchRule,
+                        entryPriority, chainPriority,
+                        chainOverride) and the NAT body
+                        constructor `mkNatRule`
     zone.nix            primitives — zone-related types
                         (`zoneName`, `zoneNames`, `zoneParent`,
                         `zoneInterfaces`, `zoneCidrs`,

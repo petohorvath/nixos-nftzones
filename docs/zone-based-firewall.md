@@ -160,26 +160,29 @@ Filters and policies cover the _filter_ hooks — what is allowed, what is dropp
 
 ### Source NAT (`snats`)
 
-Rewrite the source address of outbound traffic. `rule.masquerade = { }` picks the source automatically from the outgoing interface (the common "share one WAN address" case). `rule.snat = { addr; port?; … }` sets a fixed source.
+Rewrite the source address of outbound traffic. An snat's body has the same shape as a dnat's, `rule = { match; action; }`. `rule.action.masquerade = { }` picks the source automatically from the outgoing interface (the common "share one WAN address" case). `rule.action.snat = { addr; port?; … }` sets a fixed source. `rule.match` defaults to `[ ]`, which translates every packet of the zone pair; set it to translate only some traffic. The match runs at postrouting, after DNAT and routing, so it sees the translated destination and can use the output interface.
 
 ```nix
 snats.lan-masquerade = {
   from = [ "lan" "guest" ];
   to   = [ "wan" ];
-  rule.masquerade = { };
+  rule.action.masquerade = { };
   comment = "outbound NAT";
 };
 
 snats.web-snat = {
   from = [ "lan" ];
   to   = [ "wan" ];
-  rule.snat = { addr = "203.0.113.5"; port = 8080; };
+  rule = {
+    match = [ (eq meta.l4proto "tcp") (eq tcp.dport 443) ];
+    action.snat = { addr = "203.0.113.5"; port = 8080; };
+  };
 };
 ```
 
 ### Destination NAT (`dnats`)
 
-Rewrite the destination address of inbound traffic — port forwarding. `rule.match` constrains _which_ packets are rewritten (typically a destination port); `rule.action.dnat = { addr; port; }` is the rewrite. `rule.action.redirect = { port; }` is a shorthand for "redirect to localhost on this port."
+Rewrite the destination address of inbound traffic — port forwarding. `rule.match` constrains _which_ packets are rewritten (typically a destination port); `rule.action.dnat = { addr; port; }` is the action. `rule.action.redirect = { port; }` is a shorthand for "redirect to localhost on this port."
 
 ```nix
 dnats.public-https = {

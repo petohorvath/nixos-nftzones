@@ -28,7 +28,7 @@ in
   testToZoneV4Only = {
     expr = inputFields (toZone {
       name = "web";
-      zone = "dmz";
+      parent = "dmz";
       address = {
         ipv4 = "10.0.0.5";
         ipv6 = null;
@@ -47,7 +47,7 @@ in
   testToZoneV6Only = {
     expr = inputFields (toZone {
       name = "ipv6-host";
-      zone = "lan";
+      parent = "lan";
       address = {
         ipv4 = null;
         ipv6 = "fe80::1";
@@ -66,7 +66,7 @@ in
   testToZoneDualStack = {
     expr = inputFields (toZone {
       name = "dual";
-      zone = "dmz";
+      parent = "dmz";
       address = {
         ipv4 = "10.0.0.5";
         ipv6 = "fe80::1";
@@ -89,7 +89,7 @@ in
     expr =
       (toZone {
         name = "x";
-        zone = "any";
+        parent = "any";
         address = {
           ipv4 = "1.2.3.4";
           ipv6 = null;
@@ -98,13 +98,13 @@ in
     expected = [ ];
   };
 
-  # ===== toZone — parent reflects node.zone =====
+  # ===== toZone — parent reflects node.parent =====
 
   testToZoneParentPropagation = {
     expr =
       (toZone {
         name = "x";
-        zone = "my-zone";
+        parent = "my-zone";
         address = {
           ipv4 = "1.2.3.4";
           ipv6 = null;
@@ -120,7 +120,7 @@ in
     expr = lib.sort (a: b: a < b) (
       builtins.attrNames (toZone {
         name = "x";
-        zone = "z";
+        parent = "z";
         address = {
           ipv4 = "1.2.3.4";
           ipv6 = null;
@@ -143,7 +143,7 @@ in
       let
         zone = toZone {
           name = "x";
-          zone = "z";
+          parent = "z";
           address = {
             ipv4 = "1.2.3.4";
             ipv6 = null;

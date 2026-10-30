@@ -22,7 +22,7 @@ _: {
     zones.dmz.interfaces = [ "dmz0" ];
 
     nodes.web = {
-      zone = "dmz";
+      parent = "dmz";
       address = { };
     };
   };

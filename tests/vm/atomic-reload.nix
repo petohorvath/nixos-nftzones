@@ -73,7 +73,7 @@ let
     # chain, not NAT.
     lan-out.from = [ "lan" ];
     lan-out.to = [ "wan" ];
-    lan-out.rule.masquerade = { };
+    lan-out.rule.action.masquerade = { };
   };
 
   basePolicies = {

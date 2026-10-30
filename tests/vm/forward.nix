@@ -181,7 +181,7 @@ pkgs.testers.runNixOSTest {
               snats.lan-out = {
                 from = [ "lan" ];
                 to = [ "wan" ];
-                rule.masquerade = { };
+                rule.action.masquerade = { };
               };
 
               # SNAT wan→wan masquerade — covers the DNAT
@@ -195,7 +195,7 @@ pkgs.testers.runNixOSTest {
               snats.wan-hairpin = {
                 from = [ "wan" ];
                 to = [ "wan" ];
-                rule.masquerade = { };
+                rule.action.masquerade = { };
               };
 
               # External 8080 → server:80.

@@ -480,7 +480,8 @@ let
           default = { };
           description = ''
             Source-zone-keyed route mangling (prerouting `type
-            route` chain). See `nftzones.types.sroute`.
+            filter` chain at `mangle` priority). See
+            `nftzones.types.sroute`.
           '';
         };
 
