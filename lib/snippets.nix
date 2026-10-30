@@ -23,10 +23,10 @@
   for the full input / output contract.
 
   Reject variant per protocol:
-    - `reject.tcp`      → `reject.tcpReset`  (TCP RST, clean closure)
-    - `reject.udp`      → `reject { }`       (ICMP port-unreachable)
-    - `reject.icmp.v4`  → `reject { }`       (family-aware default)
-    - `reject.icmp.v6`  → `reject { }`       (family-aware default)
+    - `reject.tcp`     → `reject { type = "tcp reset"; }` (TCP RST)
+    - `reject.udp`     → `reject { }` (ICMP port-unreachable)
+    - `reject.icmp.v4` → `reject { }` (family-aware default)
+    - `reject.icmp.v6` → `reject { }` (family-aware default)
 
   Field-name mapping:
     - `icmp.v4` → `nftypes.dsl.fields.icmp.type`
@@ -99,7 +99,7 @@ in
   reject = {
     tcp = ports: [
       (mkPortMatch tcp.dport ports)
-      reject.tcpReset
+      (reject { type = "tcp reset"; })
     ];
     udp = ports: [
       (mkPortMatch udp.dport ports)

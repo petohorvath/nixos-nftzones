@@ -94,7 +94,7 @@ in
       in
       {
         inherit (table) family name;
-        hasMarker = table ? __nftTable;
+        hasMarker = table._type or null == "nix-nftypes.tableTree";
       };
     expected = {
       family = "ip";

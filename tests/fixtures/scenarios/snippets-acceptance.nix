@@ -1,6 +1,7 @@
 /*
   Snippets acceptance scenario — one filter per `(verdict, proto)`
-  combination, twelve total. Compiled end-to-end through
+  combination, twelve total, plus a single port range, which the
+  snippets match with `eq`. Compiled end-to-end through
   `mkRuleset` and `nft -j --check`; succeeds iff every emitted
   shape is kernel-accepted.
 
@@ -44,6 +45,7 @@ in
         zones = mkZones "eth0";
         filters = {
           accept-tcp = toLocal (accept.tcp 22);
+          accept-tcp-range = toLocal (accept.tcp "8000-8100");
           accept-udp = toLocal (accept.udp 53);
           drop-tcp = toLocal (drop.tcp 23);
           drop-udp = toLocal (drop.udp 137);

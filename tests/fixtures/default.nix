@@ -81,7 +81,6 @@ in
     node-address-missing = import ./rejections/node-address-missing.nix rejectionArgs;
     object-comment-injection = import ./rejections/object-comment-injection.nix rejectionArgs;
     object-refs = import ./rejections/object-refs.nix rejectionArgs;
-    object-refs-set-stmt = import ./rejections/object-refs-set-stmt.nix rejectionArgs;
     parent-cycles = import ./rejections/parent-cycles.nix rejectionArgs;
     parent-local-zone = import ./rejections/parent-local-zone.nix rejectionArgs;
     parent-refs = import ./rejections/parent-refs.nix rejectionArgs;

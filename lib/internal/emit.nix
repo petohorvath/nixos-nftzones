@@ -38,7 +38,7 @@ let
     ct
     meta
     ;
-  inherit (nftypes) chainTypeFor priorityNameOf;
+  inherit (internal.compatibility) chainTypeFor priorityNameOf resolvePriority;
   inherit (internal.placement) baseChainNameOf;
 
   # Boilerplate rule constants (each rule = list of statements).
@@ -92,7 +92,7 @@ let
 
   /*
     Emit one cell's rule entry. A non-null `cell.comment` wraps the
-    statement list as `{ expr; comment; }` — the alternate rule-list
+    statement list as `{ statements; comment; }` — the alternate rule-list
     element shape per nftypes' `dsl/structure/table.nix`.
 
     Cell shape dispatch:
@@ -127,7 +127,7 @@ let
     in
     if cell.comment != null then
       {
-        expr = stmts;
+        statements = stmts;
         inherit (cell) comment;
       }
     else
@@ -284,7 +284,7 @@ let
       inherit (tree) hook;
       # `prio` is the JSON / nftypes-schema field name; internally
       # we use `priority` everywhere else.
-      prio = nftypes.resolvePriority family tree.priority;
+      prio = resolvePriority family tree.priority;
       inherit rules;
     }
     // lib.optionalAttrs isFilterBaseChain {
@@ -327,7 +327,7 @@ let
       synthesizedRpfilterChain = {
         type = "filter";
         hook = "prerouting";
-        prio = nftypes.resolvePriority family "raw";
+        prio = resolvePriority family "raw";
         rules = rpfilterRules;
       };
       rpfilterAddition = lib.optionalAttrs needsRpfilter {
@@ -367,19 +367,48 @@ let
       };
     };
 
+  # DSL names of the object fields whose JSON names `nftypes.dsl.table`
+  # rejects, by object kind. The object options reuse nftypes' schema
+  # bodies, so they keep the JSON names.
+  dslObjectFieldNames =
+    let
+      setFieldNames = {
+        elem = "elements";
+        stmt = "statements";
+        gc-interval = "gcInterval";
+        auto-merge = "autoMerge";
+      };
+    in
+    {
+      sets = setFieldNames;
+      maps = setFieldNames // {
+        map = "dataType";
+      };
+      limits = {
+        rate_unit = "rateUnit";
+        burst_unit = "burstUnit";
+      };
+    };
+
   /*
-    Pure passthrough: `table.objects.<kind>.<name>` maps directly to
-    `body.<kind>.<name>` in the assembled `nftypes.dsl.table` value.
-    The type layer's `asUserBody` (in `lib/types/table.nix`) has
-    already stripped `family` / `name` / `table` / `handle`; the
-    nftypes renderer fills them back in from the parent table.
+    `table.objects.<kind>.<name>` maps to `body.<kind>.<name>` in the
+    assembled `nftypes.dsl.table` value, with each field renamed per
+    `dslObjectFieldNames`. The type layer's `asUserBody` (in
+    `lib/types/table.nix`) has already stripped `family` / `name` /
+    `table` / `handle`; the nftypes renderer fills them back in from
+    the parent table.
   */
   emitUserObjects =
     { table, ctx }:
     {
       inherit table;
       ctx = ctx // {
-        userObjects = table.objects;
+        userObjects = lib.mapAttrs (
+          kind:
+          lib.mapAttrs (
+            _: lib.mapAttrs' (field: lib.nameValuePair (dslObjectFieldNames.${kind}.${field} or field))
+          )
+        ) table.objects;
       };
     };
 

@@ -48,7 +48,7 @@
   `policyVerdict` is `enum [ "accept" "drop" ]` — the two
   verdicts nftables permits in a chain-level `policy <X>;`
   clause, applied here at the per-pair level. Defined locally
-  rather than reused from `nftypes.types.policy` because the
+  rather than reused from `nftypes.types.chainPolicy` because the
   compile pipeline's `policyVerdictStmts` dispatch only knows
   `accept` / `drop`; if upstream ever broadens its policy enum
   the local constraint keeps Phase 4 from crashing on an
@@ -142,7 +142,7 @@ let
             Default verdict for the `(from, to)` pair when no
             filter matches. Either `"accept"` or `"drop"`. Same
             enum as the nftables chain-level policy
-            (`nftypes.types.policy`), used here at the per-pair
+            (`nftypes.types.chainPolicy`), used here at the per-pair
             level.
           '';
         };

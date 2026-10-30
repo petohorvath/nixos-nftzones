@@ -3,21 +3,19 @@
 
   `mkPortMatch` and `mkIcmpMatch` consume a normalized list and a
   field expression and emit one nftypes match statement, choosing
-  between `eq` (single bare value), `within` (single range), and
-  `inSet` (multi-element) according to the list shape. Port and
-  ICMP-type input normalization are split into separate functions
-  because their validation rules differ (libnet covers ports;
-  ICMP uses an inline range check + form-uniformity rule).
+  between `eq` (single value or range) and `inSet` (multi-element)
+  according to the list shape. Port and ICMP-type input
+  normalization are split into separate functions because their
+  validation rules differ (libnet covers ports; ICMP uses an inline
+  range check + form-uniformity rule).
 */
 { inputs }:
 let
   inherit (inputs) lib nftypes;
-  inherit (nftypes.dsl) eq inSet within;
+  inherit (nftypes.dsl) eq inSet;
 
   ports = import ./ports.nix { inherit inputs; };
   inherit (ports) normalizePorts;
-
-  isRange = x: builtins.isAttrs x && x ? range;
 
   /*
     Validate the all-ints-or-all-strings rule, range-check ints,
@@ -81,14 +79,11 @@ let
 
   /*
     Build one port match statement, branching by normalized list
-    length and singleton kind:
+    length:
       - empty       → throw
       - single int  → `eq    field N`
-      - single rng  → `within field { range = [lo hi]; }`
-      - multi       → `inSet  field [ ... ]`
-
-    `within` is an alias for `inSet` in nftypes; using it for the
-    single-range case is purely a readability choice.
+      - single rng  → `eq    field { range = [lo hi]; }`
+      - multi       → `inSet field [ ... ]`
 
     Inputs:
       field — nftypes field expression (e.g. `tcp.dport`, `udp.dport`)
@@ -101,14 +96,11 @@ let
     let
       normalized = normalizePorts ports;
       count = builtins.length normalized;
-      first = builtins.head normalized;
     in
     if count == 0 then
       throw "snippets: ports list is empty"
-    else if count == 1 && builtins.isInt first then
-      eq field first
-    else if count == 1 && isRange first then
-      within field first
+    else if count == 1 then
+      eq field (builtins.head normalized)
     else
       inSet field normalized;
 

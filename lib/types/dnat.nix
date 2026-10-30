@@ -40,10 +40,10 @@
                  explicitly.
     - `action` — exactly one of:
                  - `dnat`     — full address translation; reuses
-                                `nftypes.types.statements.natBody`.
+                                `nftypes.types.statementBodies.natBody`.
                  - `redirect` — auto-target (redirect to localhost);
                                 reuses
-                                `nftypes.types.statements.masqueradeBody`.
+                                `nftypes.types.statementBodies.masqueradeBody`.
 
   Reusing nftypes' shapes keeps flag enums (`natFlag`,
   `natTypeFlag`) and field validation in lock-step with
@@ -126,11 +126,11 @@ let
       action = lib.mkOption {
         type = lib.types.attrTag {
           dnat = lib.mkOption {
-            type = nftypes.types.statements.natBody;
+            type = nftypes.types.statementBodies.natBody;
             description = "Full destination address translation.";
           };
           redirect = lib.mkOption {
-            type = nftypes.types.statements.masqueradeBody;
+            type = nftypes.types.statementBodies.masqueradeBody;
             description = "Redirect to the local host.";
           };
         };

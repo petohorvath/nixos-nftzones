@@ -5,7 +5,7 @@
   documents and returns a canonical sorted, deduped list of elements
   where each element is either a bare int (single port) or a
   `nftypes.dsl.expr.range`-shaped attrset (`{ range = [ lo hi ]; }`)
-  ready to splice into an `eq` / `within` / `inSet` call.
+  ready to splice into an `eq` / `inSet` call.
 
   Validation routes through `libnet.port` / `libnet.portRange` so
   out-of-range and malformed inputs throw with libnet's own error

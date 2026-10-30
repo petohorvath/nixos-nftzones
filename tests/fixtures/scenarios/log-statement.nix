@@ -2,7 +2,7 @@
   Log-statement scenario — pins that `nftypes.dsl.log` in a
   rule body survives the emit pipeline unchanged. nftzones'
   compile phases (normalize → expand → dispatch → emit) all
-  see the rule's `expr` list; none of them should strip,
+  see the rule's `statements` list; none of them should strip,
   rewrite, or reorder the `log` statement out of existence.
   Without an explicit test, a future refactor that filters
   statements by some property could silently drop logs and
@@ -38,11 +38,11 @@ in
       firstRule =
         builtins.elemAt compiled.tables.log-statement.chains."input-at-filter__wan-TO-local".rules
           0;
-      # The runner wraps rule bodies in `{ expr; comment; }`
+      # The runner wraps rule bodies in `{ statements; comment; }`
       # when a comment is set, but rules without comments may
       # still arrive as either shape across the pipeline —
       # unwrap defensively.
-      body = if builtins.isList firstRule then firstRule else firstRule.expr;
+      body = if builtins.isList firstRule then firstRule else firstRule.statements;
       logStatements = builtins.filter (statement: builtins.isAttrs statement && statement ? log) body;
     in
     [

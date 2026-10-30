@@ -22,7 +22,7 @@
                                   "<hook>-at-<priority>"`. The
                                   dispatch-tree key and
                                   base-chain-name format. Priority is canonicalized
-                                  via `nftypes.priorityNameOf` so
+                                  via `compatibility.priorityNameOf` so
                                   int and symbol forms of the same
                                   value collapse to one key.
     - `subChainNameOf`          — `baseChainName → { from?; to?;
@@ -34,16 +34,15 @@
                                   (extra fields ignored).
 
   Wired into the surface from `lib/internal/default.nix` as a
-  layer-0 leaf with no inter-module dependencies.
+  layer-0 leaf that depends only on `compatibility`.
 */
-{ inputs }:
+{ inputs, internal }:
 let
   inherit (inputs) lib nftypes;
-  inherit (nftypes) priorityNameOf;
-  inherit (nftypes.compatibility) priorityIntsByFamily;
+  inherit (internal.compatibility) priorityInts priorityNameOf;
 
   hookNames = lib.genAttrs nftypes.enums.hook lib.id;
-  priorityNames = lib.genAttrs (builtins.attrNames priorityIntsByFamily.inet) lib.id;
+  priorityNames = lib.genAttrs (builtins.attrNames (priorityInts "inet")) lib.id;
 
   defaultGroupChainAttrs = {
     snats = {
@@ -126,7 +125,7 @@ let
     dispatch tree carries the structured `{ hook; priority; }`
     separately so Phase 4 reads fields, not parsed strings.
 
-    Priority is canonicalized via `nftypes.priorityNameOf` so int
+    Priority is canonicalized via `compatibility.priorityNameOf` so int
     and symbol forms of the same value share one dispatch tree
     (`chain.priority = 0` and the default `"filter"` collapse into
     `"input-at-filter"`). The lookup is family-aware — bridge's

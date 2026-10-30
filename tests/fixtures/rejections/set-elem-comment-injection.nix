@@ -1,5 +1,5 @@
 /*
-  Rejection scenario for nftypes' `nftQuotedString` restriction on
+  Rejection scenario for nftypes' `types.comment` restriction on
   set-element comments. Same threat model as object-body comments
   (see `object-comment-injection.nix`): a `"` in a rendered
   comment terminates the quoted token early and the trailing
@@ -7,8 +7,8 @@
   includes nested `chain` blocks.
 
   Set elements declared via `dsl.expr.elem { val; comment; }` go
-  through nftypes' `elementBody` / `setElem` shape, whose
-  `comment` field is typed by `nftQuotedString`. The element-level
+  through nftypes' `elemBody` / `setElem` shape, whose
+  `comment` field is typed by `types.comment`. The element-level
   path is structurally distinct from the object-body path — a
   separate `mkOption` site — so a future nftypes bump could
   regress one without the other. This scenario pins the element-

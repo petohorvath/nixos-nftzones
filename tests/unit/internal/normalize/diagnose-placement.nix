@@ -1178,6 +1178,32 @@ in
     };
   };
 
+  # The table cannot declare a tunnel (nftypes' table tree has no
+  # tunnel kind), so a tunnel ref never resolves.
+  testObjectRefsTunnelRejected = {
+    expr = diagnosticsFor {
+      zones.lan.interfaces = [ "lan0" ];
+      filters.f = {
+        from = [ "lan" ];
+        to = [ "lan" ];
+        rule = [ (dsl.tunnel.ref "vpn") ];
+      };
+    };
+    expected = {
+      errors = [
+        {
+          tag = "objectRefUnknown";
+          path = [
+            "filters"
+            "f"
+            "rule"
+          ];
+        }
+      ];
+      warnings = [ ];
+    };
+  };
+
   # A counter ref in a filter rule and a set ref in a dnat match.
   testObjectRefsUnknownKindsAcrossGroups = {
     expr = diagnosticsFor {
@@ -1325,41 +1351,20 @@ in
     expected = clean;
   };
 
-  # A set's stateful statements carry refs that must resolve too.
-  testObjectRefsSetStatementUnknownRejected = {
+  # A set's statements are inline stateful statements; nftypes
+  # rejects a reference there, so they carry no refs.
+  testObjectRefsSetStatementInlineSilent = {
     expr = diagnosticsFor {
       zones.lan.interfaces = [ "lan0" ];
       objects.sets.tracker = {
         type = "ipv4_addr";
         elem = [ "1.2.3.4" ];
-        stmt = [ (dsl.counter.ref "ghost-counter") ];
-      };
-    };
-    expected = {
-      errors = [
-        {
-          tag = "objectRefUnknown";
-          path = [
-            "objects"
-            "sets"
-            "tracker"
-          ];
-        }
-      ];
-      warnings = [ ];
-    };
-  };
-
-  testObjectRefsSetStatementDeclaredResolves = {
-    expr = diagnosticsFor {
-      zones.lan.interfaces = [ "lan0" ];
-      objects = {
-        counters.tracker-hits = { };
-        sets.tracker = {
-          type = "ipv4_addr";
-          elem = [ "1.2.3.4" ];
-          stmt = [ (dsl.counter.ref "tracker-hits") ];
-        };
+        stmt = [
+          (dsl.counter {
+            packets = 0;
+            bytes = 0;
+          })
+        ];
       };
     };
     expected = clean;

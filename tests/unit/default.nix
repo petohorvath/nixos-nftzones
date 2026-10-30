@@ -19,6 +19,7 @@ in
 {
   examples = import ./examples.nix testContext;
   internal = {
+    compatibility = import ./internal/compatibility.nix testContext;
     compile = import ./internal/compile.nix testContext;
     dispatch = import ./internal/dispatch.nix testContext;
     emit = import ./internal/emit.nix testContext;

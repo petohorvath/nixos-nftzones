@@ -509,12 +509,12 @@ let
     Reject placements the kernel will refuse, before they reach
     `nft -f`. Each rule group dispatches into a `(hook, priority)`
     pair; combined with `table.family`, the implied chain type
-    (via `nftypes.chainTypeFor`) is what the kernel sees. A srcnat
-    or dstnat priority needs a `nat` chain, but `chainTypeFor`
-    falls back to `filter` where nat can't attach, so those
-    priorities are checked as `nat`. A triple that
-    `nftypes.validChainPlacement` rejects becomes an error naming
-    the offending placement.
+    (via `compatibility.chainTypeFor`) is what the kernel sees. A
+    srcnat or dstnat priority needs a `nat` chain, but
+    `chainTypeFor` falls back to `filter` where nat can't attach,
+    so those priorities are checked as `nat`. A triple that
+    `nftypes.compatibility.validChainPlacement` rejects becomes an
+    error naming the offending placement.
 
     Catches three failure modes uncovered by the audit:
       - `bridge` snat/dnat — bridge family doesn't support `nat`
@@ -535,7 +535,8 @@ let
     let
       inherit (table) family;
       inherit (table.settings) localZone;
-      inherit (nftypes) chainTypeFor priorityNameOf validChainPlacement;
+      inherit (internal.compatibility) chainTypeFor priorityNameOf;
+      inherit (nftypes.compatibility) validChainPlacement;
       inherit (internal.placement) chainAttrsForEntry;
 
       placementsForEntry =
@@ -600,7 +601,7 @@ let
     { table, ctx }:
     let
       inherit (table) family;
-      inherit (nftypes) priorityNameOf;
+      inherit (internal.compatibility) priorityNameOf;
 
       claimsRawPrerouting =
         { chain, ... }:
@@ -651,7 +652,7 @@ let
     { table, ctx }:
     let
       inherit (table) family;
-      inherit (nftypes) priorityNameOf;
+      inherit (internal.compatibility) priorityNameOf;
 
       entryHasChain = entry: entry.chain != null;
 
@@ -1374,6 +1375,8 @@ let
       */
       zoneSetNames = builtins.attrNames ctx.zoneMembership.sets;
 
+      # No `tunnels`: `nftypes.dsl.table` has no tunnel kind, so the
+      # table cannot declare a tunnel for a rule to reference.
       knownNames = {
         counters = builtins.attrNames table.objects.counters;
         quotas = builtins.attrNames table.objects.quotas;
@@ -1383,7 +1386,6 @@ let
         ctExpectations = builtins.attrNames table.objects.ctExpectations;
         secmarks = builtins.attrNames table.objects.secmarks;
         synproxies = builtins.attrNames table.objects.synproxies;
-        tunnels = builtins.attrNames table.objects.tunnels;
         sets = (builtins.attrNames table.objects.sets) ++ zoneSetNames;
         maps = builtins.attrNames table.objects.maps;
         flowtables = builtins.attrNames table.objects.flowtables;
@@ -1455,11 +1457,11 @@ let
       );
 
       /*
-        Walk every `table.objects.<kind>.<name>` body. Most object
-        kinds (counters, limits, quotas, synproxies, …) are
-        config-only leaves and contribute no refs. Sets and maps
-        may carry refs in their stateful statements (`stmt`); the
-        recursive walker picks those up uniformly.
+        Walk every `table.objects.<kind>.<name>` body. Object
+        bodies are config-only leaves and contribute no refs today:
+        a set's or map's stateful statements (`stmt`) are inline,
+        since nftypes rejects a reference there. The walk stays so
+        that a body field gaining refs is checked like a rule body.
       */
       refsFromObjectKind =
         kindName: kindAttrs:

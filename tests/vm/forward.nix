@@ -160,7 +160,7 @@ pkgs.testers.runNixOSTest {
                 rule = [
                   (eq tcp.dport 7777)
                   counter.auto
-                  reject.tcpReset
+                  (reject { type = "tcp reset"; })
                 ];
               };
 
@@ -623,7 +623,7 @@ pkgs.testers.runNixOSTest {
         )
 
     with diag_subtest("reject verdict: lan→wan TCP/7777 fails fast with RST"):
-        # `filters.lan-reject-probe` ends in `reject.tcpReset`.
+        # `filters.lan-reject-probe` ends in `reject { type = "tcp reset"; }`.
         # A reject-terminated rule is observably distinct from
         # the drop verdict tested above: the client gets an
         # immediate TCP RST → "Connection refused" instead of

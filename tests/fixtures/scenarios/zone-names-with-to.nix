@@ -80,13 +80,13 @@ in
       expected = {
         "a → to-b" = [
           {
-            expr = [ accept ];
+            statements = [ accept ];
             comment = "y";
           }
         ];
         "a-to → b" = [
           {
-            expr = [ accept ];
+            statements = [ accept ];
             comment = "x";
           }
         ];

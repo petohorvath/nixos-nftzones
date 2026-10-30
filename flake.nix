@@ -8,10 +8,12 @@
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
     nix-libnet = {
-      url = "github:petohorvath/nix-libnet/v0.1.0";
+      url = "github:petohorvath/nix-libnet/v0.2.0";
       inputs = {
         flake-parts.follows = "flake-parts";
         nixpkgs.follows = "nixpkgs";
+        nix-unit.follows = "nix-unit";
+        treefmt-nix.follows = "treefmt-nix";
       };
     };
     nix-unit = {
@@ -27,13 +29,14 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     # Downstream flakes follow `nftzones/nix-nftypes`, so keep this input
-    # name. Temporary pin to a `main` commit past v0.1.0; repin to the next
-    # release tag once nftypes cuts one.
+    # name.
     nix-nftypes = {
-      url = "github:petohorvath/nix-nftypes/d805ffa5e87b887702a16926cc73869896a911fa";
+      url = "github:petohorvath/nix-nftypes/v0.2.0";
       inputs = {
         flake-parts.follows = "flake-parts";
         nixpkgs.follows = "nixpkgs";
+        nix-unit.follows = "nix-unit";
+        treefmt-nix.follows = "treefmt-nix";
       };
     };
   };
