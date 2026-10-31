@@ -1,5 +1,5 @@
 /*
-  Rejection scenario for `invalidZoneRef` — a filter references a
+  Rejection scenario for `zoneRefUnknown` — a filter references a
   `from` zone that is neither declared nor lowered from a node. Without
   rejection, downstream emit would either crash on missing zone
   data or silently emit a chain referencing a non-existent set.
@@ -9,11 +9,11 @@ let
   inherit (nftypes.dsl) accept;
 in
 {
-  description = "invalidZoneRef: filter.from points to undeclared zone";
+  description = "zoneRefUnknown: filter.from points to undeclared zone";
 
   errors = [
     {
-      tag = "invalidZoneRef";
+      tag = "zoneRefUnknown";
       path = [
         "filters"
         "f"

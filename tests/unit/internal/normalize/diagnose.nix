@@ -108,7 +108,7 @@ in
     expected = {
       errors = [
         {
-          tag = "invalidZoneRef";
+          tag = "zoneRefUnknown";
           path = [
             "filters"
             "f"
@@ -206,7 +206,7 @@ in
       }).errors;
     expected = [
       {
-        tag = "invalidZoneRef";
+        tag = "zoneRefUnknown";
         path = [
           "filters"
           "f"
@@ -287,7 +287,7 @@ in
     expr = normalizeTable (evalTable invalidBody);
     expectedError = {
       type = "ThrownError";
-      msg = "validation failed:\n  - \\[invalidZoneRef\\] filters\\.f\\.from\\.0: [^\n]*\n  - \\[zoneParentUnknown\\] zones\\.lan\\.parent: ";
+      msg = "validation failed:\n  - \\[zoneRefUnknown\\] filters\\.f\\.from\\.0: [^\n]*\n  - \\[zoneParentUnknown\\] zones\\.lan\\.parent: ";
     };
   };
 }

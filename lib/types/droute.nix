@@ -90,7 +90,7 @@ let
             entry is either a declared zone name, the configured
             `settings.localZone` (default `"local"`), or
             `settings.wildcardZone` (default `"all"`). Phase 1
-            reports any other name as an `invalidZoneRef`
+            reports any other name as a `zoneRefUnknown`
             diagnostic.
           '';
         };
@@ -113,11 +113,7 @@ let
           type = droutePriority;
           default = "default";
           example = "first";
-          description = ''
-            Sort key for ordering rules within their chain.
-            Either a symbol (`first` / `preDispatch` /
-            `postDispatch` / `default` / `last`) or any int.
-          '';
+          description = primitives.entryPriorityDescription;
         };
 
         comment = lib.mkOption {

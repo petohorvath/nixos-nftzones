@@ -550,7 +550,7 @@ let
 
       mkError =
         group: placement: reason:
-        mkDiagnostic "invalidChainPlacement" [ group placement.entryName ]
+        mkDiagnostic "chainPlacementInvalid" [ group placement.entryName ]
           "would emit a base chain at (family=${family}, hook=${placement.hook}, priority=${toString placement.priority}) — ${reason}";
 
       classify =
@@ -934,7 +934,7 @@ let
         lib.mapAttrsToList (
           name: entry:
           lib.optional ((entry.rule.action ? snat) && entry.rule.action.snat.addr == null) (
-            mkDiagnostic "natBodyMissingAddr"
+            mkDiagnostic "natAddrMissing"
               [
                 "snats"
                 name
@@ -943,7 +943,7 @@ let
                 "snat"
                 "addr"
               ]
-              "rule.action.snat.addr is null — `snat` requires a target address. Use `rule.action.masquerade = { }` for auto-target via the outgoing interface, or set `rule.action.snat.addr` explicitly."
+              "is null — `snat` requires a target address. Use `rule.action.masquerade = { }` for auto-target via the outgoing interface, or set `rule.action.snat.addr` explicitly."
           )
         ) table.snats
       );
@@ -952,8 +952,16 @@ let
         lib.mapAttrsToList (
           name: entry:
           lib.optional ((entry.rule.action ? dnat) && entry.rule.action.dnat.addr == null) (
-            mkDiagnostic "natBodyMissingAddr" [ "dnats" name ]
-              "rule.action.dnat.addr is null — `dnat` requires a target address. Use `rule.action.redirect = { port = N; }` for redirect-to-localhost, or set `rule.action.dnat.addr` explicitly."
+            mkDiagnostic "natAddrMissing"
+              [
+                "dnats"
+                name
+                "rule"
+                "action"
+                "dnat"
+                "addr"
+              ]
+              "is null — `dnat` requires a target address. Use `rule.action.redirect = { port = N; }` for redirect-to-localhost, or set `rule.action.dnat.addr` explicitly."
           )
         ) table.dnats
       );
@@ -1060,13 +1068,13 @@ let
     { table, ctx }:
     let
       inherit (ctx) allZoneNames zoneRefs;
-      invalidZoneRefs = builtins.filter (ref: !(builtins.elem ref.zone allZoneNames)) zoneRefs;
+      unknownZoneRefs = builtins.filter (ref: !(builtins.elem ref.zone allZoneNames)) zoneRefs;
       knownZoneNames = lib.concatStringsSep ", " (lib.sort (a: b: a < b) allZoneNames);
       newErrors = map (
         ref:
-        mkDiagnostic "invalidZoneRef" ref.path
+        mkDiagnostic "zoneRefUnknown" ref.path
           "references unknown zone '${ref.zone}' (known: ${knownZoneNames})"
-      ) invalidZoneRefs;
+      ) unknownZoneRefs;
     in
     {
       inherit table;

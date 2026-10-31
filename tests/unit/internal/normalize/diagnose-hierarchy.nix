@@ -101,7 +101,7 @@ in
     expected = {
       errors = [
         {
-          tag = "invalidZoneRef";
+          tag = "zoneRefUnknown";
           path = [
             "nodes"
             "web"
@@ -462,7 +462,7 @@ in
     expected = clean;
   };
 
-  testZoneRefUnknownReportsInvalidZoneRef = {
+  testUnknownZoneRefReportsZoneRefUnknown = {
     expr = diagnosticsFor {
       zones.lan.interfaces = [ "lan0" ];
       filters.f = {
@@ -474,7 +474,7 @@ in
     expected = {
       errors = [
         {
-          tag = "invalidZoneRef";
+          tag = "zoneRefUnknown";
           path = [
             "filters"
             "f"
@@ -674,7 +674,7 @@ in
     expected = clean;
   };
 
-  # An unknown zone gets only `invalidZoneRef`, not a second error.
+  # An unknown zone gets only `zoneRefUnknown`, not a second error.
   testZoneMatchableSkipsUnknownZone = {
     expr = diagnosticsFor {
       zones.lan.interfaces = [ "lan0" ];
@@ -687,7 +687,7 @@ in
     expected = {
       errors = [
         {
-          tag = "invalidZoneRef";
+          tag = "zoneRefUnknown";
           path = [
             "filters"
             "f"

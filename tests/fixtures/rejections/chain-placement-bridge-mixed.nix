@@ -1,5 +1,5 @@
 /*
-  Rejection scenario for `invalidChainPlacement` — bridge family
+  Rejection scenario for `chainPlacementInvalid` — bridge family
   with one *valid* filter alongside an *invalid* snat in the same
   table. Pins that Phase 1 checks the placement of every entry and
   doesn't short-circuit on the first valid placement: the snat
@@ -7,11 +7,11 @@
 */
 { nftypes }:
 {
-  description = "invalidChainPlacement: bridge filter (valid) + snat (invalid) in one table";
+  description = "chainPlacementInvalid: bridge filter (valid) + snat (invalid) in one table";
 
   errors = [
     {
-      tag = "invalidChainPlacement";
+      tag = "chainPlacementInvalid";
       path = [
         "snats"
         "bad-bridge-nat"

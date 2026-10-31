@@ -1,5 +1,5 @@
 /*
-  Rejection scenario for `invalidChainPlacement` — bridge family
+  Rejection scenario for `chainPlacementInvalid` — bridge family
   with a droute rule. Symmetric to chain-placement-bridge-sroute:
   bridge has no `mangle` priority symbol, so destination-route
   mangling is unsupported at the kernel level. Pins that
@@ -11,11 +11,11 @@ let
   inherit (nftypes.dsl.fields) meta;
 in
 {
-  description = "invalidChainPlacement: bridge family + droute (no mangle priority)";
+  description = "chainPlacementInvalid: bridge family + droute (no mangle priority)";
 
   errors = [
     {
-      tag = "invalidChainPlacement";
+      tag = "chainPlacementInvalid";
       path = [
         "droutes"
         "mark-it"

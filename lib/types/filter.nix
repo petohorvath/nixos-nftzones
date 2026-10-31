@@ -19,7 +19,7 @@
   of `zoneName` strings) — see `lib/types/zone.nix`. Whether each
   entry resolves to a declared zone, `settings.localZone`, or
   `settings.wildcardZone` is a cross-cutting check that Phase 1
-  performs, reporting an unresolved entry as an `invalidZoneRef`
+  performs, reporting an unresolved entry as a `zoneRefUnknown`
   diagnostic.
 
   `filterRule` entries pass through nftypes' attrTag validation, so
@@ -32,9 +32,10 @@
   — an nftzones-internal sort key, NOT the nftables chain priority.
   Either a symbol (`first` / `preDispatch` / `postDispatch` /
   `default` / `last`) or any int. Default `"default"` (= 500).
-  Cells are emitted in `(priority asc, name asc)` order. The
-  cutoff at 100 splits cells into pre-dispatch (< 100, emitted
-  before per-zone matchers) and post-dispatch (>= 100, after).
+  Cells are emitted in `(priority asc, name asc)` order. In the
+  sub-chain of a zone with child zones, the cutoff at 100 splits
+  cells into those emitted before the child-dispatch jumps (< 100)
+  and those emitted after them (>= 100).
 
   The `chain` field is the shared `primitives.chainOverride`
   (optional `{ hook; priority; }` submodule). By default
@@ -115,7 +116,7 @@ let
             either a declared zone name, the configured
             `settings.localZone` (default `"local"`), or
             `settings.wildcardZone` (default `"all"`). Phase 1
-            reports any other name as an `invalidZoneRef`
+            reports any other name as a `zoneRefUnknown`
             diagnostic.
           '';
         };
@@ -152,14 +153,8 @@ let
           type = filterPriority;
           default = "default";
           example = "first";
-          description = ''
-            Sort key for ordering rules within their chain.
-            Either a symbol (`first` / `preDispatch` /
-            `postDispatch` / `default` / `last`) or any int.
-            Cells are emitted in `(priority asc, name asc)` order.
-            See `primitives.entryPriority` for symbol → int
-            mapping. NOT the nftables chain priority — that's
-            `chain.priority`.
+          description = primitives.entryPriorityDescription + ''
+            NOT the nftables chain priority — that's `chain.priority`.
           '';
         };
 

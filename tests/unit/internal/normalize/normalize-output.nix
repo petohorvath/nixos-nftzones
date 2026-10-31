@@ -5,7 +5,7 @@
   `expandedGroups`, `resolvedPriorities`).
 
   Zone-reference collection and the in-scope zone names leave no such
-  key; their tests observe them through `invalidZoneRef` Diagnostics.
+  key; their tests observe them through `zoneRefUnknown` Diagnostics.
 */
 {
   helpers,
@@ -21,8 +21,8 @@ let
 
   ctxFor = body: (normalizeTable (evalTable body)).ctx;
 
-  invalidZoneRefAt = path: {
-    tag = "invalidZoneRef";
+  zoneRefUnknownAt = path: {
+    tag = "zoneRefUnknown";
     inherit path;
   };
 
@@ -468,7 +468,7 @@ in
     };
   };
 
-  # ===== Zone-reference collection, through invalidZoneRef =====
+  # ===== Zone-reference collection, through zoneRefUnknown =====
 
   # Every group and direction that names a zone is collected, each
   # list slot with its own index.
@@ -508,7 +508,7 @@ in
           rule = [ (dsl.mangle dsl.fields.meta.mark 1) ];
         };
       }).errors;
-    expected = map invalidZoneRefAt [
+    expected = map zoneRefUnknownAt [
       [
         "dnats"
         "d"
@@ -588,12 +588,12 @@ in
         };
       }).errors;
     expected = [
-      (invalidZoneRefAt [
+      (zoneRefUnknownAt [
         "nodes"
         "api"
         "parent"
       ])
-      (invalidZoneRefAt [
+      (zoneRefUnknownAt [
         "nodes"
         "web"
         "parent"
@@ -632,7 +632,7 @@ in
           rule = [ dsl.accept ];
         };
       }).errors;
-    expected = map invalidZoneRefAt [
+    expected = map zoneRefUnknownAt [
       [
         "filters"
         "f"
@@ -648,7 +648,7 @@ in
     ];
   };
 
-  # ===== In-scope zone names, through invalidZoneRef =====
+  # ===== In-scope zone names, through zoneRefUnknown =====
 
   # Declared zones, lowered nodes and the local zone are all in scope.
   testZoneNamesIncludeZonesNodesAndLocalZone = {
@@ -693,7 +693,7 @@ in
         };
       }).errors;
     expected = [
-      (invalidZoneRefAt [
+      (zoneRefUnknownAt [
         "filters"
         "f"
         "to"

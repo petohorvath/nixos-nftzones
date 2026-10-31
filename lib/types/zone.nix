@@ -27,6 +27,8 @@
                             would silently change dispatch semantics.
                             Consumed by Phase 1's matchability checks
                             and Phase 4's `mkDirectionVariants`.
+    - `zoneMatchOverrideSide` — one side of `zoneMatchOverride`: the
+                            four nullable sections above.
 
   Consumers wire the zone type as `lib.mkOption { type =
   lib.types.attrsOf nftzones.types.zone; }`.
@@ -255,8 +257,9 @@ let
             / CIDR list. Each side has four nullable sections —
             `interfaces` / `ipv4` / `ipv6` / `extra` — that
             substitute for the corresponding auto-generated clauses
-            in `mkDirectionVariants`. See `zoneMatchOverrideSide` for
-            section semantics.
+            in the zone's dispatch matches. See
+            `nftzones.types.zoneMatchOverrideSide` for section
+            semantics.
           '';
         };
       };
@@ -269,6 +272,7 @@ in
     zoneCidrs
     zoneInterfaces
     zoneMatchOverride
+    zoneMatchOverrideSide
     zoneName
     zoneNames
     zoneParent

@@ -44,7 +44,7 @@ Same concept, different framings.
 - `chainAttrsForEntry group localZone entry` returns validation candidates as a list of chain attrs. The entry's directions must already be wildcard-expanded and deduplicated. It inspects the direction lists without materializing their Cartesian product.
 - `chainAttrsForCell group localZone cell` returns one concrete cell's chain attrs, with scalar directions. An override wins; otherwise filters and policies prefer input when `to == localZone`, then output when `from == localZone`, then forward. Other groups use their defaults.
 
-Entry analysis preserves conservative validation: fixed group placements and overrides are checked even for empty direction lists, and a local-zone reference contributes its hook independently of the opposite direction. A local-to-local entry therefore checks both input and output, while its cell dispatches to input. Phase 1 reports each incompatible candidate as an `invalidChainPlacement` error on its entry; `dispatch` groups cells by their selected attrs. Priority values keep their original integer or symbol form until `baseChainNameOf` canonicalizes the name.
+Entry analysis preserves conservative validation: fixed group placements and overrides are checked even for empty direction lists, and a local-zone reference contributes its hook independently of the opposite direction. A local-to-local entry therefore checks both input and output, while its cell dispatches to input. Phase 1 reports each incompatible candidate as a `chainPlacementInvalid` error on its entry; `dispatch` groups cells by their selected attrs. Priority values keep their original integer or symbol form until `baseChainNameOf` canonicalizes the name.
 
 The Group / Entry / Direction trio shows up directly in `internal/normalize.nix`'s private helpers:
 
@@ -153,19 +153,30 @@ A **Diagnostic** is a record `{ tag; path; message; }`:
 - `path` is a list of strings naming the one declaration the diagnostic concerns: attribute names, and list indices as strings, such as `[ "filters" "ssh" "from" "0" ]`.
 - `message` is human prose. It never repeats the path.
 
-A diagnostic about several declarations, such as an overlap, a collision or a cycle, carries one path and names the others in its message. The path is the lexically first declaration involved, unless one is clearly the one to edit: a zone/node name collision blames the node, and a parent cycle blames the `parent` of its lexically smallest zone. Diagnostics about a zone lowered from a node use a path under the lowered zone, `zones.<node>`, which the user never wrote.
+A diagnostic about several declarations, such as an overlap, a collision or a cycle, carries one path and names the others in its message. The path is the lexically first declaration involved, unless one is clearly the one to edit: a zone/node name collision blames the node, and a parent cycle blames the `parent` of its lexically smallest zone. Diagnostics about a zone lowered from a node use a path under the lowered zone, `zones.<node>`, which the user never wrote ([#31](https://github.com/petohorvath/nixos-nftzones/issues/31)).
 
-`diagnose` sorts both lists by path, then tag; the order is part of the interface. Path elements, list indices included, are strings and sort as text, so `extra.10` sorts before `extra.2`. `normalizeTable` renders each diagnostic as `[tag] path.joined.with.dots: message`:
+`diagnose` sorts both lists by path, then tag, and its tests rely on that order, but the order is not part of the stable surface. Path elements, list indices included, are strings and sort as text, so `extra.10` sorts before `extra.2`. `normalizeTable` renders each diagnostic as `[tag] path.joined.with.dots: message`:
 
 ```text
 nftzones.normalize: validation failed:
-  - [invalidZoneRef] filters.f.from.0: references unknown zone 'nowhere' (known: lan, local)
+  - [zoneRefUnknown] filters.f.from.0: references unknown zone 'nowhere' (known: lan, local)
   - [zoneParentUnknown] zones.lan.parent: references unknown zone 'ghost'
 ```
 
 Warnings go through `lib.warn` as `nftzones.normalize: [tag] path: message`.
 
 Checks enforced by the table type fail during module evaluation, before Phase 1 runs, and are not diagnostics.
+
+#### Stability
+
+Users see a diagnostic as the rendered `[tag] path: message` line of a failed evaluation or a warning. From 0.1.0, its tag and path are a stable interface:
+
+- **Stable:** each tag's name, the path each tag is reported at, and whether a tag is an error or a warning. Changing any of them is a breaking change with a CHANGELOG entry.
+- **Not stable:** the message prose, and the order of diagnostics in a failure. Match on the tag and the path, not on the prose or the position of a line.
+
+A mistake in a node is the exception: it can also be reported at the zone the node lowers to, under `zones.<node>`, often as a second diagnostic that follows from the first ([#31](https://github.com/petohorvath/nixos-nftzones/issues/31)). Those paths, and the second diagnostic, change when #31 is fixed.
+
+`internal.normalize.diagnose` returns the same records as data, but like the rest of `internal` it has no semver guarantee.
 
 #### Errors
 
@@ -177,12 +188,12 @@ Checks enforced by the table type fail during module evaluation, before Phase 1 
 | `zoneNameCollision`        | `nodes.<node>`                                                                                   | A node named like a zone; lowering would overwrite the zone.                                                                                                                                                                                         |
 | `nameKeyMismatch`          | `<group>.<key>.name`                                                                             | An explicit `name` that differs from its attribute key, in `zones`, `nodes` or a rule group.                                                                                                                                                         |
 | `settingsConflict`         | `settings.localZone`, or the `zones.<zone>` or `nodes.<node>` that shadows a setting             | `localZone` equal to `wildcardZone`, or a zone or node named like either one.                                                                                                                                                                        |
-| `invalidZoneRef`           | `<group>.<entry>.<direction>.<index>` or `nodes.<node>.parent`                                   | A zone reference that names no zone, node or `settings.localZone`.                                                                                                                                                                                   |
+| `zoneRefUnknown`           | `<group>.<entry>.<direction>.<index>` or `nodes.<node>.parent`                                   | A zone reference that names no zone, node or `settings.localZone`.                                                                                                                                                                                   |
 | `zoneNotMatchable`         | `<group>.<entry>.<direction>.<index>`                                                            | A `from` / `to` reference to a zone with no interfaces, CIDRs or active override of its own on that side. Descendant sets do not make an empty grouping zone directly referenceable.                                                                 |
 | `chainOverrideUnreachable` | `<group>.<entry>.<direction>`                                                                    | A `chain` override at a hook where a referenced zone has no usable match, because interface fields are unavailable there.                                                                                                                            |
-| `invalidChainPlacement`    | `<group>.<entry>`                                                                                | A `(family, chain type, hook)` triple the kernel refuses (via `nftypes.compatibility.validChainPlacement`), such as bridge nat, bridge sroute / droute (no `mangle` priority), or a `srcnat` / `dstnat` priority at a hook where `nat` can't attach. |
+| `chainPlacementInvalid`    | `<group>.<entry>`                                                                                | A `(family, chain type, hook)` triple the kernel refuses (via `nftypes.compatibility.validChainPlacement`), such as bridge nat, bridge sroute / droute (no `mangle` priority), or a `srcnat` / `dstnat` priority at a hook where `nat` can't attach. |
 | `nodeAddressMissing`       | `nodes.<node>`                                                                                   | A node with neither `address.ipv4` nor `address.ipv6`.                                                                                                                                                                                               |
-| `natBodyMissingAddr`       | `snats.<entry>` or `dnats.<entry>`                                                               | A `snat` / `dnat` body without `addr`.                                                                                                                                                                                                               |
+| `natAddrMissing`           | `snats.<entry>.rule.action.snat.addr` or `dnats.<entry>.rule.action.dnat.addr`                   | A `snat` / `dnat` body without `addr`.                                                                                                                                                                                                               |
 | `policyConflict`           | `policies.<entry>`                                                                               | Two policies for the same `(from, to)` cell after wildcard expansion.                                                                                                                                                                                |
 | `setNameCollision`         | `objects.sets.<name>`                                                                            | A user set named like a zone-derived set (`<zone>_iifs`, `_v4`, `_v6`).                                                                                                                                                                              |
 | `interfaceOverlap`         | `zones.<zone>.interfaces`                                                                        | An interface claimed twice by one zone, or by two zones without an ancestor/descendant relationship.                                                                                                                                                 |
@@ -250,7 +261,7 @@ Cells are grouped per base chain (`ctx.groupedByChain`), and each group becomes 
 
 `internal.priority.resolvePriority` resolves entry priority symbols (`first` / `preDispatch` / `postDispatch` / `default` / `last`) to ints (Phase 1 runs this for every entry; the pre-resolved values land in `ctx.resolvedPriorities`). Each sub-chain's slots sort by `(priority asc, name asc)`. Name is the attrset key from the original collection; it acts as a stable tiebreaker.
 
-The cutoff at `100` (between `preDispatch=50` and `postDispatch=100`) splits cells into pre-dispatch (emit before the per-pair dispatch jump) and post-dispatch (emit after) — see Phase 4.
+The cutoff at `100` (between `preDispatch=50` and `postDispatch=100`) splits each sub-chain's cells into two slots: before the child-dispatch jumps and after them — see Phase 4.
 
 ## Phase 4: emit
 
@@ -277,7 +288,7 @@ One base chain per dispatch tree in `ctx.dispatchTrees` (Phase 3). Default place
 
 **Chain type derivation.** `chainAttrs` carries `(hook, priority)` only; `emit.nix` derives the chain type with `internal.compatibility.chainTypeFor family hook priority`. A `srcnat` or `dstnat` priority gives `nat`, a `mangle` priority gives `route`, and any other priority gives `filter`. Where the kernel can't attach that type, such as `route` at `prerouting` (sroute's default), `chainTypeFor` returns `filter`.
 
-That fallback would turn a NAT placement the kernel refuses into a filter chain holding NAT statements, which `nft -f` rejects. Phase 1's `invalidChainPlacement` check therefore requires a `nat` chain to attach wherever the priority is `srcnat` or `dstnat`. If users ever need to pick chain type explicitly, add an optional `type` field to the chain-override schema later.
+That fallback would turn a NAT placement the kernel refuses into a filter chain holding NAT statements, which `nft -f` rejects. Phase 1's `chainPlacementInvalid` check therefore requires a `nat` chain to attach wherever the priority is `srcnat` or `dstnat`. If users ever need to pick chain type explicitly, add an optional `type` field to the chain-override schema later.
 
 **Rule order in a base chain:**
 

@@ -73,7 +73,7 @@ in
     expected = {
       errors = [
         {
-          tag = "invalidChainPlacement";
+          tag = "chainPlacementInvalid";
           path = [
             "snats"
             "masq"
@@ -104,7 +104,7 @@ in
     expected = {
       errors = [
         {
-          tag = "invalidChainPlacement";
+          tag = "chainPlacementInvalid";
           path = [
             "snats"
             "masq"
@@ -129,7 +129,7 @@ in
     expected = {
       errors = [
         {
-          tag = "invalidChainPlacement";
+          tag = "chainPlacementInvalid";
           path = [
             "sroutes"
             "mark"
@@ -181,21 +181,21 @@ in
     expected = {
       errors = [
         {
-          tag = "invalidChainPlacement";
+          tag = "chainPlacementInvalid";
           path = [
             "droutes"
             "mark"
           ];
         }
         {
-          tag = "invalidChainPlacement";
+          tag = "chainPlacementInvalid";
           path = [
             "filters"
             "early"
           ];
         }
         {
-          tag = "invalidChainPlacement";
+          tag = "chainPlacementInvalid";
           path = [
             "snats"
             "masq"
@@ -973,7 +973,7 @@ in
     expected = {
       errors = [
         {
-          tag = "invalidZoneRef";
+          tag = "zoneRefUnknown";
           path = [
             "policies"
             "typo"
@@ -1026,7 +1026,7 @@ in
     expected = {
       errors = [
         {
-          tag = "natBodyMissingAddr";
+          tag = "natAddrMissing";
           path = [
             "snats"
             "outbound"
@@ -1080,10 +1080,14 @@ in
     expected = {
       errors = [
         {
-          tag = "natBodyMissingAddr";
+          tag = "natAddrMissing";
           path = [
             "dnats"
             "bad-fwd"
+            "rule"
+            "action"
+            "dnat"
+            "addr"
           ];
         }
       ];
@@ -1110,14 +1114,18 @@ in
     expected = {
       errors = [
         {
-          tag = "natBodyMissingAddr";
+          tag = "natAddrMissing";
           path = [
             "dnats"
             "bad-d"
+            "rule"
+            "action"
+            "dnat"
+            "addr"
           ];
         }
         {
-          tag = "natBodyMissingAddr";
+          tag = "natAddrMissing";
           path = [
             "snats"
             "bad-s"

@@ -48,7 +48,7 @@
     - Node names must not collide with zone names (shared
       namespace at compile time) — `zoneNameCollision`.
     - `node.parent` must reference an existing zone —
-      `invalidZoneRef`.
+      `zoneRefUnknown`.
     - `node.parent` must not be `settings.localZone` —
       `zoneParentLocalZone`.
     - At least one of `address.ipv4` / `address.ipv6` is set —
@@ -140,7 +140,7 @@ let
           example = "dmz";
           description = ''
             Parent zone name. Phase 1 reports a zone that isn't
-            declared as an `invalidZoneRef` diagnostic, and the
+            declared as a `zoneRefUnknown` diagnostic, and the
             `settings.localZone` sentinel as a
             `zoneParentLocalZone` diagnostic.
           '';

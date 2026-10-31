@@ -32,6 +32,9 @@
                         entry's emitted rules within its chain
                         (nftzones-internal; not the nftables chain
                         priority).
+    - `entryPriorityDescription` — option description shared by
+                        every group's `priority`, giving the
+                        `entryPriority` symbol → int mapping.
     - `chainPriority` — symbol-or-int for the nftables chain
                         priority (the netfilter `priority` attribute
                         on a base chain).
@@ -144,6 +147,16 @@ let
     "last"
   ]) lib.types.int;
 
+  # The option description of every group's `priority`, so the option
+  # docs carry the `entryPriority` symbol → int mapping.
+  entryPriorityDescription = ''
+    Entry priority: the order of this entry within its sub-chain.
+    Either a symbol, `first` (1), `preDispatch` (50), `postDispatch`
+    (100), `default` (500) or `last` (999), or any int. Entries run in
+    priority order, then name order. Below 100, the entry runs before
+    the jumps into child zones' sub-chains; from 100, after them.
+  '';
+
   /*
     Chain priority — the nftables-native `priority` attribute on a
     base chain. Symbols are netfilter conventions:
@@ -231,6 +244,7 @@ in
     chainPriority
     comment
     entryPriority
+    entryPriorityDescription
     identifier
     matchRule
     mkNatRule
