@@ -5,8 +5,9 @@
   the user fixes the ambiguity.
 
   The lowered node clobbers the zone, so the node's `parent = "web"`
-  also reads as a self-parent cycle. The expected errors pin that
-  cascade (#7); fixing the clobber removes the second error.
+  also reads as a self-parent cycle, reported at the node's `parent`.
+  The expected errors pin that cascade (#7); fixing the clobber
+  removes the second error.
 */
 _: {
   description = "zoneNameCollision: node name collides with zone name";
@@ -22,7 +23,7 @@ _: {
     {
       tag = "zoneParentCycle";
       path = [
-        "zones"
+        "nodes"
         "web"
         "parent"
       ];

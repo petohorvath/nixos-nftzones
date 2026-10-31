@@ -107,6 +107,18 @@ let
   # their formats cannot drift apart.
   renderPath = lib.concatStringsSep ".";
 
+  /*
+    Path of a merged zone's `parent`, at the declaration the user
+    wrote: `nodes.<name>.parent` for a lowered node, otherwise
+    `zones.<name>.parent`. A node replaces a zone of the same name
+    in `ctx.mergedZones`, so the node wins here too.
+  */
+  parentPath = table: zoneName: [
+    (if table.nodes ? ${zoneName} then "nodes" else "zones")
+    zoneName
+    "parent"
+  ];
+
   # Rule-bearing groups paired with the direction fields each one
   # carries (`from` and/or `to`). Single source of truth for the
   # per-group direction config — `expandWildcardZones`,
@@ -191,20 +203,14 @@ let
         else if parent == localZone then
           acc
           ++ [
-            (mkDiagnostic "zoneParentLocalZone" [
-              "zones"
-              zoneName
-              "parent"
-            ] "is '${parent}' (the localZone sentinel) — localZone cannot be a parent")
+            (mkDiagnostic "zoneParentLocalZone" (parentPath table zoneName)
+              "is '${parent}' (the localZone sentinel) — localZone cannot be a parent"
+            )
           ]
         else if !(mergedZones ? ${parent}) then
           acc
           ++ [
-            (mkDiagnostic "zoneParentUnknown" [
-              "zones"
-              zoneName
-              "parent"
-            ] "references unknown zone '${parent}'")
+            (mkDiagnostic "zoneParentUnknown" (parentPath table zoneName) "references unknown zone '${parent}'")
           ]
         else
           acc
@@ -284,11 +290,9 @@ let
 
       newErrors = map (
         cycle:
-        mkDiagnostic "zoneParentCycle" [
-          "zones"
-          (builtins.head cycle)
-          "parent"
-        ] "closes a zone parent cycle: ${formatCycle cycle}"
+        mkDiagnostic "zoneParentCycle" (parentPath table (
+          builtins.head cycle
+        )) "closes a zone parent cycle: ${formatCycle cycle}"
       ) cycles;
     in
     {
@@ -412,17 +416,6 @@ let
           lib.mapAttrsToList (entryName: entry: collectEntryRefs groupName directions entryName entry) group
         );
 
-      collectNodeParentRefs =
-        nodes:
-        lib.mapAttrsToList (entryName: entry: {
-          zone = entry.parent;
-          path = [
-            "nodes"
-            entryName
-            "parent"
-          ];
-        }) nodes;
-
       zoneRefs = lib.concatLists [
         (collectGroupRefs "filters" [ "from" "to" ] table.filters)
         (collectGroupRefs "policies" [ "from" "to" ] table.policies)
@@ -430,7 +423,6 @@ let
         (collectGroupRefs "dnats" [ "from" ] table.dnats)
         (collectGroupRefs "sroutes" [ "from" ] table.sroutes)
         (collectGroupRefs "droutes" [ "to" ] table.droutes)
-        (collectNodeParentRefs table.nodes)
       ];
     in
     {
@@ -1179,11 +1171,11 @@ let
       inherit (table.settings) localZone;
       inherit (ctx) mergedZones zoneRefs;
 
-      # Skip refs without a `direction` (node parent refs), refs to
-      # the localZone sentinel (no `mergedZones` entry by design),
-      # and refs to unknown zones (already flagged by checkZoneRefs).
+      # Skip refs to the localZone sentinel (no `mergedZones` entry by
+      # design) and refs to unknown zones (already flagged by
+      # checkZoneRefs).
       directionBoundRefs = builtins.filter (
-        ref: ref ? direction && ref.zone != localZone && mergedZones ? ${ref.zone}
+        ref: ref.zone != localZone && mergedZones ? ${ref.zone}
       ) zoneRefs;
 
       unmatchableRefs = builtins.filter (

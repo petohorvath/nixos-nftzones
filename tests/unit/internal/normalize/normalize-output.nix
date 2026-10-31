@@ -572,10 +572,9 @@ in
     ];
   };
 
-  # Each node's parent is a reference too. The lowered zone's unknown
-  # parent cascades into a second error on a path the user never
-  # wrote; pinned as is (#22 leaves node-derived paths unfixed).
-  testZoneRefCollectionCoversNodeParents = {
+  # A node's parent is a parent, not a zone reference: an unknown one
+  # gets `zoneParentUnknown` at the node, and no `zoneRefUnknown`.
+  testZoneRefCollectionSkipsNodeParents = {
     expr =
       (diagnosticsFor {
         nodes.api = {
@@ -588,20 +587,10 @@ in
         };
       }).errors;
     expected = [
-      (zoneRefUnknownAt [
-        "nodes"
-        "api"
-        "parent"
-      ])
-      (zoneRefUnknownAt [
-        "nodes"
-        "web"
-        "parent"
-      ])
       {
         tag = "zoneParentUnknown";
         path = [
-          "zones"
+          "nodes"
           "api"
           "parent"
         ];
@@ -609,7 +598,7 @@ in
       {
         tag = "zoneParentUnknown";
         path = [
-          "zones"
+          "nodes"
           "web"
           "parent"
         ];

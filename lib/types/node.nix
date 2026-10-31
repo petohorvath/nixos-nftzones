@@ -9,7 +9,8 @@
                       `addCheck`)
 
   A node is a single-host shortcut: a machine with a name, a
-  parent zone, and one or two bare IP addresses. Nodes share the
+  parent, and one or two bare IP addresses. The parent is a zone or
+  another node, as a zone's parent can be. Nodes share the
   zone namespace — rules in filter / snat / dnat / sroute / droute
   / policy can reference a node by name in `from` / `to`, the same
   way they reference a zone.
@@ -47,10 +48,13 @@
   Cross-cutting concerns (Phase 1 diagnostics):
     - Node names must not collide with zone names (shared
       namespace at compile time) — `zoneNameCollision`.
-    - `node.parent` must reference an existing zone —
-      `zoneRefUnknown`.
+    - `node.parent` must name a declared zone or node —
+      `zoneParentUnknown` at `nodes.<name>.parent`.
     - `node.parent` must not be `settings.localZone` —
-      `zoneParentLocalZone`.
+      `zoneParentLocalZone` at `nodes.<name>.parent`.
+    - The parent chain through nodes and zones must not cycle —
+      `zoneParentCycle` at `nodes.<name>.parent` when the node is
+      the cycle's lexically smallest member.
     - At least one of `address.ipv4` / `address.ipv6` is set —
       `nodeAddressMissing`.
 
@@ -139,10 +143,12 @@ let
           type = zoneName;
           example = "dmz";
           description = ''
-            Parent zone name. Phase 1 reports a zone that isn't
-            declared as a `zoneRefUnknown` diagnostic, and the
-            `settings.localZone` sentinel as a
-            `zoneParentLocalZone` diagnostic.
+            Name of the node's parent: a declared zone, or another
+            node. Phase 1 reports a name that is neither as a
+            `zoneParentUnknown` diagnostic, the `settings.localZone`
+            sentinel as `zoneParentLocalZone`, and a parent chain
+            that loops back as `zoneParentCycle`, each at this
+            option.
           '';
         };
 

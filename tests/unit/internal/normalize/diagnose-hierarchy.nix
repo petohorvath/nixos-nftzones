@@ -41,6 +41,24 @@ in
     expected = clean;
   };
 
+  # A node's parent can be another node, as a zone's can.
+  testParentRefNodeUnderNodeReportsNothing = {
+    expr = diagnosticsFor {
+      zones.lan.interfaces = [ "lan0" ];
+      nodes = {
+        host = {
+          parent = "lan";
+          address.ipv4 = "10.0.0.5";
+        };
+        guest = {
+          parent = "host";
+          address.ipv6 = "2001:db8::5";
+        };
+      };
+    };
+    expected = clean;
+  };
+
   testParentRefUnknownReportsZoneParentUnknown = {
     expr = diagnosticsFor {
       zones.web = {
@@ -85,13 +103,9 @@ in
     };
   };
 
-  /*
-    Pinned as is, though wrong: a node lowers into a zone whose parent
-    is `node.parent`, so one unknown `nodes.web.parent` is reported twice,
-    once at the path the user wrote and once at `zones.web.parent`,
-    a path the user never wrote.
-  */
-  testParentRefUnknownFromNodeCascades = {
+  # A node's parent is reported at the path the user wrote, with the
+  # tag a zone's parent gets, and only once.
+  testParentRefUnknownFromNodeReportedAtNode = {
     expr = diagnosticsFor {
       nodes.web = {
         parent = "ghost";
@@ -101,17 +115,31 @@ in
     expected = {
       errors = [
         {
-          tag = "zoneRefUnknown";
+          tag = "zoneParentUnknown";
           path = [
             "nodes"
             "web"
             "parent"
           ];
         }
+      ];
+      warnings = [ ];
+    };
+  };
+
+  testParentRefLocalZoneFromNodeReportedAtNode = {
+    expr = diagnosticsFor {
+      nodes.web = {
+        parent = "local";
+        address.ipv4 = "10.0.0.5";
+      };
+    };
+    expected = {
+      errors = [
         {
-          tag = "zoneParentUnknown";
+          tag = "zoneParentLocalZone";
           path = [
-            "zones"
+            "nodes"
             "web"
             "parent"
           ];
@@ -199,6 +227,34 @@ in
           path = [
             "zones"
             "b"
+            "parent"
+          ];
+        }
+      ];
+      warnings = [ ];
+    };
+  };
+
+  # A cycle through a node blames the node's `parent` when the node is
+  # the lexically smallest member.
+  testParentCycleThroughNodeReportedAtNode = {
+    expr = diagnosticsFor {
+      zones.b = {
+        parent = "a";
+        interfaces = [ "b0" ];
+      };
+      nodes.a = {
+        parent = "b";
+        address.ipv4 = "10.0.0.5";
+      };
+    };
+    expected = {
+      errors = [
+        {
+          tag = "zoneParentCycle";
+          path = [
+            "nodes"
+            "a"
             "parent"
           ];
         }
