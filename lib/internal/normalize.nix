@@ -1060,13 +1060,13 @@ let
     { table, ctx }:
     let
       inherit (ctx) allZoneNames zoneRefs;
-      unknownZoneRefs = builtins.filter (ref: !(builtins.elem ref.zone allZoneNames)) zoneRefs;
+      undeclaredZoneRefs = builtins.filter (ref: !(builtins.elem ref.zone allZoneNames)) zoneRefs;
       knownZoneNames = lib.concatStringsSep ", " (lib.sort (a: b: a < b) allZoneNames);
       newErrors = map (
         ref:
         mkDiagnostic "zoneRefUnknown" ref.path
           "references unknown zone '${ref.zone}' (known: ${knownZoneNames})"
-      ) unknownZoneRefs;
+      ) undeclaredZoneRefs;
     in
     {
       inherit table;
@@ -1174,13 +1174,13 @@ let
       # Skip refs to the localZone sentinel (no `mergedZones` entry by
       # design) and refs to unknown zones (already flagged by
       # checkZoneRefs).
-      directionBoundRefs = builtins.filter (
+      declaredZoneRefs = builtins.filter (
         ref: ref.zone != localZone && mergedZones ? ${ref.zone}
       ) zoneRefs;
 
       unmatchableRefs = builtins.filter (
         ref: !(ctx.zoneMembership.hasOwnMatch ref.zone directionToSide.${ref.direction})
-      ) directionBoundRefs;
+      ) declaredZoneRefs;
 
       newErrors = map (
         ref:
