@@ -47,7 +47,7 @@ dispatch. Descendant membership does not give it an own match.
 
 **Node**:
 A named host with an IPv4 address, an IPv6 address, or both, refining a
-parent zone.
+parent zone or another node.
 
 **Local zone**:
 The sentinel zone standing for the firewall host itself. It can be

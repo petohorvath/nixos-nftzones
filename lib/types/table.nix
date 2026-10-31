@@ -321,11 +321,12 @@ let
         example = "any";
         description = ''
           Name used as the wildcard "any zone" identifier in
-          `from` and `to` fields. Default `"all"`. Upstream
-          wildcard resolution expands a `from = [ wildcardZone ]`
-          (or `to`) entry to the full set of declared zones plus
-          `localZone` on the relevant side, before per-pair
-          chain dispatch.
+          `from` and `to` fields. Default `"all"`. Phase 1
+          expands it before per-pair chain dispatch. In `from`,
+          it stands for the root zones (those without a `parent`)
+          and `localZone`; descendants are reached through their
+          root's sub-chain. In `to`, it stands for every declared
+          zone and node and `localZone`.
         '';
       };
     };
@@ -413,10 +414,11 @@ let
           type = tableSettings;
           default = { };
           description = ''
-            Compile-time behaviour knobs (stateful shortcuts,
-            loopback shortcut, rpfilter chain emission, base-chain
-            policy). Defaults are best practice; override only when
-            needed.
+            Compile-time behaviour knobs: the stateful and loopback
+            shortcuts, rpfilter chain emission, the base-chain
+            policy, and the names of the local and wildcard zones
+            (`localZone`, `wildcardZone`). Defaults are best
+            practice; override only when needed.
           '';
         };
 

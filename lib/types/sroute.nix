@@ -28,8 +28,8 @@
   `srouteRule` is a flat, non-empty list of nftypes statements —
   typically match conditions plus mangle statements like
   `meta mark set N`. `rule` is required: a sroute without
-  statements marks nothing. No verdict is expected; the chain
-  triggers routing re-evaluation, not a verdict.
+  statements marks nothing. No verdict is expected: the chain runs
+  before the routing decision, which then reads the mark.
 
   `sroutePriority` orders rules sharing the same `from` zone:
   lower values run first.
@@ -101,9 +101,9 @@ let
           description = ''
             Flat, non-empty list of nftypes statements — typically
             match conditions plus mangle / mark operations.
-            Required. No verdict expected; the chain triggers a
-            routing re-evaluation when it exits, not a
-            verdict-based decision.
+            Required. No verdict expected: the sroutes chain runs
+            at prerouting, before the routing decision, so policy
+            routing rules can match a mark set here.
           '';
         };
 

@@ -73,18 +73,17 @@ Before transitive sets, a wildcard `from = [ "all" ]` policy combined with `chai
 
 ### Validation
 
-Phase 1 enforces these rules, reporting each violation as an error
-Diagnostic at `zones.<zone>.parent`:
+A node names its parent with `nodes.<node>.parent`, as a zone does
+with `zones.<zone>.parent`, and the parent of either can be a zone or
+a node. Phase 1 enforces these rules, reporting each violation as an
+error Diagnostic at the `parent` the user wrote:
 
-- Every non-null `zone.parent` resolves to a declared zone or a
-  lowered node (`zoneParentUnknown`).
-- `zone.parent != localZone` — the localZone sentinel cannot be a
-  parent (`zoneParentLocalZone`).
-- No cycles in the parent chain (`zoneParentCycle`).
-
-A node names its parent zone with `nodes.<node>.parent`, as a zone
-does. A parent that names no zone, node or `settings.localZone` is
-reported as `zoneRefUnknown` at `nodes.<node>.parent`.
+- Every `parent` resolves to a declared zone or node
+  (`zoneParentUnknown`).
+- No `parent` is `settings.localZone`; the localZone sentinel cannot
+  be a parent (`zoneParentLocalZone`).
+- No cycles in the parent chain (`zoneParentCycle`). A cycle is
+  reported once, at the lexically smallest member.
 
 ## Worked example
 
