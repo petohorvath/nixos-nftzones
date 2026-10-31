@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+All notable changes to nixos-nftzones will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-10-31
+
+First release. `lib.mkTable` and `lib.mkRuleset` compile a zone-keyed table body into one nftables table, and `nixosModules.default` does the same for each table under `networking.nftzones.tables`. The [README](README.md) shows the usage, and [docs/zone-based-firewall.md](docs/zone-based-firewall.md) explains the model.
+
+The public interface is `lib` outside `lib.internal`, `nixosModules.default` with its `networking.nftzones` options, and the tags and paths of Phase 1 diagnostics, as [docs/compile-pipeline.md](docs/compile-pipeline.md#stability) describes. Until 1.0, a minor release can change it, and this file marks each such change as **Breaking**.
+
+The entries below list the changes since the untagged revisions of `main`, for configurations written against them. Each **Breaking** entry has a step under [Migration](#migration).
 
 ### Added
 
@@ -79,3 +91,6 @@ nix flake check --override-input nixpkgs "github:NixOS/nixpkgs/$NIXPKGS_REV" \
 ```
 
 Replace the branch protection statuses of the old `CI` workflow with `Policy / Check (<system>)`, `Policy / Tests (locked|stable|unstable, <system>)`, and `Policy / VM tests (locked|stable|unstable, <system>)`. Remove the hooks installed by the old development shell with `rm .git/hooks/pre-commit .git/hooks/pre-push .pre-commit-config.yaml`.
+
+[Unreleased]: https://github.com/petohorvath/nixos-nftzones/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/petohorvath/nixos-nftzones/releases/tag/v0.1.0

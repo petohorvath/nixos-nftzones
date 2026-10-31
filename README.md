@@ -1,6 +1,6 @@
 # nixos-nftzones
 
-nixos-nftzones is pre-release: version 0.1.0 has no tagged release, and the interface can change before 1.0.
+nixos-nftzones is at version 0.1.0. Until 1.0, a minor release can change the interface; [`CHANGELOG.md`](CHANGELOG.md) marks each breaking change and its migration.
 
 nixos-nftzones provides `nftzones`, a Nix library and NixOS module that compile zone-based firewall configurations into vanilla nftables rulesets. A configuration declares each zone's interfaces and addresses once, such as `lan` for `eth1` and `10.0.0.0/24`, and writes rules between zones instead of repeating interfaces and addresses in every rule. It serves NixOS routers and hosts whose firewall policy reads naturally as traffic between network segments.
 
@@ -32,7 +32,7 @@ Add nftzones as a flake input, and take nftypes from it for the rule-body DSL:
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     nftzones = {
-      url = "github:petohorvath/nixos-nftzones";
+      url = "github:petohorvath/nixos-nftzones/v0.1.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nix-nftypes.follows = "nftzones/nix-nftypes";
@@ -51,7 +51,7 @@ This flake compiles a table with two zones, an SSH rule, and a zone-pair policy,
 ```nix
 {
   inputs = {
-    nftzones.url = "github:petohorvath/nixos-nftzones";
+    nftzones.url = "github:petohorvath/nixos-nftzones/v0.1.0";
     nix-nftypes.follows = "nftzones/nix-nftypes";
   };
 
