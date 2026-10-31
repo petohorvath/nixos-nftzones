@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+All notable changes to nixos-nftzones will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-10-31
+
+First release. `lib.mkTable` and `lib.mkRuleset` compile a zone-keyed table body into one nftables table, and `nixosModules.default` does the same for each table under `networking.nftzones.tables`. The [README](README.md) shows the usage, and [docs/zone-based-firewall.md](docs/zone-based-firewall.md) explains the model.
+
+The public interface is `lib` outside `lib.internal`, `nixosModules.default` with its `networking.nftzones` options, and the tags and paths of Phase 1 diagnostics, as [docs/compile-pipeline.md](docs/compile-pipeline.md#stability) describes. Until 1.0, a minor release can change it, and this file marks each such change as **Breaking**.
+
+The entries below list the changes since the untagged revisions of `main`, for configurations written against them. Each **Breaking** entry has a step under [Migration](#migration).
 
 ### Added
 
@@ -47,6 +59,7 @@
 - **Breaking (generated chain names):** separate the zones in a zone pair's sub-chain name with an uppercase `-TO-`, for example `forward-at-filter__lan-TO-wan` ([#18](https://github.com/petohorvath/nixos-nftzones/issues/18)). With the lowercase `-to-`, zones `a`, `a-to`, `b` and `to-b` made the pairs `a-to → b` and `a → to-b` share the sub-chain `forward-at-filter__a-to-to-b` behind one jump, so one pair's rules matched the other pair's traffic. Single-zone sub-chains keep their names. Base chains jump to sub-chains in name order, so root zones where one name extends the other, such as `lan` and `lan-guest`, now jump in the opposite order; this decides the verdict only when their matches overlap.
 - The `wildcardZoneMixed` warning no longer calls a child zone listed beside a `from`-side wildcard redundant ([#30](https://github.com/petohorvath/nixos-nftzones/issues/30)). A `from`-side wildcard expands only to root zones and the local zone, so the child gets its own sub-chain and removing it changed the ruleset. The warning now names only the zones the wildcard already covers, and its message says what the wildcard covers there and advises removing only those zones. An unknown zone beside a `to`-side wildcard gets only its `zoneRefUnknown` error, without the warning. A list that repeats the wildcard, such as `[ "all" "all" ]`, no longer warns.
 - **Breaking:** `rule` is required and must not be empty on filters, sroutes and droutes ([#43](https://github.com/petohorvath/nixos-nftzones/issues/43)). Leaving it out or setting `rule = [ ]` fails at evaluation with a type error at `<group>.<name>.rule`, instead of inside nftypes at a generated chain the configuration never names, such as `prerouting-at-mangle__guest`. Sroutes and droutes no longer default `rule` to `[ ]`. A dnat's `rule.match` still defaults to `[ ]`.
+- A type error in a table body passed to `mkTable` or `mkRuleset` names the call's table, such as ``In `nftzones table body 'fw''``, instead of `<unknown-file>`.
 
 ### Migration
 
@@ -78,3 +91,6 @@ nix flake check --override-input nixpkgs "github:NixOS/nixpkgs/$NIXPKGS_REV" \
 ```
 
 Replace the branch protection statuses of the old `CI` workflow with `Policy / Check (<system>)`, `Policy / Tests (locked|stable|unstable, <system>)`, and `Policy / VM tests (locked|stable|unstable, <system>)`. Remove the hooks installed by the old development shell with `rm .git/hooks/pre-commit .git/hooks/pre-push .pre-commit-config.yaml`.
+
+[Unreleased]: https://github.com/petohorvath/nixos-nftzones/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/petohorvath/nixos-nftzones/releases/tag/v0.1.0

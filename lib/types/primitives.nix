@@ -131,10 +131,8 @@ let
     `(resolved-priority asc, name asc)`. The cutoff at 100 splits
     a sub-chain's `preChildCells` slot (< 100, emitted before
     child-dispatch jumps) from `postChildCells` (≥ 100, emitted
-    after). The symbol names are historical — originally cells
-    landed in the *base chain* on either side of zone-dispatch
-    jumps; after zone-parent landed, cells always live inside
-    sub-chains and the slot is relative to *child*-dispatch.
+    after). `preDispatch` and `postDispatch` name the side of the
+    child-dispatch jumps an entry runs on (ADR-0008).
 
     Symbol → int resolution lives in `internal.priority`;
     consumers don't need to do it themselves at type-check time.
