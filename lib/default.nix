@@ -68,11 +68,13 @@ let
 
     Returns the evaluated `nftzones.types.table` value with all
     submodule defaults filled in. Internal helper for the public
-    `mkTable` / `mkRuleset` — NixOS-module consumers who already
-    have an evaluated value should reach `internal.compile.mkTable`
-    directly to skip this redundant re-eval (the value is already
-    validated, and the module applies the same key-derived `name`
-    override at its own boundary).
+    `mkTable` / `mkRuleset`. A value that is already an evaluated
+    table, such as one read from a `nftzones.types.table` option,
+    evaluates again to the same table.
+
+    The body's definition carries a `_file` naming the table, so a
+    type error says which `mkTable` / `mkRuleset` call it came from
+    instead of `<unknown-file>`.
   */
   evalTableBody =
     name: body:
@@ -84,7 +86,10 @@ let
             description = "Table body under validation.";
           };
         }
-        { config.${name} = body; }
+        {
+          _file = "nftzones table body '${name}'";
+          config.${name} = body;
+        }
       ];
     }).config.${name}
     // {
