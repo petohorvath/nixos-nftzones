@@ -29,7 +29,7 @@ Adding a third LAN interface is now a one-line change to the `lan` zone.
 
 A zone is a named grouping of one or more:
 
-- **Interfaces** — by name, e.g. `eth0`, `wg0`, or by wildcard, e.g. `wlan*`.
+- **Interfaces** — by exact name, e.g. `eth0`, `wg0`. nftzones does not support wildcard patterns such as `wlan*`.
 - **Networks** — IPv4 or IPv6 prefixes, e.g. `10.0.0.0/24`, `2001:db8::/32`.
 - **Addresses** — single hosts, e.g. `10.0.0.5`.
 
@@ -115,10 +115,10 @@ Without an intra-zone policy, the implementation's catch-all default applies (ty
 
 A zone-based firewall recognises two configurable special zone names — both implementations use them, even if they pick different defaults:
 
-| Special zone  | Default name | Meaning                                                                                                        |
-| ------------- | ------------ | -------------------------------------------------------------------------------------------------------------- |
-| local zone    | `local`      | The firewall machine itself. Configurable via `settings.localZone`.                                            |
-| wildcard zone | `all`        | Matches every declared zone. Used for broad policies and catch-alls. Configurable via `settings.wildcardZone`. |
+| Special zone  | Default name | Meaning                                                                                                  |
+| ------------- | ------------ | -------------------------------------------------------------------------------------------------------- |
+| local zone    | `local`      | The firewall machine itself. Configurable via `settings.localZone`.                                      |
+| wildcard zone | `all`        | Stands for every zone. Used for broad policies and catch-alls. Configurable via `settings.wildcardZone`. |
 
 The local zone is interpreted by direction:
 
@@ -129,6 +129,8 @@ The local zone is interpreted by direction:
 | local on neither side    | Forwarded packet. Matches in the `forward` hook.                       |
 
 The wildcard zone is mostly used in policies (`policy all -> all drop`) and broad allow rules (`rule local -> all accept`).
+
+In nftzones, the wildcard expands by direction. In `to`, it expands to every declared zone and node and the local zone. In `from`, it expands to the root zones and the local zone; each root's sub-chain also reaches its descendants ([ADR-0007](adr/0007-from-wildcard-expands-to-roots.md)).
 
 Both names default as listed but are configurable per table via the `settings` field, which lets tables that already use `local` or `all` for an ordinary zone rename the special ones out of the way:
 
