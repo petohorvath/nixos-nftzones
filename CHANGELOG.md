@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- `nixosModules.default` can be imported more than once, such as by a framework's firewall service and by the host's own configuration ([#57](https://github.com/petohorvath/nixos-nftzones/issues/57)). Before, the second import failed with an error that its options were already declared. The module now has a fixed `key`, so NixOS deduplicates it; two imports from different nftzones revisions keep only the first.
 - A local-zone direction matches only the host's own traffic at every hook it compiles to ([#54](https://github.com/petohorvath/nixos-nftzones/issues/54)). Before, it compiled to no match at every hook, so a filter from `local` to `local` opened its port on every interface, an snat from `local` rewrote forwarded traffic too, and a dnat or sroute from `local` applied to every incoming packet. It now matches `meta iif "lo"` as a source at input, `meta iif 0` as a source at postrouting, and `fib daddr type local` as a destination at prerouting, output and postrouting.
 
 ### Migration

@@ -194,6 +194,8 @@ The module has three options:
 
 With the module enabled, the build fails when `networking.nftables.enable` is false, when no tables are declared, or when a table name is also declared in `networking.nftables.tables`.
 
+The module carries a fixed `key`, so several modules can import it and NixOS declares its options once. If two of them import it from different nftzones revisions, NixOS keeps the first import and silently drops the other.
+
 ### Disable the stock firewall
 
 Set `networking.firewall.enable = false` when nftzones owns the input chain, as the example does. The stock firewall installs its own `inet filter` table on the same input hook and priority, so nftables runs both chains and accepts every port either one opens. The module warns at build time when both are enabled.
