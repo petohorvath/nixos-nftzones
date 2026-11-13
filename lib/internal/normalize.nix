@@ -43,6 +43,8 @@
         ↓ checkZoneMatchable            ctx.errors   (appends)
         ↓ checkChainOverridePlacement   ctx.errors   (appends)
         ↓ checkChainPlacement           ctx.errors   (appends)
+        ↓ checkLocalZoneMatchable       ctx.errors   (appends)
+        ↓ checkLocalToLocalShadowed     ctx.warnings (appends)
         ↓ checkRpfilterOverride         ctx.warnings (appends)
         ↓ checkChainOverrideSemantics   ctx.warnings (appends)
         ↓ checkExtraSectionFields       ctx.warnings (appends)
@@ -70,7 +72,7 @@
 let
   inherit (inputs) lib libnet nftypes;
   inherit (internal.node) toZone;
-  inherit (internal.zone) directionToSide resolveMembership;
+  inherit (internal.zone) directionToSide localCellMatchable resolveMembership;
 
   /*
     Build the pipeline's initial `{ table; ctx }` from a fresh
@@ -182,6 +184,7 @@ let
       ctx = ctx // {
         zoneMembership = resolveMembership {
           zones = ctx.mergedZones;
+          inherit (table) family;
           inherit (table.settings) localZone;
         };
       };
@@ -1527,6 +1530,136 @@ let
       };
     };
 
+  /*
+    Reject a direction that names the local zone where no packet of
+    the host can match it (ADR-0013): `from` at prerouting, `from` or
+    `to` at forward, and in a bridge table every hook that does not
+    already imply the local zone. Only cells built from explicit
+    names count: Phase 2 silently drops a cell the wildcard produced
+    there. Each failing direction is reported once.
+  */
+  checkLocalZoneMatchable =
+    { table, ctx }:
+    let
+      inherit (table) family;
+      inherit (table.settings) localZone wildcardZone;
+
+      otherDirection = {
+        from = "to";
+        to = "from";
+      };
+
+      # Stands in a cell for the zones other than the local zone that
+      # a wildcard covers; placement only asks whether a direction is
+      # the local zone.
+      anyOtherZone = null;
+
+      # One cell per explicit name in the other direction, with the
+      # local zone in `direction`.
+      cellsNaming =
+        entry: direction:
+        let
+          other = otherDirection.${direction};
+          base = {
+            chain = entry.chain or null;
+            ${direction} = localZone;
+          };
+        in
+        if entry ? ${other} then
+          map (zone: base // { ${other} = if zone == wildcardZone then anyOtherZone else zone; }) (
+            lib.unique entry.${other}
+          )
+        else
+          [ base ];
+
+      failingHooks =
+        group: entry: direction:
+        lib.unique (
+          lib.concatMap (
+            cell:
+            let
+              inherit (internal.placement.chainAttrsForCell group localZone cell) hook;
+            in
+            # Only `direction` is under test; the other one names the
+            # local zone only through its own explicit reference.
+            lib.optional (!(localCellMatchable family localZone hook { ${direction} = localZone; })) hook
+          ) (cellsNaming entry direction)
+        );
+
+      checkDirection =
+        group: entryName: entry: direction:
+        let
+          hooks = failingHooks group entry direction;
+        in
+        lib.optional (builtins.elem localZone entry.${direction} && hooks != [ ]) (
+          mkDiagnostic "localZoneNotMatchable" [ group entryName direction ]
+            "names the local zone '${localZone}', but no packet of this host can match it at hook=${lib.concatStringsSep ", " hooks} in a ${family} table. Remove '${localZone}', or set `chain` to a hook where it can match."
+        );
+
+      newErrors = lib.concatLists (
+        lib.mapAttrsToList (
+          group: directions:
+          lib.concatLists (
+            lib.mapAttrsToList (
+              entryName: entry: lib.concatMap (checkDirection group entryName entry) directions
+            ) table.${group}
+          )
+        ) groupDirections
+      );
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
+  /*
+    Warn about a filter or policy that names the local zone in both
+    `from` and `to` at its default placement while `settings.loopback`
+    is on. Its local-to-local cell lands at input, where the loopback
+    rule accepts the host's traffic to itself before any jump, so that
+    cell never fires (ADR-0013); the entry's other cells still work. A
+    wildcard's local-to-local cell is left quiet, and a separate entry
+    with a `chain` override at output is the way to filter that
+    traffic. A
+    bridge table already rejects the entry (`localZoneNotMatchable`),
+    so it gets no warning on top.
+  */
+  checkLocalToLocalShadowed =
+    { table, ctx }:
+    let
+      inherit (table) family;
+      inherit (table.settings) localZone loopback;
+
+      isShadowed =
+        entry:
+        (entry.chain or null) == null
+        && builtins.elem localZone entry.from
+        && builtins.elem localZone entry.to;
+
+      warningsFor =
+        group:
+        lib.mapAttrsToList (
+          entryName: _:
+          mkDiagnostic "localToLocalShadowed" [ group entryName ]
+            "names the local zone '${localZone}' in both `from` and `to`, so its '${localZone}' to '${localZone}' cell lands at input, where the loopback rule (`settings.loopback`) accepts the host's traffic to itself first; that cell never fires, though the entry's other cells still do. To filter that traffic, give it a separate entry from '${localZone}' to '${localZone}' with `chain = { hook = \"output\"; priority = \"filter\"; }`, or turn `settings.loopback` off."
+        ) (lib.filterAttrs (_: isShadowed) table.${group});
+
+      newWarnings = lib.optionals (loopback && family != "bridge") (
+        lib.concatMap warningsFor [
+          "filters"
+          "policies"
+        ]
+      );
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        warnings = ctx.warnings ++ newWarnings;
+      };
+    };
+
   # The one Phase 1 run that `diagnose` and `normalizeTable` share.
   runPipeline =
     table:
@@ -1549,6 +1682,8 @@ let
       checkZoneMatchable
       checkChainOverridePlacement
       checkChainPlacement
+      checkLocalZoneMatchable
+      checkLocalToLocalShadowed
       checkRpfilterOverride
       checkChainOverrideSemantics
       checkExtraSectionFields

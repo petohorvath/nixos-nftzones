@@ -308,10 +308,16 @@ let
         example = "host";
         description = ''
           Name used for "the firewall machine itself" in `from`
-          and `to` fields. Default `"local"`. Compile-time chain
-          dispatch treats this name as the host-position trigger:
-          `to == localZone` → input chain, `from == localZone` →
-          output chain.
+          and `to` fields. Default `"local"`. As a source it
+          stands for packets the host generates; as a
+          destination, packets addressed to the host. Filter and
+          policy dispatch treats this name as the host-position
+          trigger: `to == localZone` → input chain, otherwise
+          `from == localZone` → output chain. Where the hook does
+          not already imply it, it compiles to a match on the
+          host's own traffic, and Phase 1 rejects it where no
+          packet of the host passes: as a source at prerouting,
+          or in `from` or `to` at forward (ADR-0013).
         '';
       };
 
@@ -326,7 +332,10 @@ let
           it stands for the root zones (those without a `parent`)
           and `localZone`; descendants are reached through their
           root's sub-chain. In `to`, it stands for every declared
-          zone and node and `localZone`.
+          zone and node and `localZone`. Where `localZone` cannot
+          match, such as the `from` of a dnat at prerouting, the
+          wildcard leaves it out. Traffic on an interface or
+          address outside every zone is not covered.
         '';
       };
     };

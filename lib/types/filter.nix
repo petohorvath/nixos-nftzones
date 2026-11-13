@@ -47,9 +47,11 @@
   Setting `chain` pins the entry to a specific base chain (useful
   for rpfilter at `prerouting + raw`). At a non-default hook, `to`
   and `from` may not have their usual match semantics (notably
-  `to` is meaningless in `prerouting` since routing hasn't
-  happened yet); the compiler treats them as match expressions
-  where applicable and skips them otherwise.
+  `oifname` is unavailable in `prerouting` since routing hasn't
+  happened yet). Phase 1 rejects a zone with no usable match there
+  (`chainOverrideUnreachable`), and `settings.localZone` compiles
+  to a match on the host's own traffic or is rejected
+  (`localZoneNotMatchable`, ADR-0013).
 
   Example:
     options.filters = lib.mkOption {
@@ -117,7 +119,10 @@ let
             `settings.localZone` (default `"local"`), or
             `settings.wildcardZone` (default `"all"`). Phase 1
             reports any other name as a `zoneRefUnknown`
-            diagnostic.
+            diagnostic. `settings.localZone` here stands for
+            packets the host generates; the wildcard stands for
+            every declared zone and the local zone, not for
+            interfaces outside every zone.
           '';
         };
 
@@ -129,7 +134,8 @@ let
           ];
           description = ''
             Destination zones for the filter. Same shape rules as
-            `from`.
+            `from`; `settings.localZone` here stands for packets
+            addressed to the host.
           '';
         };
 
@@ -173,8 +179,9 @@ let
             useful for placements like rpfilter
             (`chain = { hook = "prerouting"; priority = "raw"; }`).
             At non-default hooks, `to` / `from` may lose their
-            usual match meaning (notably `to` in `prerouting`);
-            the compiler emits matches where applicable.
+            usual match meaning (notably `oifname` in
+            `prerouting`); Phase 1 rejects a direction that has no
+            usable match at the chosen hook.
           '';
         };
 
