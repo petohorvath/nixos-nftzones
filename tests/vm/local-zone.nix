@@ -24,7 +24,7 @@
 let
   nftypes = inputs.nix-nftypes.lib;
 
-  inherit (nftypes.dsl) accept eq;
+  inherit (nftypes.dsl) accept eq inSet;
   inherit (nftypes.dsl.fields) tcp;
 
   lanNet = "192.168.1";
@@ -143,7 +143,9 @@ pkgs.testers.runNixOSTest {
                 };
 
                 # The router's traffic to itself passes output first,
-                # where the drop policy applies too.
+                # where the drop policy applies too. It lets 8081
+                # through as well, so only `self-in` keeps 8081 out
+                # and the test checks that cell's port match.
                 self-out = {
                   from = [ "local" ];
                   to = [ "local" ];
@@ -152,7 +154,10 @@ pkgs.testers.runNixOSTest {
                     priority = "filter";
                   };
                   rule = [
-                    (eq tcp.dport 8080)
+                    (inSet tcp.dport [
+                      8080
+                      8081
+                    ])
                     accept
                   ];
                 };
@@ -202,8 +207,8 @@ pkgs.testers.runNixOSTest {
           };
         };
 
-        # Port 8080 is what `self-in` and `self-out` open; 8081 is the control
-        # it does not.
+        # Port 8080 is what `self-in` and `self-out` open; 8081 is the
+        # control that only `self-out` opens.
         systemd.services.self-echo = {
           wantedBy = [ "multi-user.target" ];
           after = [ "network.target" ];
@@ -301,8 +306,8 @@ pkgs.testers.runNixOSTest {
         )
 
     with diag_subtest("local to local opens only its own port"):
-        # Both chains drop by default, and only `self-out` and
-        # `self-in` accept the router's traffic to itself, on 8080.
+        # `self-out` passes 8081 at output, so the input drop policy
+        # behind `self-in`'s 8080-only match is what stops it.
         status, out = router.execute("nc -w 3 ${routerLanIp} 8081 </dev/null")
         assert status != 0 and out.strip() == "", (
             f"expected 8081 to stay closed to the router, got {out!r}"
