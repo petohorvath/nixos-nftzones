@@ -73,24 +73,30 @@ let
     evaluated table, such as one read from a `nftzones.types.table`
     option, evaluates again to the same table.
 
-    The body's definition carries a `_file` naming the table, so a
-    type error in a value the body defines says which `mkTable` /
-    `mkRuleset` / `diagnose` call it came from instead of
-    `<unknown-file>`. A value the type derives, such as a zone's `name`
-    from its attribute key, still reports `<unknown-file>`.
+    Both modules carry a `_file` naming the table, so a type error
+    says which `mkTable` / `mkRuleset` / `diagnose` call it came from
+    instead of `<unknown-file>`. The body's definition covers a value
+    the body defines. The option's declaration covers a value the
+    type derives, such as a zone's `name` from its attribute key: the
+    module system reports a submodule default at the file that
+    declares the enclosing option.
   */
   evalTableBody =
     name: body:
+    let
+      file = "nftzones table body '${name}'";
+    in
     (lib.evalModules {
       modules = [
         {
+          _file = file;
           options.${name} = lib.mkOption {
             type = types.table;
             description = "Table body under validation.";
           };
         }
         {
-          _file = "nftzones table body '${name}'";
+          _file = file;
           config.${name} = body;
         }
       ];
