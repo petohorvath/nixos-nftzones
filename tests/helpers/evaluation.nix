@@ -3,9 +3,9 @@
   `testContext.helpers`.
 
   Takes `lib`, the `nftzones` library, its NixOS module `nixosModule`,
-  and the package set `pkgs`. Exports `evalTable`, `diagnosticsFor`,
-  `membershipFor`, `evalType`, `evalFails`, `evalNixosSystem`, and
-  `evalNixosModule`.
+  and the package set `pkgs`. Exports `evalTable`, `dropMessages`,
+  `diagnosticsFor`, `membershipFor`, `evalType`, `evalFails`,
+  `evalNixosSystem`, and `evalNixosModule`.
 */
 {
   lib,
@@ -31,9 +31,23 @@ let
         { config.fw = body; }
       ];
     }).config.fw;
+
+  /*
+    Drop each Diagnostic's message, whose prose is not a stable
+    interface, so tests compare only tags and paths.
+
+    Takes `{ errors; warnings; }` as `diagnose` returns it and returns
+    the same shape with each record reduced to `{ tag; path; }`.
+  */
+  dropMessages = builtins.mapAttrs (
+    _:
+    map (diagnostic: {
+      inherit (diagnostic) path tag;
+    })
+  );
 in
 {
-  inherit evalTable;
+  inherit dropMessages evalTable;
 
   /*
     Run Phase 1 validation on a table body evaluated through the table
@@ -43,18 +57,7 @@ in
     Takes a table body and returns `{ errors; warnings; }`, each a list
     of `{ tag; path; }` in `diagnose` order.
   */
-  diagnosticsFor =
-    body:
-    let
-      diagnostics = nftzones.internal.normalize.diagnose (evalTable body);
-      project = map (diagnostic: {
-        inherit (diagnostic) path tag;
-      });
-    in
-    {
-      errors = project diagnostics.errors;
-      warnings = project diagnostics.warnings;
-    };
+  diagnosticsFor = body: dropMessages (nftzones.internal.normalize.diagnose (evalTable body));
 
   /*
     Resolve zone membership straight from real declarations: the
