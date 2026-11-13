@@ -178,4 +178,31 @@ in
       msg = "In `nftzones table body 'fw''";
     };
   };
+
+  # A zone's `name` derives from its key, so a key that fails the
+  # name type names the table body too.
+  testMkRulesetZoneKeyTypeErrorNamesTableBody = {
+    expr = builtins.toJSON (nftzones.mkRuleset "fw" { zones.Lan.interfaces = [ "lan0" ]; });
+    expectedError = {
+      type = "ThrownError";
+      msg = "fw\\.zones\\.Lan\\.name' is not of type `string matching the pattern \\[a-z]\\[a-z0-9_-]\\*'\\. Definition values:\n- In `nftzones table body 'fw'': \"Lan\"";
+    };
+  };
+
+  # Every group entry derives `name` from its key as a zone does, and
+  # `diagnose` evaluates the body as `mkRuleset` does.
+  testDiagnoseFilterKeyTypeErrorNamesTableBody = {
+    expr = builtins.deepSeq (nftzones.diagnose "fw" {
+      zones.lan.interfaces = [ "eth0" ];
+      filters.F = {
+        from = [ "lan" ];
+        to = [ "local" ];
+        rule = [ dsl.accept ];
+      };
+    }) null;
+    expectedError = {
+      type = "ThrownError";
+      msg = "fw\\.filters\\.F\\.name' is not of type `string matching the pattern \\[a-z]\\[a-z0-9_-]\\*'\\. Definition values:\n- In `nftzones table body 'fw'': \"F\"";
+    };
+  };
 }
