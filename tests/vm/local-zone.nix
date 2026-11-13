@@ -261,8 +261,14 @@ pkgs.testers.runNixOSTest {
     server.wait_for_unit("network-online.target")
 
     server.wait_for_open_port(9999)
-    router.wait_for_open_port(8080)
-    router.wait_for_open_port(8081)
+
+    # `wait_for_open_port` connects from the router to itself, which
+    # the table under test filters: 8081 never answers the router.
+    # Wait for the listening sockets instead.
+    for port in (8080, 8081):
+        router.wait_until_succeeds(
+            f"ss -Hltn 'sport = :{port}' | grep -q LISTEN"
+        )
 
     # See `forward.nix`: dump the router's ruleset when a subtest
     # fails.
