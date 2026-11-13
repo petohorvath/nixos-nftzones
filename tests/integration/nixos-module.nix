@@ -121,8 +121,8 @@ in
 
   testModuleWarnsOnFirewallCoexistence = {
     # The warning fires once, names the stock `nixos-fw` table, and
-    # does not repeat the old claim that the two firewalls unite
-    # their accepts.
+    # says that both firewalls must accept a packet, so a port opened
+    # only in nftzones stays closed.
     expr =
       let
         nftzonesWarnings =
@@ -140,13 +140,13 @@ in
         count = lib.length nftzonesWarnings;
         mentionsFirewall = lib.any (lib.hasInfix "networking.firewall.enable") nftzonesWarnings;
         namesStockTable = lib.any (lib.hasInfix "nixos-fw") nftzonesWarnings;
-        claimsUnion = lib.any (lib.hasInfix "union") nftzonesWarnings;
+        saysNftzonesOnlyPortStaysClosed = lib.any (lib.hasInfix "a port opened only in nftzones stays closed") nftzonesWarnings;
       };
     expected = {
       count = 1;
       mentionsFirewall = true;
       namesStockTable = true;
-      claimsUnion = false;
+      saysNftzonesOnlyPortStaysClosed = true;
     };
   };
 
