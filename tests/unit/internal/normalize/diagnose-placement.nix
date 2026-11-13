@@ -38,6 +38,187 @@ let
   };
 in
 {
+  # ===== local zone matchability (ADR-0013) =====
+
+  # Prerouting never sees a packet the host generates, so a local
+  # source there could only match nothing or, before #54, everything.
+  testLocalSourceAtPreroutingRejected = {
+    expr = diagnosticsFor {
+      zones = lanWan;
+      dnats.fwd = {
+        from = [ "local" ];
+        rule = dnatTo443;
+      };
+      sroutes.mark = {
+        from = [ "local" ];
+        rule = [ (dsl.mangle dsl.fields.meta.mark 100) ];
+      };
+    };
+    expected = {
+      errors = [
+        {
+          tag = "localZoneNotMatchable";
+          path = [
+            "dnats"
+            "fwd"
+            "from"
+          ];
+        }
+        {
+          tag = "localZoneNotMatchable";
+          path = [
+            "sroutes"
+            "mark"
+            "from"
+          ];
+        }
+      ];
+      warnings = [ ];
+    };
+  };
+
+  # Forward carries only traffic between other hosts, so a chain
+  # override there rejects the local zone on either side.
+  testLocalZoneAtForwardOverrideRejected = {
+    expr = diagnosticsFor {
+      zones = lanWan;
+      filters.out = {
+        from = [ "local" ];
+        to = [ "wan" ];
+        chain = {
+          hook = "forward";
+          priority = "filter";
+        };
+        rule = [ dsl.accept ];
+      };
+      filters.inbound = {
+        from = [ "lan" ];
+        to = [ "local" ];
+        chain = {
+          hook = "forward";
+          priority = "filter";
+        };
+        rule = [ dsl.accept ];
+      };
+    };
+    expected = {
+      errors = [
+        {
+          tag = "localZoneNotMatchable";
+          path = [
+            "filters"
+            "inbound"
+            "to"
+          ];
+        }
+        {
+          tag = "localZoneNotMatchable";
+          path = [
+            "filters"
+            "out"
+            "from"
+          ];
+        }
+      ];
+      warnings = [ ];
+    };
+  };
+
+  # Loopback traffic never crosses a bridge, so a bridge table cannot
+  # match the local zone as a source at input. The error stands
+  # alone: `localToLocalShadowed` would only repeat it.
+  testLocalToLocalInBridgeRejected = {
+    expr = diagnosticsFor {
+      family = "bridge";
+      zones = lanWan;
+      filters.self-only = {
+        from = [ "local" ];
+        to = [ "local" ];
+        rule = [ dsl.accept ];
+      };
+    };
+    expected = {
+      errors = [
+        {
+          tag = "localZoneNotMatchable";
+          path = [
+            "filters"
+            "self-only"
+            "from"
+          ];
+        }
+      ];
+      warnings = [ ];
+    };
+  };
+
+  # The loopback rule accepts the host's traffic to itself before any
+  # input jump, so an entry that names the local zone on both sides
+  # can never fire there. Wildcards and output overrides stay quiet.
+  testLocalToLocalShadowedByLoopback = {
+    expr = diagnosticsFor {
+      zones = lanWan;
+      filters = {
+        self-only = {
+          from = [ "local" ];
+          to = [ "local" ];
+          rule = [ dsl.accept ];
+        };
+        anywhere = {
+          from = [ "all" ];
+          to = [ "local" ];
+          rule = [ dsl.accept ];
+        };
+        self-out = {
+          from = [ "local" ];
+          to = [ "local" ];
+          chain = {
+            hook = "output";
+            priority = "filter";
+          };
+          rule = [ dsl.accept ];
+        };
+      };
+      policies.self = {
+        from = [ "local" ];
+        to = [ "local" ];
+        verdict = "accept";
+      };
+    };
+    expected = {
+      errors = [ ];
+      warnings = [
+        {
+          tag = "localToLocalShadowed";
+          path = [
+            "filters"
+            "self-only"
+          ];
+        }
+        {
+          tag = "localToLocalShadowed";
+          path = [
+            "policies"
+            "self"
+          ];
+        }
+      ];
+    };
+  };
+
+  testLocalToLocalWithoutLoopbackRule = {
+    expr = diagnosticsFor {
+      zones = lanWan;
+      settings.loopback = false;
+      filters.self-only = {
+        from = [ "local" ];
+        to = [ "local" ];
+        rule = [ dsl.accept ];
+      };
+    };
+    expected = clean;
+  };
+
   # ===== chain placement =====
 
   testChainPlacementInetDefaultsAccepted = {
@@ -194,11 +375,29 @@ in
             "early"
           ];
         }
+        # A bridge table has no host-only match for a local
+        # destination at prerouting or postrouting (ADR-0013).
+        {
+          tag = "localZoneNotMatchable";
+          path = [
+            "filters"
+            "early"
+            "to"
+          ];
+        }
         {
           tag = "chainPlacementInvalid";
           path = [
             "snats"
             "masq"
+          ];
+        }
+        {
+          tag = "localZoneNotMatchable";
+          path = [
+            "snats"
+            "masq"
+            "to"
           ];
         }
       ];

@@ -550,6 +550,142 @@ in
     expected = [ [ ] ];
   };
 
+  # A packet the host generates has no input device at postrouting;
+  # a forwarded packet always has one.
+  testMembershipVariantsLocalSourceAtPostrouting = {
+    expr = (membershipFor { }).directionVariants {
+      hook = "postrouting";
+      direction = "from";
+      zoneName = "local";
+    };
+    expected = [ [ (nftypes.dsl.eq nftypes.dsl.fields.meta.iif 0) ] ];
+  };
+
+  # The host's traffic to itself arrives over loopback; a packet from
+  # outside that forges one of the host's addresses does not.
+  testMembershipVariantsLocalSourceAtInput = {
+    expr = (membershipFor { }).directionVariants {
+      hook = "input";
+      direction = "from";
+      zoneName = "local";
+    };
+    expected = [ [ (nftypes.dsl.eq nftypes.dsl.fields.meta.iif "lo") ] ];
+  };
+
+  # Prerouting, output and postrouting all see packets addressed
+  # elsewhere, so a local destination needs its own match there.
+  testMembershipVariantsLocalDestinationAtOtherHooks = {
+    expr =
+      map
+        (
+          hook:
+          (membershipFor { }).directionVariants {
+            inherit hook;
+            direction = "to";
+            zoneName = "local";
+          }
+        )
+        [
+          "prerouting"
+          "output"
+          "postrouting"
+        ];
+    expected =
+      let
+        addressedToHost = nftypes.dsl.eq (expr.fib {
+          result = "type";
+          flags = [ "daddr" ];
+        }) "local";
+      in
+      [
+        [ [ addressedToHost ] ]
+        [ [ addressedToHost ] ]
+        [ [ addressedToHost ] ]
+      ];
+  };
+
+  # No packet of the host passes prerouting as a source, or forward
+  # on either side. Phase 1 rejects such references; the membership
+  # still yields no variant, so no jump can match every packet.
+  testMembershipVariantsLocalZoneUnmatchable = {
+    expr =
+      map
+        (
+          { hook, direction }:
+          (membershipFor { }).directionVariants {
+            inherit hook direction;
+            zoneName = "local";
+          }
+        )
+        [
+          {
+            hook = "prerouting";
+            direction = "from";
+          }
+          {
+            hook = "forward";
+            direction = "from";
+          }
+          {
+            hook = "forward";
+            direction = "to";
+          }
+        ];
+    expected = [
+      [ ]
+      [ ]
+      [ ]
+    ];
+  };
+
+  # A bridge table has no `fib`, and its hooks see bridged frames, so
+  # the local zone keeps only the placements its hook implies.
+  testMembershipVariantsLocalZoneInBridge = {
+    expr =
+      map
+        (
+          { hook, direction }:
+          (membershipFor { family = "bridge"; }).directionVariants {
+            inherit hook direction;
+            zoneName = "local";
+          }
+        )
+        [
+          {
+            hook = "input";
+            direction = "to";
+          }
+          {
+            hook = "output";
+            direction = "from";
+          }
+          {
+            hook = "input";
+            direction = "from";
+          }
+          {
+            hook = "postrouting";
+            direction = "from";
+          }
+          {
+            hook = "prerouting";
+            direction = "to";
+          }
+          {
+            hook = "output";
+            direction = "to";
+          }
+        ];
+    expected = [
+      [ [ ] ]
+      [ [ ] ]
+      [ ]
+      [ ]
+      [ ]
+      [ ]
+    ];
+  };
+
   testMembershipVariantsNullDirection = {
     expr = (membershipFor { }).directionVariants {
       hook = "prerouting";

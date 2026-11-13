@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The Phase 1 warning `localToLocalShadowed`, at `<group>.<entry>`, for a filter or policy that names the local zone in both `from` and `to` while `settings.loopback` is on. The loopback rule accepts that traffic first, so the entry never fires; a `chain` override at output filters it instead.
+
+### Changed
+
+- **Breaking:** The new Phase 1 error `localZoneNotMatchable`, at `<group>.<entry>.<direction>`, rejects a direction that names the local zone where no packet of the host can match it: the source of a dnat or sroute at prerouting, `from` or `to` of a `chain` override at forward, and in a bridge table every hook that does not already imply the local zone ([ADR-0013](docs/adr/0013-local-zone-compiles-to-a-host-match.md)). These entries compiled before, to a jump that matched every packet.
+- **Breaking:** The wildcard zone no longer covers traffic on an interface or address outside every zone. Before, its local-zone cell matched that traffic at input, postrouting and prerouting, but not at forward. A local-zone cell that the wildcard produces where the local zone cannot match is dropped, so `from = [ "all" ]` on a dnat or sroute emits no local-zone cell.
+
+### Fixed
+
+- A local-zone direction matches only the host's own traffic at every hook it compiles to ([#54](https://github.com/petohorvath/nixos-nftzones/issues/54)). Before, it compiled to no match at every hook, so a filter from `local` to `local` opened its port on every interface, an snat from `local` rewrote forwarded traffic too, and a dnat or sroute from `local` applied to every incoming packet. It now matches `meta iif "lo"` as a source at input, `meta iif 0` as a source at postrouting, and `fib daddr type local` as a destination at prerouting, output and postrouting.
+
+### Migration
+
+Replace a dnat or sroute `from = [ "local" ]`, which never matched the host's own traffic, with the zones it was meant for; a dnat for the host's own traffic belongs at output through `chain`. Drop the local zone from an entry whose `chain` override puts it at forward, which carries no traffic of the host.
+
+In a bridge table, drop the local zone from any entry that names it outside the input destination and output source placements; the bridge family offers no match for the host's own traffic there.
+
+If a wildcard entry relied on reaching an interface outside every zone, declare a zone for that interface and name it, or add it to an existing zone.
+
 ## [0.1.0] - 2026-10-31
 
 First release. `lib.mkTable` and `lib.mkRuleset` compile a zone-keyed table body into one nftables table, and `nixosModules.default` does the same for each table under `networking.nftzones.tables`. The [README](README.md) shows the usage, and [docs/zone-based-firewall.md](docs/zone-based-firewall.md) explains the model.

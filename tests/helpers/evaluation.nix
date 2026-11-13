@@ -71,6 +71,7 @@ in
     in
     nftzones.internal.zone.resolveMembership {
       zones = table.zones // lib.mapAttrs (_: nftzones.internal.node.toZone) table.nodes;
+      inherit (table) family;
       inherit (table.settings) localZone;
     };
 

@@ -128,9 +128,21 @@ The local zone is interpreted by direction:
 | local as **destination** | Packet terminates on the firewall. Matches in the `input` hook.        |
 | local on neither side    | Forwarded packet. Matches in the `forward` hook.                       |
 
+In nftzones, a filter or policy cell from the local zone to itself goes to `input`, where it matches only loopback traffic. Elsewhere, wherever the hook does not already imply the local zone, it compiles to a match that selects only the host's own traffic, or Phase 1 rejects it with `localZoneNotMatchable` where no packet of the host can pass ([ADR-0013](adr/0013-local-zone-compiles-to-a-host-match.md)):
+
+| Hook        | local as source     | local as destination   |
+| ----------- | ------------------- | ---------------------- |
+| prerouting  | rejected            | `fib daddr type local` |
+| input       | `meta iif "lo"`     | implied by the hook    |
+| forward     | rejected            | rejected               |
+| output      | implied by the hook | `fib daddr type local` |
+| postrouting | `meta iif 0`        | `fib daddr type local` |
+
+A bridge table keeps only the two placements the hook implies, because nftables has no `fib` in the bridge family; every other placement is rejected.
+
 The wildcard zone is mostly used in policies (`policy all -> all drop`) and broad allow rules (`rule local -> all accept`).
 
-In nftzones, the wildcard expands by direction. In `to`, it expands to every declared zone and node and the local zone. In `from`, it expands to the root zones and the local zone; each root's sub-chain also reaches its descendants ([ADR-0007](adr/0007-from-wildcard-expands-to-roots.md)).
+In nftzones, the wildcard expands by direction. In `to`, it expands to every declared zone and node and the local zone. In `from`, it expands to the root zones and the local zone; each root's sub-chain also reaches its descendants ([ADR-0007](adr/0007-from-wildcard-expands-to-roots.md)). Where the local zone cannot match, such as in the `from` of a dnat at prerouting, the wildcard produces no local-zone cell. The wildcard never covers traffic on an interface or address outside every zone; that traffic falls to the chain policy.
 
 Both names default as listed but are configurable per table via the `settings` field, which lets tables that already use `local` or `all` for an ordinary zone rename the special ones out of the way:
 

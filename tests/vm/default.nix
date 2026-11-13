@@ -15,6 +15,7 @@ in
   droutes = import ./droutes.nix testArgs;
   dualstack = import ./dualstack.nix testArgs;
   forward = import ./forward.nix testArgs;
+  local-zone = import ./local-zone.nix testArgs;
   marks = import ./marks.nix testArgs;
   rpfilter = import ./rpfilter.nix testArgs;
   vlan = import ./vlan.nix testArgs;

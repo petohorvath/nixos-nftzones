@@ -19,7 +19,56 @@ let
 
   inherit (helpers) evalTable;
 
-  inherit (nftypes.dsl) accept;
+  inherit (nftypes.dsl) accept eq;
+  inherit (nftypes.dsl.fields) tcp;
+
+  /*
+    The jump rules of one chain of a compiled `inet fw` table with
+    `lan` and `wan` interface zones, as nftables text without the
+    `add rule inet fw <chain>` prefix. The regression in #54 was a
+    jump with no match in front of it.
+  */
+  chainJumps =
+    chain: body:
+    let
+      prefix = "add rule inet fw ${chain} ";
+      lines = lib.splitString "\n" (
+        nftypes.toText (
+          mkRuleset (
+            evalTable (
+              {
+                zones = {
+                  lan.interfaces = [ "lan0" ];
+                  wan.interfaces = [ "wan0" ];
+                };
+              }
+              // body
+            )
+          )
+        )
+      );
+    in
+    map (lib.removePrefix prefix) (
+      builtins.filter (line: lib.hasPrefix prefix line && lib.hasInfix " jump " line) lines
+    );
+
+  # The chain names of the same compiled table, sorted.
+  chainNames =
+    body:
+    lib.sort (a: b: a < b) (
+      builtins.attrNames
+        (mkTable (
+          evalTable (
+            {
+              zones = {
+                lan.interfaces = [ "lan0" ];
+                wan.interfaces = [ "wan0" ];
+              };
+            }
+            // body
+          )
+        )).chains
+    );
 in
 {
   # ===== compile — runs all four phases, ctx carries every artifact =====
@@ -294,6 +343,195 @@ in
     expected = [
       "forward-at-filter"
       "forward-at-filter__lan-TO-wan"
+    ];
+  };
+
+  # ===== local zone — host-only matches (#54, ADR-0013) =====
+
+  # Prerouting never sees the host's own packets, so `all` leaves the
+  # local zone out instead of jumping on every packet.
+  testLocalZoneWildcardSkipsLocalAtPrerouting = {
+    expr =
+      let
+        body = {
+          dnats.fwd = {
+            from = [ "all" ];
+            rule = {
+              match = [ (eq tcp.dport 8443) ];
+              action.dnat = {
+                addr = "10.0.0.5";
+                port = 443;
+              };
+            };
+          };
+        };
+      in
+      {
+        jumps = chainJumps "prerouting-at-dstnat" body;
+        chains = chainNames body;
+      };
+    expected = {
+      jumps = [
+        "meta iifname == @lan_iifs jump prerouting-at-dstnat__lan"
+        "meta iifname == @wan_iifs jump prerouting-at-dstnat__wan"
+      ];
+      chains = [
+        "prerouting-at-dstnat"
+        "prerouting-at-dstnat__lan"
+        "prerouting-at-dstnat__wan"
+      ];
+    };
+  };
+
+  # The issue's first reproduction: a rule for the host talking to
+  # itself opened the port on every interface at input. The cell
+  # stays at input but matches only loopback traffic.
+  testLocalZoneLocalToLocalMatchesLoopback = {
+    expr =
+      let
+        body = {
+          # With the loopback rule on, Phase 1 warns that this
+          # entry never fires (`localToLocalShadowed`).
+          settings.loopback = false;
+          filters.selfonly = {
+            from = [ "local" ];
+            to = [ "local" ];
+            rule = [
+              (eq tcp.dport 8080)
+              accept
+            ];
+          };
+        };
+      in
+      {
+        input = chainJumps "input-at-filter" body;
+        output = chainJumps "output-at-filter" body;
+      };
+    expected = {
+      input = [ "meta iif == lo jump input-at-filter__local-TO-local" ];
+      output = [ ];
+    };
+  };
+
+  # Traffic on an interface outside every zone no longer reaches a
+  # wildcard source at input, and the local cell creates no output
+  # chain.
+  testLocalZoneWildcardSourceToLocal = {
+    expr =
+      let
+        body = {
+          policies.inbound = {
+            from = [ "all" ];
+            to = [ "local" ];
+            verdict = "accept";
+          };
+        };
+      in
+      {
+        input = chainJumps "input-at-filter" body;
+        output = chainJumps "output-at-filter" body;
+      };
+    expected = {
+      input = [
+        "meta iifname == @lan_iifs jump input-at-filter__lan-TO-local"
+        "meta iif == lo jump input-at-filter__local-TO-local"
+        "meta iifname == @wan_iifs jump input-at-filter__wan-TO-local"
+      ];
+      output = [ ];
+    };
+  };
+
+  # A local source at postrouting masquerades only the host's own
+  # packets, not forwarded ones.
+  testLocalZoneSourceAtPostrouting = {
+    expr = chainJumps "postrouting-at-srcnat" {
+      snats.host-out = {
+        from = [ "local" ];
+        to = [ "wan" ];
+        rule.action.masquerade = { };
+      };
+    };
+    expected = [
+      "meta iif == 0 meta oifname == @wan_iifs jump postrouting-at-srcnat__local-TO-wan"
+    ];
+  };
+
+  # A local destination at output marks only the host's traffic to
+  # itself.
+  testLocalZoneDestinationAtOutput = {
+    expr = chainJumps "output-at-mangle" {
+      droutes.self = {
+        to = [ "local" ];
+        rule = [ (nftypes.dsl.mangle nftypes.dsl.fields.meta.mark 100) ];
+      };
+    };
+    expected = [
+      "fib daddr type == local jump output-at-mangle__local"
+    ];
+  };
+
+  # A wildcard in a bridge table drops the local-to-local cell, whose
+  # source cannot match at input there, instead of emitting it.
+  testLocalZoneWildcardInBridge = {
+    expr = chainNames {
+      family = "bridge";
+      filters.anywhere = {
+        from = [ "all" ];
+        to = [ "local" ];
+        rule = [ accept ];
+      };
+    };
+    expected = [
+      "input-at-filter"
+      "input-at-filter__lan-TO-local"
+      "input-at-filter__wan-TO-local"
+    ];
+  };
+
+  # The remaining rows of ADR-0013's table: a local source at output
+  # needs no match, and a local destination outside input matches
+  # the host's addresses — at prerouting through a `chain` override,
+  # and at postrouting through a wildcard snat's local cell.
+  testLocalZoneSourceAtOutputNeedsNoMatch = {
+    expr = chainJumps "output-at-filter" {
+      filters.out = {
+        from = [ "local" ];
+        to = [ "wan" ];
+        rule = [ accept ];
+      };
+    };
+    expected = [ "meta oifname == @wan_iifs jump output-at-filter__local-TO-wan" ];
+  };
+
+  testLocalZoneDestinationAtPrerouting = {
+    expr = chainJumps "prerouting-at-raw" {
+      filters.early = {
+        from = [ "wan" ];
+        to = [ "local" ];
+        chain = {
+          hook = "prerouting";
+          priority = "raw";
+        };
+        rule = [ accept ];
+      };
+    };
+    expected = [
+      "meta iifname == @wan_iifs fib daddr type == local jump prerouting-at-raw__wan-TO-local"
+    ];
+  };
+
+  testLocalZoneWildcardDestinationAtPostrouting = {
+    expr = chainJumps "postrouting-at-srcnat" {
+      snats.masq = {
+        from = [ "lan" ];
+        to = [ "all" ];
+        rule.action.masquerade = { };
+      };
+    };
+    expected = [
+      "meta iifname == @lan_iifs meta oifname == @lan_iifs jump postrouting-at-srcnat__lan-TO-lan"
+      "meta iifname == @lan_iifs fib daddr type == local jump postrouting-at-srcnat__lan-TO-local"
+      "meta iifname == @lan_iifs meta oifname == @wan_iifs jump postrouting-at-srcnat__lan-TO-wan"
     ];
   };
 }

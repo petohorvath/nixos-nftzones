@@ -16,6 +16,6 @@ local zone, and nothing else: traffic on an interface or address
 outside every zone falls through to the chain policy at every hook.
 Before, the local zone's cell matched every packet at input,
 postrouting and prerouting, so the wildcard covered that traffic there
-by accident, but not at forward. A wildcard also leaves the local zone
-out at a hook where ADR-0013 rejects it, such as the `from` side at
-prerouting.
+by accident, but not at forward. A wildcard also produces no local-zone
+cell where ADR-0013 rejects the local zone, such as in the `from` of
+a dnat at prerouting.

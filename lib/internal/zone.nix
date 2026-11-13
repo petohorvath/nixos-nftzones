@@ -1,6 +1,6 @@
 /*
   internal/zone — resolves zone membership once for validation and
-  emission. `resolveMembership { zones; localZone; }` accepts the
+  emission. `resolveMembership { zones; localZone; family; }` accepts the
   merged declarations (including lowered nodes). Callers never pair
   raw declarations with synthetic sets or preselected overrides.
 
@@ -31,7 +31,7 @@
 { inputs, internal }:
 let
   inherit (inputs) lib libnet nftypes;
-  inherit (nftypes.dsl) expr inSet;
+  inherit (nftypes.dsl) eq expr inSet;
   inherit (nftypes.dsl.fields) ip ip6 meta;
 
   directionToSide = {
@@ -54,6 +54,61 @@ let
       else
         internal.compatibility.hooksWithOifname
     );
+
+  /*
+    The local zone's match in a table family at a hook and direction
+    (ADR-0013): a list of statements that selects only the host's own
+    traffic, `[ ]` where the hook already implies the local zone, or
+    `null` where no packet of the host can pass the hook, or the
+    family has no match that selects only them. A bridge table has no
+    `fib` and its hooks see bridged frames, so there the local zone
+    keeps only the placements its hook implies.
+  */
+  localZoneMatch =
+    family: hook: direction:
+    let
+      addressedToHost = eq (expr.fib {
+        result = "type";
+        flags = [ "daddr" ];
+      }) "local";
+
+      matches = {
+        from = {
+          prerouting = null;
+          forward = null;
+          input = [ (eq meta.iif "lo") ];
+          postrouting = [ (eq meta.iif 0) ];
+        };
+        to = {
+          forward = null;
+          prerouting = [ addressedToHost ];
+          output = [ addressedToHost ];
+          postrouting = [ addressedToHost ];
+        };
+      };
+      implied = (direction == "to" && hook == "input") || (direction == "from" && hook == "output");
+    in
+    if family == "bridge" then if implied then [ ] else null else matches.${direction}.${hook} or [ ];
+
+  # Whether any packet of the host can match the local zone there.
+  localZoneMatchable =
+    family: hook: direction:
+    localZoneMatch family hook direction != null;
+
+  /*
+    Whether every direction of `cell` that names the local zone can
+    match at `hook`. Phase 2 drops a cell that fails, which keeps a
+    wildcard from compiling the local zone where it cannot match;
+    Phase 1 reports a failing cell built from explicit names.
+  */
+  localCellMatchable =
+    family: localZone: hook: cell:
+    lib.all
+      (direction: (cell.${direction} or null) != localZone || localZoneMatchable family hook direction)
+      [
+        "from"
+        "to"
+      ];
 
   cidrToPrefix =
     isV4: parsed:
@@ -203,9 +258,15 @@ let
       own,
       zoneSets,
       localZone,
+      family,
     }:
-    if zoneName == null || zoneName == localZone then
+    if zoneName == null then
       [ [ ] ]
+    else if zoneName == localZone then
+      let
+        match = localZoneMatch family hook direction;
+      in
+      lib.optional (match != null) match
     else
       let
         isFromDirection = direction == "from";
@@ -282,7 +343,11 @@ let
         inheritedFamilyVariants ++ inheritedInterfacesVariant;
 
   resolveMembership =
-    { zones, localZone }:
+    {
+      zones,
+      localZone,
+      family,
+    }:
     let
       # foldlAttrs visits names in lexical order, keeping child dispatch
       # deterministic without a separately supplied or sorted child map.
@@ -348,6 +413,7 @@ let
         mkDirectionVariants {
           inherit
             direction
+            family
             hook
             localZone
             zoneName
@@ -411,5 +477,5 @@ let
     };
 in
 {
-  inherit directionToSide resolveMembership;
+  inherit directionToSide localCellMatchable resolveMembership;
 }
