@@ -33,6 +33,9 @@ let
   };
 
   renderedTable = config: config.networking.nftables.tables.fw.content;
+
+  # The table the source module renders for `body`.
+  sourceTable = renderedTable (helpers.evalNixosModule firewallConfiguration);
 in
 {
   testLibExportsSourceNames = {
@@ -62,6 +65,20 @@ in
         firewallConfiguration
       ]
     );
-    expected = renderedTable (helpers.evalNixosModule firewallConfiguration);
+    expected = sourceTable;
+  };
+
+  # Two modules that each import nftzones, such as a framework's
+  # firewall service and a host's own configuration, must declare the
+  # options once.
+  testNixosModuleImportedTwiceDeclaresOptionsOnce = {
+    expr = renderedTable (
+      helpers.evalNixosSystem [
+        self.nixosModules.default
+        { imports = [ self.nixosModules.default ]; }
+        firewallConfiguration
+      ]
+    );
+    expected = sourceTable;
   };
 }

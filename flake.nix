@@ -74,9 +74,16 @@
             nftypes = nix-nftypes.lib;
           };
         };
-        nixosModules.default = flake-parts.lib.importApply ./nixos/module.nix {
-          libnet = nix-libnet.lib;
-          nftypes = nix-nftypes.lib;
+        # The key lets NixOS deduplicate the module when more than one
+        # module imports it; `importApply` alone gives it none.
+        nixosModules.default = {
+          key = "nixos-nftzones#nixosModules.default";
+          imports = [
+            (flake-parts.lib.importApply ./nixos/module.nix {
+              libnet = nix-libnet.lib;
+              nftypes = nix-nftypes.lib;
+            })
+          ];
         };
       };
     };
