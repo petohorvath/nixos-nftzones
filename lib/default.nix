@@ -128,8 +128,9 @@ let
   /*
     Report every Phase 1 Diagnostic in a raw table body as data, for
     callers that state problems in their own terms before anything
-    compiles. Never throws or warns over a Diagnostic; a body that
-    fails `nftzones.types.table` still throws, as for `mkTable`.
+    compiles. Never throws or warns over a Diagnostic. A body that
+    fails `nftzones.types.table` still throws, even in a field Phase 1
+    never reads.
 
     Inputs:
       name — on-wire table name; overrides any `name` in `body`.
@@ -138,7 +139,14 @@ let
     Returns `{ errors; warnings; }`, each a list of
     `{ tag; path; message; }`, where `path` is a list of strings.
   */
-  diagnose = name: body: internal.normalize.diagnose (evalTableBody name body);
+  diagnose =
+    name: body:
+    let
+      table = evalTableBody name body;
+    in
+    # Phase 1 reads only part of the table, so force all of it: a type
+    # error it never reads would otherwise come back as a clean body.
+    builtins.deepSeq table (internal.normalize.diagnose table);
 in
 {
   # Library version. Bumped manually per release.

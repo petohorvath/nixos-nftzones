@@ -104,6 +104,7 @@ in
             "lan"
           ];
           to = [ "wan" ];
+          verdict = "accept";
         };
       }
     );
@@ -145,6 +146,18 @@ in
     expectedError = {
       type = "ThrownError";
       msg = "fw\\.zones\\.Lan\\.name' is not of type `string matching the pattern";
+    };
+  };
+
+  # Phase 1 never reads `settings.stateful`, yet a mistyped value
+  # must still throw rather than look clean.
+  testDiagnoseTypeErrorOutsidePhase1Throws = {
+    expr = builtins.deepSeq (nftzones.diagnose "fw" {
+      settings.stateful = "yes";
+    }) null;
+    expectedError = {
+      type = "ThrownError";
+      msg = "fw\\.settings\\.stateful' is not of type `boolean'";
     };
   };
 
