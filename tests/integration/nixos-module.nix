@@ -120,15 +120,12 @@ in
   # ===== module — warns when nftzones coexists with networking.firewall =====
 
   testModuleWarnsOnFirewallCoexistence = {
-    # With both `networking.firewall.enable` and
-    # `networking.nftzones.enable` true, the stock firewall's
-    # `inet nixos-fw` table and nftzones both hook input at priority
-    # `filter`. A packet must be accepted by both, so the effective
-    # policy is the intersection of their accepts. The warning names
-    # the stock table and must not claim a union.
+    # The warning fires once, names the stock `nixos-fw` table, and
+    # does not repeat the old claim that the two firewalls unite
+    # their accepts.
     expr =
       let
-        warnings =
+        nftzonesWarnings =
           lib.filter (lib.hasInfix "networking.nftzones")
             (evalSystem {
               networking.nftables.enable = true;
@@ -140,10 +137,10 @@ in
             }).warnings;
       in
       {
-        count = lib.length warnings;
-        mentionsFirewall = lib.any (lib.hasInfix "networking.firewall.enable") warnings;
-        namesStockTable = lib.any (lib.hasInfix "nixos-fw") warnings;
-        claimsUnion = lib.any (lib.hasInfix "union") warnings;
+        count = lib.length nftzonesWarnings;
+        mentionsFirewall = lib.any (lib.hasInfix "networking.firewall.enable") nftzonesWarnings;
+        namesStockTable = lib.any (lib.hasInfix "nixos-fw") nftzonesWarnings;
+        claimsUnion = lib.any (lib.hasInfix "union") nftzonesWarnings;
       };
     expected = {
       count = 1;
