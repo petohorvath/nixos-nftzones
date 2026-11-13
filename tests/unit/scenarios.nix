@@ -1,10 +1,13 @@
 # Check every scenario fixture's Phase 1 warnings and structured
 # assertions, one group per scenario. The build test `scenarios` runs
-# `nft -j --check` on the same fixtures.
+# `nft -j --check` on the same fixtures. Warnings come from the public
+# `diagnose`, which forces the whole table, so every valid scenario
+# also proves that forcing rejects nothing valid.
 {
   fixtures,
   helpers,
   lib,
+  nftzones,
   ...
 }:
 let
@@ -24,9 +27,11 @@ let
     {
       testWarnings = {
         expr = lib.listToAttrs (
-          map (table: lib.nameValuePair table.name (helpers.diagnosticsFor table.body).warnings) (
-            helpers.scenarioTables name scenario
-          )
+          map (
+            table:
+            lib.nameValuePair table.name (helpers.dropMessages (nftzones.diagnose table.name table.body))
+            .warnings
+          ) (helpers.scenarioTables name scenario)
         );
         expected = helpers.scenarioWarnings name scenario;
       };

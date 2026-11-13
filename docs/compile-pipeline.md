@@ -169,14 +169,14 @@ Checks enforced by the table type fail during module evaluation, before Phase 1 
 
 #### Stability
 
-Users see a diagnostic as the rendered `[tag] path: message` line of a failed evaluation or a warning. From 0.1.0, its tag and path are a stable interface:
+Users see a diagnostic as the rendered `[tag] path: message` line of a failed evaluation or a warning. `lib.diagnose name body` returns the same diagnostics as data, `{ errors; warnings; }`, each a list of `{ tag; path; message; }`. It takes the arguments of `lib.mkTable` and never throws or warns over a diagnostic. A body that fails the table type still throws from module evaluation, because type errors are not diagnostics. From 0.1.0, a diagnostic's tag and path are a stable interface:
 
-- **Stable:** each tag's name, the path each tag is reported at, and whether a tag is an error or a warning. Changing any of them is a breaking change with a CHANGELOG entry.
-- **Not stable:** the message prose, and the order of diagnostics in a failure. Match on the tag and the path, not on the prose or the position of a line.
+- **Stable:** each tag's name, the path each tag is reported at, and whether a tag is an error or a warning. For `lib.diagnose`, also the `{ errors; warnings; }` shape and the `tag`, `path` and `message` fields of each record. Changing any of them is a breaking change with a CHANGELOG entry.
+- **Not stable:** the message prose, and the order of diagnostics in a failure or in `lib.diagnose`'s lists. Match on the tag and the path, not on the prose or the position of a line.
 
 A node's address is the exception. `cidrOverlap` and `crossAxisOverlap` report a node at the zone it lowers to, under `zones.<node>`, a path the user never wrote. A node with no address gets `nodeAddressMissing`, and each `from` or `to` reference to it also gets a `zoneNotMatchable` that follows from it ([#31](https://github.com/petohorvath/nixos-nftzones/issues/31)). Those paths, and the follow-on `zoneNotMatchable`, change when #31 is fixed. A node's `parent` is reported at `nodes.<node>.parent`, as a zone's is at `zones.<zone>.parent`.
 
-`internal.normalize.diagnose` returns the same records as data, but like the rest of `internal` it has no semver guarantee.
+`lib.diagnose` evaluates the body through the table type and calls `internal.normalize.diagnose`, which like the rest of `internal` has no semver guarantee.
 
 #### Errors
 

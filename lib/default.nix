@@ -1,7 +1,8 @@
 /*
   nftzones library entry point. Assembles the public surface: the
-  `mkTable` / `mkRuleset` compilers, the `types` option types, the
-  `snippets` rule-body shorthand, and the unstable `internal` namespace.
+  `mkTable` / `mkRuleset` compilers, `diagnose`, the `types` option
+  types, the `snippets` rule-body shorthand, and the unstable
+  `internal` namespace.
 
   Example:
     nftzones.mkRuleset "zonefw" {
@@ -30,8 +31,8 @@ let
     Names, signatures, and the per-module split can change in
     any release — the namespace is exposed for our own unit
     tests and for advanced users who explicitly opt in. Public
-    consumers should reach for `mkTable` / `mkRuleset` / the
-    NixOS module, or for `types` / `snippets`.
+    consumers should reach for `mkTable` / `mkRuleset` /
+    `diagnose` / the NixOS module, or for `types` / `snippets`.
   */
   internal = import ./internal { inherit inputs; };
 
@@ -68,13 +69,15 @@ let
 
     Returns the evaluated `nftzones.types.table` value with all
     submodule defaults filled in. Internal helper for the public
-    `mkTable` / `mkRuleset`. A value that is already an evaluated
-    table, such as one read from a `nftzones.types.table` option,
-    evaluates again to the same table.
+    `mkTable` / `mkRuleset` / `diagnose`. A value that is already an
+    evaluated table, such as one read from a `nftzones.types.table`
+    option, evaluates again to the same table.
 
     The body's definition carries a `_file` naming the table, so a
-    type error says which `mkTable` / `mkRuleset` call it came from
-    instead of `<unknown-file>`.
+    type error in a value the body defines says which `mkTable` /
+    `mkRuleset` / `diagnose` call it came from instead of
+    `<unknown-file>`. A value the type derives, such as a zone's `name`
+    from its attribute key, still reports `<unknown-file>`.
   */
   evalTableBody =
     name: body:
@@ -121,12 +124,36 @@ let
     table, ready for `nft -f -j`.
   */
   mkRuleset = name: body: internal.compile.mkRuleset (evalTableBody name body);
+
+  /*
+    Report every Phase 1 Diagnostic in a raw table body as data, for
+    callers that state problems in their own terms before anything
+    compiles. Never throws or warns over a Diagnostic. A body that
+    fails `nftzones.types.table` still throws, even in a field Phase 1
+    never reads.
+
+    Inputs:
+      name — on-wire table name; overrides any `name` in `body`.
+      body — attrset validated against `nftzones.types.table`.
+
+    Returns `{ errors; warnings; }`, each a list of
+    `{ tag; path; message; }`, where `path` is a list of strings.
+  */
+  diagnose =
+    name: body:
+    let
+      table = evalTableBody name body;
+    in
+    # Phase 1 reads only part of the table, so force all of it: a type
+    # error it never reads would otherwise come back as a clean body.
+    builtins.deepSeq table (internal.normalize.diagnose table);
 in
 {
   # Library version. Bumped manually per release.
   version = "0.1.0";
 
   inherit
+    diagnose
     internal
     mkRuleset
     mkTable

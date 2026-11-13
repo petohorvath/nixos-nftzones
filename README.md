@@ -279,6 +279,33 @@ toText (
 
 The `name` argument sets the nftables table name and overrides any `name` in the body. `nftzones.lib.types.table` is the option type for a table body, for modules that accept tables from their own users.
 
+## Check a table body before compiling
+
+`diagnose name body` takes the arguments of `mkTable` and returns the table's Phase 1 problems as data, without throwing or warning, so a caller that builds table bodies from its own data can report each problem in its own terms:
+
+```nix
+nftzones.lib.diagnose "fw" {
+  zones.lan.interfaces = [ "eth1" ];
+  policies.guest = {
+    from = [ "ghost" ];
+    to = [ "local" ];
+    verdict = "drop";
+  };
+}
+# => {
+#   errors = [
+#     {
+#       tag = "zoneRefUnknown";
+#       path = [ "policies" "guest" "from" "0" ];
+#       message = "references unknown zone 'ghost' (known: lan, local)";
+#     }
+#   ];
+#   warnings = [ ];
+# }
+```
+
+`mkTable` and `mkRuleset` throw with the same errors and emit the same warnings. A body that fails `nftzones.lib.types.table`, such as a zone name outside `[a-z][a-z0-9_-]*`, still throws, because the table type rejects it before these checks run. [docs/compile-pipeline.md](docs/compile-pipeline.md#stability) lists which parts of a diagnostic are stable.
+
 ## Limitations
 
 - Tables support the `inet`, `ip`, `ip6`, and `bridge` families. `arp` and `netdev` are rejected: `netdev` needs a per-chain device binding that the chain model lacks, and `arp` has no use case yet to justify testing it.

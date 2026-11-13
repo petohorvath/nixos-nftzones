@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `lib.diagnose name body` returns a table body's Phase 1 errors and warnings as data, `{ errors; warnings; }`, each a list of `{ tag; path; message; }`, without throwing or warning ([#56](https://github.com/petohorvath/nixos-nftzones/issues/56)). It takes the arguments of `lib.mkTable`, so a caller that builds tables from its own data can report each problem in its own terms before anything compiles. A body that fails the table type still throws.
 - The Phase 1 warning `localToLocalShadowed`, at `<group>.<entry>`, for a filter or policy that names the local zone in both `from` and `to` while `settings.loopback` is on. The loopback rule accepts that traffic first, so the entry's `local` to `local` cell never fires; a separate entry with a `chain` override at output filters that traffic instead.
 
 ### Changed
