@@ -122,13 +122,19 @@ in
         '';
       }
     ]
-    # `networking.firewall` installs its own `inet filter` table
-    # hooked at `(input, filter)`; nftzones tables typically claim
-    # the same hook slot. nftables runs both base chains at the
-    # same priority and the effective policy is the union of
-    # accepts, which is rarely the user's intent. Warn (don't
-    # error) — there are edge cases where a user genuinely wants
-    # the stock firewall alongside zone-managed rules.
+    # With the nftables backend, `networking.firewall` installs its
+    # own `inet nixos-fw` table, whose input chain sits at priority
+    # `filter` with `policy drop`; nftzones filter chains claim the
+    # same hook and priority. An `accept` ends only the base chain
+    # it is in, and the packet still traverses every other base
+    # chain on that hook, while a `drop` is final. So a packet must
+    # be accepted by both tables: the effective policy is the
+    # intersection of their accepts, and a port nftzones alone opens
+    # stays closed. `nixos-fw` narrows the prerouting hook the same
+    # way through its rpfilter chain, and the forward hook when
+    # `networking.firewall.filterForward` is on. Warn (don't error):
+    # running the stock firewall beside nftzones tables that handle
+    # only forwarding or NAT is a legitimate setup.
     ++ lib.mapAttrsToList (name: _: {
       # The nftzones module's own contribution (assigned a few lines
       # below) shows up in
@@ -153,12 +159,14 @@ in
 
     warnings = lib.optional config.networking.firewall.enable ''
       Both networking.firewall.enable and networking.nftzones.enable are true.
-      networking.firewall installs its own `inet filter` table at hook
-      `(input, filter)`; nftzones tables typically claim the same hook slot.
-      Both base chains fire on every packet at the same priority and the
-      effective policy is the union of their accepts — opening more ports
-      than either source declared. Set networking.firewall.enable = false
-      when nftzones owns the input chain.
+      networking.firewall installs its own `inet nixos-fw` table, whose
+      input chain drops every packet it does not accept. nftzones filter
+      chains claim the same hook, and nftables runs every base chain on a
+      hook, so a packet reaches the host only when both tables accept it:
+      a port opened only in nftzones stays closed. The stock firewall
+      narrows prerouting (rpfilter) the same way, and forward when
+      networking.firewall.filterForward is on. Set
+      networking.firewall.enable = false when nftzones owns the input chain.
     '';
   };
 }

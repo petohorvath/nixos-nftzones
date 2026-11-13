@@ -120,29 +120,36 @@ in
   # ===== module — warns when nftzones coexists with networking.firewall =====
 
   testModuleWarnsOnFirewallCoexistence = {
-    # Both `networking.firewall.enable` and `networking.nftzones.enable`
-    # true causes two `inet filter` base chains to fire at the same
-    # priority — effective policy is union-of-accepts. Warning surfaces
-    # the conflict.
+    # With both `networking.firewall.enable` and
+    # `networking.nftzones.enable` true, the stock firewall's
+    # `inet nixos-fw` table and nftzones both hook input at priority
+    # `filter`. A packet must be accepted by both, so the effective
+    # policy is the intersection of their accepts. The warning names
+    # the stock table and must not claim a union.
     expr =
       let
         warnings =
-          (evalSystem {
-            networking.nftables.enable = true;
-            networking.firewall.enable = true;
-            networking.nftzones = {
-              enable = true;
-              tables.fw.zones.lan.interfaces = [ "lan0" ];
-            };
-          }).warnings;
+          lib.filter (lib.hasInfix "networking.nftzones")
+            (evalSystem {
+              networking.nftables.enable = true;
+              networking.firewall.enable = true;
+              networking.nftzones = {
+                enable = true;
+                tables.fw.zones.lan.interfaces = [ "lan0" ];
+              };
+            }).warnings;
       in
       {
-        count = lib.length (lib.filter (lib.hasInfix "networking.nftzones") warnings);
+        count = lib.length warnings;
         mentionsFirewall = lib.any (lib.hasInfix "networking.firewall.enable") warnings;
+        namesStockTable = lib.any (lib.hasInfix "nixos-fw") warnings;
+        claimsUnion = lib.any (lib.hasInfix "union") warnings;
       };
     expected = {
       count = 1;
       mentionsFirewall = true;
+      namesStockTable = true;
+      claimsUnion = false;
     };
   };
 

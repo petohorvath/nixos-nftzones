@@ -198,7 +198,9 @@ The module carries a fixed `key`, so several modules can import it and NixOS dec
 
 ### Disable the stock firewall
 
-Set `networking.firewall.enable = false` when nftzones owns the input chain, as the example does. The stock firewall installs its own `inet filter` table on the same input hook and priority, so nftables runs both chains and accepts every port either one opens. The module warns at build time when both are enabled.
+Set `networking.firewall.enable = false` when nftzones owns the input chain, as the example does. With both enabled, traffic reaches the host only when both firewalls accept it, so a port opened only in nftzones stays closed. The module warns at build time when both are enabled.
+
+The stock firewall installs its own `inet nixos-fw` table, whose input chain sits at the same hook and priority as the nftzones filter chains and drops everything it does not accept. nftables runs every base chain on a hook: an `accept` ends only the chain it is in, while a `drop` is final. `nixos-fw` narrows the prerouting hook the same way through its reverse-path filter, and the forward hook when `networking.firewall.filterForward` is on.
 
 ### Keep hand-written tables
 
