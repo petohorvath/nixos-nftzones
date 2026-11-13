@@ -1617,10 +1617,12 @@ let
   /*
     Warn about a filter or policy that names the local zone in both
     `from` and `to` at its default placement while `settings.loopback`
-    is on. The cell lands at input, where the loopback rule accepts
-    the host's traffic to itself before any jump, so it never fires
-    (ADR-0013). A wildcard's local-to-local cell is left quiet, and a
-    `chain` override at output is the way to filter that traffic. A
+    is on. Its local-to-local cell lands at input, where the loopback
+    rule accepts the host's traffic to itself before any jump, so that
+    cell never fires (ADR-0013); the entry's other cells still work. A
+    wildcard's local-to-local cell is left quiet, and a separate entry
+    with a `chain` override at output is the way to filter that
+    traffic. A
     bridge table already rejects the entry (`localZoneNotMatchable`),
     so it gets no warning on top.
   */
@@ -1641,7 +1643,7 @@ let
         lib.mapAttrsToList (
           entryName: _:
           mkDiagnostic "localToLocalShadowed" [ group entryName ]
-            "names the local zone '${localZone}' in both `from` and `to`, so its cell lands at input, where the loopback rule (`settings.loopback`) accepts the host's traffic to itself first; the entry never fires. To filter that traffic, set `chain = { hook = \"output\"; priority = \"filter\"; }`, or turn `settings.loopback` off."
+            "names the local zone '${localZone}' in both `from` and `to`, so its '${localZone}' to '${localZone}' cell lands at input, where the loopback rule (`settings.loopback`) accepts the host's traffic to itself first; that cell never fires, though the entry's other cells still do. To filter that traffic, give it a separate entry from '${localZone}' to '${localZone}' with `chain = { hook = \"output\"; priority = \"filter\"; }`, or turn `settings.loopback` off."
         ) (lib.filterAttrs (_: isShadowed) table.${group});
 
       newWarnings = lib.optionals (loopback && family != "bridge") (

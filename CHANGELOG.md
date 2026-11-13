@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- The Phase 1 warning `localToLocalShadowed`, at `<group>.<entry>`, for a filter or policy that names the local zone in both `from` and `to` while `settings.loopback` is on. The loopback rule accepts that traffic first, so the entry never fires; a `chain` override at output filters it instead.
+- The Phase 1 warning `localToLocalShadowed`, at `<group>.<entry>`, for a filter or policy that names the local zone in both `from` and `to` while `settings.loopback` is on. The loopback rule accepts that traffic first, so the entry's `local` to `local` cell never fires; a separate entry with a `chain` override at output filters that traffic instead.
 
 ### Changed
 

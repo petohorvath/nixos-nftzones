@@ -391,7 +391,7 @@ in
       let
         body = {
           # With the loopback rule on, Phase 1 warns that this
-          # entry never fires (`localToLocalShadowed`).
+          # entry's only cell never fires (`localToLocalShadowed`).
           settings.loopback = false;
           filters.selfonly = {
             from = [ "local" ];
