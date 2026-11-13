@@ -50,8 +50,14 @@ A named host with an IPv4 address, an IPv6 address, or both, refining a
 parent zone or another node.
 
 **Local zone**:
-The sentinel zone standing for the firewall host itself. It can be
-neither a parent nor a child.
+The sentinel zone standing for the firewall host itself: as a source,
+packets the host generates; as a destination, packets addressed to the
+host. It can be neither a parent nor a child.
+
+**Wildcard zone**:
+The sentinel zone standing for every declared zone and the local zone.
+Traffic on an interface or address outside every zone is not part of it.
+_Avoid_: Any, catch-all
 
 ### Rules
 
