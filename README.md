@@ -277,7 +277,7 @@ toText (
 )
 ```
 
-The `name` argument sets the nftables table name and overrides any `name` in the body. `nftzones.lib.types.table` is the option type for a table body, for modules that accept tables from their own users.
+The `name` argument sets the nftables table name and overrides any `name` in the body. It must match the table name type, `[a-z][a-z0-9_-]*`, or evaluation throws a type error. `nftzones.lib.types.table` is the option type for a table body, for modules that accept tables from their own users.
 
 ## Check a table body before compiling
 

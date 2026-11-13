@@ -353,9 +353,11 @@ let
           per-submodule `apply` guard. The on-wire name is a
           projection of the real `networking.nftzones.tables` attr
           key, established at the compile boundary: the module's
-          `tables` option `apply` overrides each entry's `name`
-          with its key, and the library `mkTable` / `evalTableBody`
-          does the same with its `name` arg. An `apply` here
+          `tables` option adds a module that defines each entry's
+          `name` as `mkForce <key>`, and the library `mkTable` /
+          `evalTableBody` does the same with its `name` arg, so the
+          key beats any `name` the body carried and still passes
+          through `tableName`. An `apply` here
           couldn't stand in — it sees the *lexical* submodule key,
           which for a standalone / facade table
           (`options.myfw = mkOption { type = table; }`) is the

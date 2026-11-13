@@ -61,11 +61,13 @@ let
     option attribute key so the table's `name` field derives from
     the user's chosen value (the submodule's `default = name`
     mechanism). The `name` arg is the authoritative on-wire table
-    name (this function is a compile boundary), so any `name` the
-    body itself carried is overridden with it — mirroring how the
-    NixOS module derives the on-wire name from its real attr key.
-    That makes forwarding a whole evaluated table straight into
-    `mkTable` / `mkRuleset` "just work".
+    name (this function is a compile boundary): a third module
+    defines the table's `name` as `lib.mkForce name`, so any `name`
+    the body itself carried loses to it, and the type checks the arg
+    against `nftzones.types.tableName` like any other field. This
+    mirrors how the NixOS module derives the on-wire name from its
+    real attr key, and makes forwarding a whole evaluated table
+    straight into `mkTable` / `mkRuleset` "just work".
 
     Returns the evaluated `nftzones.types.table` value with all
     submodule defaults filled in. Internal helper for the public
@@ -73,7 +75,7 @@ let
     evaluated table, such as one read from a `nftzones.types.table`
     option, evaluates again to the same table.
 
-    Both modules carry a `_file` naming the table, so a type error
+    All three modules carry a `_file` naming the table, so a type error
     says which `mkTable` / `mkRuleset` / `diagnose` call it came from
     instead of `<unknown-file>`. The body's definition covers a value
     the body defines. The option's declaration covers a value the
@@ -99,18 +101,20 @@ let
           _file = file;
           config.${name} = body;
         }
+        {
+          _file = file;
+          config.${name}.name = lib.mkForce name;
+        }
       ];
-    }).config.${name}
-    // {
-      inherit name;
-    };
+    }).config.${name};
 
   /*
     Compile a raw table body into one nftables table, for callers
     outside the NixOS module or composing several tables.
 
     Inputs:
-      name — on-wire table name; overrides any `name` in `body`.
+      name — on-wire table name, matching `nftzones.types.tableName`;
+        overrides any `name` in `body`.
       body — attrset validated against `nftzones.types.table`.
 
     Returns an `nftypes.dsl.table` value, ready to embed in a ruleset
@@ -123,7 +127,8 @@ let
     callers outside the NixOS module.
 
     Inputs:
-      name — on-wire table name; overrides any `name` in `body`.
+      name — on-wire table name, matching `nftzones.types.tableName`;
+        overrides any `name` in `body`.
       body — attrset validated against `nftzones.types.table`.
 
     Returns an `nftypes.dsl.ruleset` value containing the compiled
@@ -139,7 +144,8 @@ let
     never reads.
 
     Inputs:
-      name — on-wire table name; overrides any `name` in `body`.
+      name — on-wire table name, matching `nftzones.types.tableName`;
+        overrides any `name` in `body`.
       body — attrset validated against `nftzones.types.table`.
 
     Returns `{ errors; warnings; }`, each a list of

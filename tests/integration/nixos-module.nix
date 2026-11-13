@@ -313,9 +313,9 @@ in
         noFailingAssertions = (failingAssertions cfg) == [ ];
         compiles = builtins.isString content && content != "";
         hasLanIifs = lib.hasInfix "set lan_iifs" content;
-        # The `tables` option's `apply` projects the forwarded value's
-        # `name` ('myfw') onto its attr key, so every reader — not just
-        # the compiled ruleset — sees the key.
+        # The `tables` option forces each entry's `name` to its attr
+        # key, overriding the forwarded value's `name` ('myfw'), so
+        # every reader — not just the compiled ruleset — sees the key.
         optionNameProjected = cfg.networking.nftzones.tables.fw.name;
       };
     expected = {
@@ -323,6 +323,19 @@ in
       compiles = true;
       hasLanIifs = true;
       optionNameProjected = "fw";
+    };
+  };
+
+  # ===== module — a tables key that fails the table name type =====
+  # The key sets each table's `name` through the module system, so a
+  # key failing `nftzones.types.tableName` throws the standard type
+  # error at evaluation, before nixpkgs' `checkRuleset` would see it.
+
+  testModuleRejectsBadTableKey = {
+    expr = (evalEnabled { "Bad Table" = { }; }).networking.nftzones.tables."Bad Table".name;
+    expectedError = {
+      type = "ThrownError";
+      msg = "networking\\.nftzones\\.tables\\.\"Bad Table\"\\.name' is not of type `string matching the pattern";
     };
   };
 

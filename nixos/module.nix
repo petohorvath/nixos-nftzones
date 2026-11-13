@@ -55,24 +55,37 @@ in
     enable = lib.mkEnableOption "nftzones-managed nftables tables";
 
     tables = lib.mkOption {
-      type = lib.types.attrsOf nftzones.types.table;
+      /*
+        Each table's `name` is its attribute key: inside `attrsOf`, a
+        submodule's `name` argument is the key, and the extra module
+        defines the table's `name` from it with `mkForce`. A whole
+        evaluated table forwarded from a differently keyed facade
+        option (`options.myfw = mkOption { type =
+        nftzones.types.table; };` then `tables.fw = config.myfw;`)
+        carries the source's `name` ('myfw'); the forced key beats it,
+        so `tables.<key>.name == <key>` for every reader: the compile
+        pipeline, the on-wire ruleset, and introspection tools.
+        Defining the key, rather than overriding the evaluated value,
+        also checks it against `nftzones.types.tableName`.
+      */
+      type =
+        let
+          tableType = nftzones.types.table;
+        in
+        lib.types.attrsOf (
+          tableType.substSubModules (
+            tableType.getSubModules
+            ++ [
+              (
+                { name, ... }:
+                {
+                  config.name = lib.mkForce name;
+                }
+              )
+            ]
+          )
+        );
       default = { };
-      # Project every table's `name` onto its attribute key — the
-      # single source of truth for the table's identity. `name`
-      # defaults to the key already, but a whole evaluated table
-      # forwarded from a differently-keyed facade option
-      # (`options.myfw = mkOption { type = nftzones.types.table; };`
-      # then `tables.fw = config.myfw;`) carries the source's `name`
-      # ('myfw') as an explicit definition that would otherwise beat
-      # the key-derived default. Overriding here keeps
-      # `tables.<key>.name == <key>` for every reader — the compile
-      # pipeline, the on-wire ruleset, and introspection tools — so
-      # facades and whole-table copies "just work" without a
-      # per-submodule `apply` guard on the type (which couldn't see
-      # the real key). This is the `mapAttrs (key: t: t // { name =
-      # key; })` boundary the grouped object types get for free from
-      # their enclosing `attrsOf` key.
-      apply = lib.mapAttrs (key: tableValue: tableValue // { name = key; });
       description = ''
         Table bodies keyed by nftables table name. Each entry is
         compiled and translated into `networking.nftables.tables.<name>`

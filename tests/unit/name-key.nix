@@ -18,7 +18,8 @@
        instead a projection of its real attr key, derived at the
        module / `mkTable` boundary — a divergent `name` is overridden
        by the key, not rejected, so a facade can forward a whole
-       evaluated table under any key.
+       evaluated table under any key. The key itself must still
+       match `nftzones.types.tableName`.
 
   Same `testFoo = { expr; expected; }` shape as every other unit
   test; aggregated by `tests/unit/default.nix`.
@@ -32,6 +33,10 @@
 let
 
   inherit (helpers) evalFails;
+
+  # The on-wire name of the one table a `mkRuleset` ruleset adds.
+  rulesetTableName =
+    ruleset: (builtins.head (builtins.fromJSON (builtins.toJSON ruleset)).nftables).add.table.name;
 
   inherit (nftzones.types)
     dnat
@@ -227,6 +232,75 @@ in
   # A matching explicit name is equally fine — same projected result.
   testTableNameMatchingKeyCompiles = {
     expr = (nftzones.mkTable "fw" { name = "fw"; }).name;
+    expected = "fw";
+  };
+
+  # ===== invariant: the table name argument must match the name type =====
+
+  # The name argument sets the table's `name` through the module
+  # system, so a name failing `nftzones.types.tableName` throws the
+  # standard type error, attributed to the table body, instead of
+  # reaching the ruleset.
+  testMkRulesetRejectsBadTableName = {
+    expr = builtins.toJSON (nftzones.mkRuleset "Bad Table" { });
+    expectedError = {
+      type = "ThrownError";
+      msg = "A definition for option `\"Bad Table\"\\.name' is not of type `string matching the pattern \\[a-z]\\[a-z0-9_-]\\*'\\. Definition values:\n- In `nftzones table body 'Bad Table'': \"Bad Table\"";
+    };
+  };
+
+  testMkTableRejectsBadTableName = {
+    expr = builtins.toJSON (nftzones.mkTable "Bad Table" { });
+    expectedError = {
+      type = "ThrownError";
+      msg = "`\"Bad Table\"\\.name' is not of type `string matching the pattern";
+    };
+  };
+
+  # A bad table name is a type error, not a Phase 1 Diagnostic.
+  testDiagnoseRejectsBadTableName = {
+    expr = builtins.deepSeq (nftzones.diagnose "Bad Table" { }) null;
+    expectedError = {
+      type = "ThrownError";
+      msg = "`\"Bad Table\"\\.name' is not of type `string matching the pattern";
+    };
+  };
+
+  # nft itself accepts `BadTable`; the name type does not.
+  testMkRulesetRejectsNftValidTableName = {
+    expr = builtins.toJSON (nftzones.mkRuleset "BadTable" { });
+    expectedError = {
+      type = "ThrownError";
+      msg = "`BadTable\\.name' is not of type `string matching the pattern";
+    };
+  };
+
+  # The argument is checked, not the body's `name`: the argument
+  # overrides the body's `name` before anything validates it.
+  testMkRulesetNameFromArgument = {
+    expr = rulesetTableName (nftzones.mkRuleset "fw" { name = "other"; });
+    expected = "fw";
+  };
+
+  testMkRulesetIgnoresBadBodyName = {
+    expr = rulesetTableName (nftzones.mkRuleset "fw" { name = "Bad Body"; });
+    expected = "fw";
+  };
+
+  # A whole evaluated table read from a differently named option
+  # compiles under the name argument.
+  testMkRulesetForwardedTableTakesArgumentName = {
+    expr =
+      let
+        forwarded =
+          (lib.evalModules {
+            modules = [
+              { options.myfw = lib.mkOption { type = table; }; }
+              { config.myfw.zones.lan.interfaces = [ "lan0" ]; }
+            ];
+          }).config.myfw;
+      in
+      rulesetTableName (nftzones.mkRuleset "fw" forwarded);
     expected = "fw";
   };
 }
