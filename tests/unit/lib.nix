@@ -197,7 +197,7 @@ in
       filters.F = {
         from = [ "lan" ];
         to = [ "local" ];
-        rule = [ ];
+        rule = [ dsl.accept ];
       };
     }) null;
     expectedError = {
