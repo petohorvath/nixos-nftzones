@@ -120,29 +120,33 @@ in
   # ===== module — warns when nftzones coexists with networking.firewall =====
 
   testModuleWarnsOnFirewallCoexistence = {
-    # Both `networking.firewall.enable` and `networking.nftzones.enable`
-    # true causes two `inet filter` base chains to fire at the same
-    # priority — effective policy is union-of-accepts. Warning surfaces
-    # the conflict.
+    # The warning fires once, names the stock `nixos-fw` table, and
+    # says that both firewalls must accept a packet, so a port opened
+    # only in nftzones stays closed.
     expr =
       let
-        warnings =
-          (evalSystem {
-            networking.nftables.enable = true;
-            networking.firewall.enable = true;
-            networking.nftzones = {
-              enable = true;
-              tables.fw.zones.lan.interfaces = [ "lan0" ];
-            };
-          }).warnings;
+        nftzonesWarnings =
+          lib.filter (lib.hasInfix "networking.nftzones")
+            (evalSystem {
+              networking.nftables.enable = true;
+              networking.firewall.enable = true;
+              networking.nftzones = {
+                enable = true;
+                tables.fw.zones.lan.interfaces = [ "lan0" ];
+              };
+            }).warnings;
       in
       {
-        count = lib.length (lib.filter (lib.hasInfix "networking.nftzones") warnings);
-        mentionsFirewall = lib.any (lib.hasInfix "networking.firewall.enable") warnings;
+        count = lib.length nftzonesWarnings;
+        mentionsFirewall = lib.any (lib.hasInfix "networking.firewall.enable") nftzonesWarnings;
+        namesStockTable = lib.any (lib.hasInfix "nixos-fw") nftzonesWarnings;
+        saysNftzonesOnlyPortStaysClosed = lib.any (lib.hasInfix "a port opened only in nftzones stays closed") nftzonesWarnings;
       };
     expected = {
       count = 1;
       mentionsFirewall = true;
+      namesStockTable = true;
+      saysNftzonesOnlyPortStaysClosed = true;
     };
   };
 
