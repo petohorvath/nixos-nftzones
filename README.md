@@ -310,7 +310,7 @@ nftzones.lib.diagnose "fw" {
 
 - Tables support the `inet`, `ip`, `ip6`, and `bridge` families. `arp` and `netdev` are rejected: `netdev` needs a per-chain device binding that the chain model lacks, and `arp` has no use case yet to justify testing it.
 - Bridge tables support `filters` and `policies` only. The bridge family has no NAT chains and no `mangle` priority for route marks, so the compiler rejects `snats`, `dnats`, `sroutes`, and `droutes` in a bridge table.
-- Zone interfaces take exact names; wildcard patterns such as `wlan*` are not supported.
+- Zone interfaces take exact names; wildcard patterns such as `wlan*` are not supported. Phase 1 rejects `*`, which nft would read as every interface.
 
 [GitHub issues](https://github.com/petohorvath/nixos-nftzones/issues) track the known design gaps.
 

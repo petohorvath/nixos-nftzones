@@ -1,6 +1,7 @@
-# Unit tests for the overlap Diagnostics of Phase 1: interface and
-# CIDR overlap errors, and cross-axis overlap warnings. Each test
-# compares the whole `{ tag; path; }` lists from `diagnose`.
+# Unit tests for the overlap Diagnostics of Phase 1: the interface
+# `*` error, interface and CIDR overlap errors, and cross-axis overlap
+# warnings. Each test compares the whole `{ tag; path; }` lists from
+# `diagnose`.
 { helpers, ... }:
 let
   inherit (helpers) diagnosticsFor;
@@ -12,6 +13,15 @@ let
 
   interfaceOverlapAt = zone: {
     tag = "interfaceOverlap";
+    path = [
+      "zones"
+      zone
+      "interfaces"
+    ];
+  };
+
+  interfaceMatchesAllAt = zone: {
+    tag = "interfaceMatchesAll";
     path = [
       "zones"
       zone
@@ -40,6 +50,18 @@ in
   testOverlapEmptyTableReportsNothing = {
     expr = diagnosticsFor { };
     expected = clean;
+  };
+
+  # ===== Interface `*` =====
+
+  testInterfaceMatchesAllRejected = {
+    expr = diagnosticsFor {
+      zones.lan.interfaces = [ "*" ];
+      zones.wan.interfaces = [ "eth0" ];
+    };
+    expected = clean // {
+      errors = [ (interfaceMatchesAllAt "lan") ];
+    };
   };
 
   # ===== Interface overlap =====

@@ -73,6 +73,7 @@ in
     chain-placement = import ./rejections/chain-placement.nix rejectionArgs;
     cidr-overlap = import ./rejections/cidr-overlap.nix rejectionArgs;
     comment-injection = import ./rejections/comment-injection.nix rejectionArgs;
+    interface-matches-all = import ./rejections/interface-matches-all.nix rejectionArgs;
     interface-overlap = import ./rejections/interface-overlap.nix rejectionArgs;
     interface-self-overlap = import ./rejections/interface-self-overlap.nix rejectionArgs;
     matchoverride-verdict = import ./rejections/matchoverride-verdict.nix rejectionArgs;
