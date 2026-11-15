@@ -60,9 +60,10 @@ let
     (ADR-0013): a list of statements that selects only the host's own
     traffic, `[ ]` where the hook already implies the local zone, or
     `null` where no packet of the host can pass the hook, or the
-    family has no match that selects only them. A bridge table has no
-    `fib` and its hooks see bridged frames, so there the local zone
-    keeps only the placements its hook implies.
+    family or hook has no match that selects only them, such as
+    `ingress`. A bridge table has no `fib` and its hooks see bridged
+    frames, so there the local zone keeps only the placements its
+    hook implies.
   */
   localZoneMatch =
     family: hook: direction:
@@ -87,8 +88,9 @@ let
         };
       };
       implied = (direction == "to" && hook == "input") || (direction == "from" && hook == "output");
+      impliedOnly = if implied then [ ] else null;
     in
-    if family == "bridge" then if implied then [ ] else null else matches.${direction}.${hook} or [ ];
+    if family == "bridge" then impliedOnly else matches.${direction}.${hook} or impliedOnly;
 
   # Whether any packet of the host can match the local zone there.
   localZoneMatchable =

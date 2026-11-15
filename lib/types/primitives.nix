@@ -189,7 +189,12 @@ let
         hook = lib.mkOption {
           type = nftypes.types.hook;
           example = "prerouting";
-          description = "nftables hook the chain attaches to.";
+          description = ''
+            nftables hook the chain attaches to. Phase 1 rejects
+            `ingress`: an ingress chain sees only the traffic of the
+            devices it is bound to, and the chain model binds no
+            device.
+          '';
         };
         priority = lib.mkOption {
           type = chainPriority;
