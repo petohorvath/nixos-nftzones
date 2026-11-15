@@ -53,6 +53,7 @@
         ↓ checkNatBodies                ctx.errors   (appends)
         ↓ checkPolicyUniqueness         ctx.errors   (appends)
         ↓ checkSetNameCollisions        ctx.errors   (appends)
+        ↓ checkInterfaceMatchesAll      ctx.errors   (appends)
         ↓ checkInterfaceOverlap         ctx.errors   (appends)
         ↓ checkCidrOverlap              ctx.errors   (appends)
         ↓ checkCrossAxisOverlap         ctx.warnings (appends)
@@ -1226,6 +1227,35 @@ let
       };
     };
 
+  /*
+    The interface type accepts `*` because the kernel does, but nft
+    reads a bare `*` set element as the catch-all, which matches every
+    interface. The zone would then claim other zones' interfaces and
+    unzoned ones, unseen by the exact-name `checkInterfaceOverlap`.
+    Quoting it is no way out: nft rejects an all-wildcard ifname.
+  */
+  checkInterfaceMatchesAll =
+    { table, ctx }:
+    let
+      inherit (ctx) mergedZones;
+
+      matchesAllZones = builtins.filter (zoneName: builtins.elem "*" mergedZones.${zoneName}.interfaces) (
+        builtins.attrNames mergedZones
+      );
+
+      newErrors = map (
+        zoneName:
+        mkDiagnostic "interfaceMatchesAll" [ "zones" zoneName "interfaces" ]
+          "lists '*', which nft reads as a catch-all matching every interface; zone interfaces take exact names"
+      ) matchesAllZones;
+    in
+    {
+      inherit table;
+      ctx = ctx // {
+        errors = ctx.errors ++ newErrors;
+      };
+    };
+
   checkInterfaceOverlap =
     { table, ctx }:
     let
@@ -1692,6 +1722,7 @@ let
       checkNatBodies
       checkPolicyUniqueness
       checkSetNameCollisions
+      checkInterfaceMatchesAll
       checkInterfaceOverlap
       checkCidrOverlap
       checkCrossAxisOverlap

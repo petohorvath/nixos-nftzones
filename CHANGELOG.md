@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Breaking:** The new Phase 1 error `localZoneNotMatchable`, at `<group>.<entry>.<direction>`, rejects a direction that names the local zone where no packet of the host can match it: the source of a dnat or sroute at prerouting, `from` or `to` of a `chain` override at forward, and in a bridge table every hook that does not already imply the local zone ([ADR-0013](docs/adr/0013-local-zone-compiles-to-a-host-match.md)). These entries compiled before, to a jump that matched every packet.
 - **Breaking:** The table name argument of `lib.mkTable`, `lib.mkRuleset` and `lib.diagnose`, and the key of `networking.nftzones.tables`, must match the table name type, `[a-z][a-z0-9_-]*` ([#65](https://github.com/petohorvath/nixos-nftzones/issues/65)). A name that fails it throws a type error at evaluation. Before, the library compiled such a name into the ruleset, and the NixOS module left it for nft to reject at build time, or loaded it when nft accepted it, as with `BadTable`.
+- **Breaking:** The new Phase 1 error `interfaceMatchesAll`, at `zones.<zone>.interfaces`, rejects the zone interface `*`. nft reads a bare `*` set element as a catch-all, so the zone matched every interface, including the interfaces of other zones and unzoned ones, and `interfaceOverlap` did not report it. Before, such a table compiled and loaded.
 - **Breaking:** The wildcard zone no longer covers traffic on an interface or address outside every zone. Before, its local-zone cell matched that traffic at input, postrouting and prerouting, but not at forward. A local-zone cell that the wildcard produces where the local zone cannot match is dropped, so `from = [ "all" ]` on a dnat or sroute emits no local-zone cell.
 
 ### Fixed
@@ -29,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Replace a dnat or sroute `from = [ "local" ]`, which never matched the host's own traffic, with the zones it was meant for; a dnat for the host's own traffic belongs at output through `chain`. Drop the local zone from an entry whose `chain` override puts it at forward, which carries no traffic of the host.
 
 In a bridge table, drop the local zone from any entry that names it outside the input destination and output source placements; the bridge family offers no match for the host's own traffic there.
+
+Replace a zone interface `*` with the exact interface names the zone is meant to match.
 
 If a wildcard entry relied on reaching an interface outside every zone, declare a zone for that interface and name it, or add it to an existing zone.
 

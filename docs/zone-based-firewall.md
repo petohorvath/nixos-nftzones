@@ -29,7 +29,7 @@ Adding a third LAN interface is now a one-line change to the `lan` zone.
 
 A zone is a named grouping of one or more:
 
-- **Interfaces** — by exact name, e.g. `eth0`, `wg0`. nftzones does not support wildcard patterns such as `wlan*`.
+- **Interfaces** — by exact name, e.g. `eth0`, `wg0`. nftzones does not support wildcard patterns such as `wlan*`, and rejects `*`, which nft would read as every interface.
 - **Networks** — IPv4 or IPv6 prefixes, e.g. `10.0.0.0/24`, `2001:db8::/32`.
 - **Addresses** — single hosts, e.g. `10.0.0.5`.
 

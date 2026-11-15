@@ -72,7 +72,8 @@ let
   zoneParent = lib.types.nullOr zoneName;
 
   # libnet.types.interfaceName is strict (kernel dev_valid_name
-  # parity). Wildcard patterns like `wlan*` are not yet supported.
+  # parity). Wildcard patterns like `wlan*` are not yet supported, and
+  # Phase 1 rejects `*`, which nft reads as every interface.
   zoneInterfaces = lib.types.listOf libnet.types.interfaceName;
 
   zoneCidrs = lib.types.listOf libnet.types.cidr;
