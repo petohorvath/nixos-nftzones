@@ -63,6 +63,36 @@ let
   */
   failingAssertions = config: lib.filter (assertion: !assertion.assertion) config.assertions;
 
+  # The messages of the failing assertions on a system that declares
+  # the nftzones table `fw` beside the supplied `networking.nftables`
+  # settings.
+  collisionMessages =
+    nftables:
+    map (assertion: assertion.message) (
+      failingAssertions (evalSystem {
+        networking.nftables = {
+          enable = true;
+        }
+        // nftables;
+        networking.nftzones = {
+          enable = true;
+          tables.fw = { };
+        };
+      })
+    );
+
+  collidesWith = source: ''
+    networking.nftzones.tables.fw collides with ${source}.
+    Declare each table in exactly one module.
+  '';
+
+  # A hand-written entry under another key that renders as `inet fw`.
+  extraFw = {
+    name = "fw";
+    family = "inet";
+    content = "chain input-at-filter { accept; }";
+  };
+
   # How many times `needle` occurs in `text`.
   occurrences = needle: text: builtins.length (lib.splitString needle text) - 1;
 in
@@ -377,38 +407,130 @@ in
     };
   };
 
-  # ===== module — collision with nftables.tables.<name> trips assertion =====
+  # ===== module — a second source for an nftzones table trips assertion =====
+
+  /*
+    Each test pins the exact messages of every failing assertion, not
+    an infix match: a rephrasing that dropped the colliding source or
+    the "exactly one module" remediation hint would otherwise regress
+    the user-facing diagnostic silently, and an extra message for the
+    same collision would go unnoticed.
+  */
 
   testModuleCollisionAssertion = {
-    # Pin the exact assertion message, not just an "infix" match —
-    # an `hasInfix "collides with"` test passes as long as the
-    # substring appears anywhere, so a rephrasing that dropped the
-    # specific `tables.fw` reference (or the "exactly one module"
-    # remediation hint) would silently regress the user-facing
-    # diagnostic.
-    expr =
-      let
-        cfg = evalSystem {
-          networking.nftables = {
-            enable = true;
-            tables.fw = {
-              family = "inet";
-              content = "# manual content";
-            };
-          };
-          networking.nftzones = {
-            enable = true;
-            tables.fw = { };
-          };
+    expr = collisionMessages {
+      tables.fw = {
+        family = "inet";
+        content = "# manual content";
+      };
+    };
+    expected = [ (collidesWith "networking.nftables.tables.fw") ];
+  };
+
+  # A same-key override also changes the merged entry; the key check
+  # reports it alone.
+  testModuleForcedContentReportsKeyCollisionOnly = {
+    expr = collisionMessages { tables.fw.content = lib.mkForce "chain input-at-filter { accept; }"; };
+    expected = [ (collidesWith "networking.nftables.tables.fw") ];
+  };
+
+  /*
+    nixpkgs renders each `networking.nftables.tables` entry as
+    `table <family> <name> { ... }`, and `name` is only `mkDefault`
+    the key. A differently keyed entry naming itself `fw` in the same
+    family renders a second `table inet fw` block, which nft merges
+    into the nftzones table.
+  */
+  testModuleCollisionOnWireName = {
+    expr = collisionMessages { tables.zz-extra = extraFw; };
+    expected = [
+      (collidesWith "networking.nftables.tables.zz-extra, which also renders as `table inet fw`")
+    ];
+  };
+
+  # Rendered first, the extra block fails `nft --check` instead of
+  # merging, but evaluation rejects it in either order.
+  testModuleCollisionOnWireNameSortsFirst = {
+    expr = collisionMessages { tables.aa-extra = extraFw; };
+    expected = [
+      (collidesWith "networking.nftables.tables.aa-extra, which also renders as `table inet fw`")
+    ];
+  };
+
+  # nixpkgs renders only enabled entries.
+  testModuleDisabledSameNameCoexists = {
+    expr = collisionMessages {
+      tables.zz-extra = extraFw // {
+        enable = false;
+      };
+    };
+    expected = [ ];
+  };
+
+  # The on-wire identity is the family and the name together, so the
+  # same name in another family is a separate table.
+  testModuleSameNameOtherFamilyCoexists = {
+    expr = collisionMessages {
+      tables.fw-bridge = extraFw // {
+        family = "bridge";
+      };
+    };
+    expected = [ ];
+  };
+
+  # `mkForce` on the whole option discards the nftzones definition, so
+  # the key check sees one source; the merged entries show the loss.
+  testModuleForcedTablesDropCompiledTable = {
+    expr = collisionMessages {
+      tables = lib.mkForce {
+        extra = extraFw // {
+          name = "extra";
         };
-        expectedMessage = ''
-          networking.nftzones.tables.fw collides with
-          networking.nftables.tables.fw. Declare each table in exactly
-          one module.
-        '';
-      in
-      lib.any (assertion: assertion.message == expectedMessage) (failingAssertions cfg);
-    expected = true;
+      };
+    };
+    expected = [
+      ''
+        networking.nftables.tables.fw is missing, so
+        networking.nftzones.tables.fw does not reach nft as compiled.
+        Another module may set networking.nftables.tables with
+        lib.mkForce. Declare each table in exactly one module.
+      ''
+    ];
+  };
+
+  # nixpkgs appends `networking.nftables.ruleset` to the tables in one
+  # file, so a block there for `inet fw` merges into the nftzones table.
+  testModuleRulesetTableBlockCollides = {
+    expr = collisionMessages {
+      ruleset = ''
+        table inet fw {
+          chain input-at-filter { accept; }
+        }
+      '';
+    };
+    expected = [ (collidesWith "networking.nftables.ruleset, which also addresses `table inet fw`") ];
+  };
+
+  testModuleRulesetStatementCollides = {
+    expr = collisionMessages { ruleset = "add rule inet fw input-at-filter accept"; };
+    expected = [ (collidesWith "networking.nftables.ruleset, which also addresses `table inet fw`") ];
+  };
+
+  # Names that only contain the table name, other families, comments
+  # and objects named like the table are other tables.
+  testModuleRulesetOtherTablesCoexist = {
+    expr = collisionMessages {
+      ruleset = ''
+        # table inet fw is the nftzones table.
+        table fw { }
+        table inet fw-extra { }
+        table inet extra {
+          chain fw { }
+          set fw { type ipv4_addr; }
+        }
+      '';
+    };
+    expected = [ ];
   };
 
   # ===== module — requires networking.nftables.enable =====

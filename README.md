@@ -192,7 +192,13 @@ The module has three options:
 | `networking.nftzones.tables` | `{ }`   | Table bodies, keyed by nftables table name               |
 | `networking.nftzones.pretty` | `false` | Renders multi-line indented text instead of compact text |
 
-With the module enabled, the build fails when `networking.nftables.enable` is false, when no tables are declared, or when a table name is also declared in `networking.nftables.tables`.
+With the module enabled, the build fails when `networking.nftables.enable` is false, when no tables are declared, or when an nftzones table does not reach nft as the only body of its table. nft merges every block and statement that names a table into that table, so any second source could add rules to the compiled chains. The build fails when:
+
+- another `networking.nftables.tables` entry renders as the same family and name, under the same key or a different one
+- an override of `networking.nftables.tables`, such as `lib.mkForce`, drops or changes the compiled entry
+- a line of `networking.nftables.ruleset` names the table
+
+The ruleset check reads each line on its own, so it misses a statement split across lines, and for an `ip` table it misses family-less statements other than `table`. It does not read `networking.nftables.rulesetFile`.
 
 The module carries a fixed `key`, so several modules can import it and NixOS declares its options once. If two of them import it from different nftzones revisions, NixOS keeps the first import and silently drops the other.
 
@@ -204,7 +210,7 @@ The stock firewall installs its own `inet nixos-fw` table, whose input chain sha
 
 ### Keep hand-written tables
 
-Tables in `networking.nftables.tables` coexist with nftzones tables as long as the names differ. Use them for rules that do not fit the zone model:
+Tables in `networking.nftables.tables` coexist with nftzones tables as long as each renders as a different table, with a different `name` or `family`. Use them for rules that do not fit the zone model:
 
 ```nix
 networking.nftables.tables.raw-output = {

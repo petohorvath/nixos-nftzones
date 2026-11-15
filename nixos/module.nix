@@ -49,6 +49,104 @@ let
       content = renderTable table;
     }
   ) cfg.tables;
+
+  /*
+    Checks that a compiled table reaches nft as the only body of its
+    table. nixpkgs renders each enabled `networking.nftables.tables`
+    entry as `table <family> <name> { ... }` and appends
+    `networking.nftables.ruleset` to the same file, and nft merges
+    every block and statement naming a table into that table. A second
+    source could otherwise append rules to a compiled chain.
+  */
+  tableAssertions =
+    name: compiled:
+    let
+      tables = config.networking.nftables.tables;
+      onWire = "table ${compiled.family} ${name}";
+      collision = source: ''
+        networking.nftzones.tables.${name} collides with ${source}.
+        Declare each table in exactly one module.
+      '';
+
+      # This module's own definition is in the pre-merge list too, so
+      # a second definition naming the key is a second source. The
+      # merged config cannot show it: it holds one entry per key.
+      keySources = builtins.length (
+        builtins.filter (def: def ? ${name}) options.networking.nftables.tables.definitions
+      );
+
+      # An entry's `name` is only `mkDefault` its key, so an entry
+      # under another key can render as this table.
+      sameOnWire = lib.attrNames (
+        lib.filterAttrs (
+          key: table: key != name && table.enable && table.name == name && table.family == compiled.family
+        ) tables
+      );
+
+      /*
+        `lib.mkForce` on the whole option discards this module's
+        definition before the key count sees it, so check the entry
+        that survived the merge. Empty when it renders this table
+        unchanged.
+      */
+      own = tables.${name} or null;
+      ownProblem =
+        if own == null then
+          "is missing"
+        else if !own.enable then
+          "is disabled"
+        else if own.name != name || own.family != compiled.family then
+          "renders as `table ${own.family} ${own.name}`"
+        else if own.content != compiled.content then
+          "carries content other than the compiled table"
+        else
+          "";
+
+      /*
+        Best effort: a lexical scan of each line, comments removed, for
+        a statement naming the table. A family-less `table <name>`
+        means the `ip` family. It misses statements split across lines
+        and family-less statements other than `table`.
+      */
+      boundary = "[^a-z0-9_-]";
+      statement = "(table|chain|rule|set|map|element|flowtable)";
+      # Whether `line` names the table right after `prefix`.
+      namesAfter =
+        prefix: line: builtins.match "(.*${boundary})?${prefix}${name}(${boundary}.*)?" line != null;
+      namesTable =
+        line:
+        namesAfter "${statement}[[:space:]]+${compiled.family}[[:space:]]+" line
+        || (compiled.family == "ip" && namesAfter "table[[:space:]]+" line);
+      rulesetNamesTable = lib.any (line: namesTable (builtins.head (lib.splitString "#" line))) (
+        lib.splitString "\n" config.networking.nftables.ruleset
+      );
+    in
+    [
+      {
+        assertion = keySources <= 1;
+        message = collision "networking.nftables.tables.${name}";
+      }
+    ]
+    ++ map (key: {
+      assertion = false;
+      message = collision "networking.nftables.tables.${key}, which also renders as `${onWire}`";
+    }) sameOnWire
+    ++ [
+      {
+        # A second source under the key already failed above.
+        assertion = keySources > 1 || ownProblem == "";
+        message = ''
+          networking.nftables.tables.${name} ${ownProblem}, so
+          networking.nftzones.tables.${name} does not reach nft as compiled.
+          Another module may set networking.nftables.tables with
+          lib.mkForce. Declare each table in exactly one module.
+        '';
+      }
+      {
+        assertion = !rulesetNamesTable;
+        message = collision "networking.nftables.ruleset, which also addresses `${onWire}`";
+      }
+    ];
 in
 {
   options.networking.nftzones = {
@@ -135,25 +233,7 @@ in
         '';
       }
     ]
-    ++ lib.mapAttrsToList (name: _: {
-      # The nftzones module's own contribution (assigned a few lines
-      # below) shows up in
-      # `options.networking.nftables.tables.definitions` alongside any
-      # user-supplied ones, so the naive "is the key present?" check on
-      # the merged config always fires for every table this module
-      # owns. Counting contributors of this specific key against the
-      # pre-merge definitions list flags the *real* collision: more
-      # than one source supplying the same name.
-      assertion =
-        (builtins.length (
-          builtins.filter (def: def ? ${name}) options.networking.nftables.tables.definitions
-        )) <= 1;
-      message = ''
-        networking.nftzones.tables.${name} collides with
-        networking.nftables.tables.${name}. Declare each table in exactly
-        one module.
-      '';
-    }) cfg.tables;
+    ++ lib.concatLists (lib.mapAttrsToList tableAssertions compiledTables);
 
     networking.nftables.tables = compiledTables;
 
