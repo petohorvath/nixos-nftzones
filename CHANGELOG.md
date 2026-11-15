@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Breaking:** The table name argument of `lib.mkTable`, `lib.mkRuleset` and `lib.diagnose`, and the key of `networking.nftzones.tables`, must match the table name type, `[a-z][a-z0-9_-]*` ([#65](https://github.com/petohorvath/nixos-nftzones/issues/65)). A name that fails it throws a type error at evaluation. Before, the library compiled such a name into the ruleset, and the NixOS module left it for nft to reject at build time, or loaded it when nft accepted it, as with `BadTable`.
 - **Breaking:** The new Phase 1 error `interfaceMatchesAll`, at `zones.<zone>.interfaces`, rejects the zone interface `*`. nft reads a bare `*` set element as a catch-all, so the zone matched every interface, including the interfaces of other zones and unzoned ones, and `interfaceOverlap` did not report it. Before, such a table compiled and loaded.
 - **Breaking:** Phase 1 rejects a `chain` override at the `ingress` hook with `chainPlacementInvalid`, at `<group>.<entry>`. An ingress chain sees only the traffic of the devices it is bound to, and the chain model has no device binding, so the chain nftzones emitted bound to no device. nft could load it, and the entry's rules, such as an early drop, then never saw a packet. A direction that names the local zone at ingress also reports `localZoneNotMatchable`. Before, such a table compiled and loaded.
+- **Breaking:** The NixOS module fails the build when an nftzones table does not reach nft as the only body of its table. Before, it compared only attribute keys, so a `networking.nftables.tables` entry under another key with the same `name` and `family`, or a block for the table in `networking.nftables.ruleset`, merged into the nftzones table without an error and could append an `accept` to a chain whose policy is drop. An override that replaced `networking.nftables.tables` with `lib.mkForce` dropped the compiled table without an error. The ruleset check is best-effort; the README lists what it misses.
 - **Breaking:** The wildcard zone no longer covers traffic on an interface or address outside every zone. Before, its local-zone cell matched that traffic at input, postrouting and prerouting, but not at forward. A local-zone cell that the wildcard produces where the local zone cannot match is dropped, so `from = [ "all" ]` on a dnat or sroute emits no local-zone cell.
 
 ### Fixed
@@ -35,6 +36,8 @@ Move an entry whose `chain` override uses the `ingress` hook to `prerouting`, th
 In a bridge table, drop the local zone from any entry that names it outside the input destination and output source placements; the bridge family offers no match for the host's own traffic there.
 
 Replace a zone interface `*` with the exact interface names the zone is meant to match.
+
+Give a hand-written `networking.nftables.tables` entry or `networking.nftables.ruleset` block that shares an nftzones table's family and name a name of its own, or move its rules into the nftzones table.
 
 If a wildcard entry relied on reaching an interface outside every zone, declare a zone for that interface and name it, or add it to an existing zone.
 
