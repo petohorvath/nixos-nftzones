@@ -124,6 +124,68 @@ in
     };
   };
 
+  # The local zone has no match at ingress (ADR-0013), so a chain
+  # override there rejects it on either side, beside the placement
+  # error the ingress hook gets on its own.
+  testLocalZoneAtIngressOverrideRejected = {
+    expr = diagnosticsFor {
+      zones.lan.cidrs = [ "192.168.1.0/24" ];
+      filters.out = {
+        from = [ "local" ];
+        to = [ "lan" ];
+        chain = {
+          hook = "ingress";
+          priority = "filter";
+        };
+        rule = [ dsl.accept ];
+      };
+      filters.inbound = {
+        from = [ "lan" ];
+        to = [ "local" ];
+        chain = {
+          hook = "ingress";
+          priority = "filter";
+        };
+        rule = [ dsl.accept ];
+      };
+    };
+    expected = {
+      errors = [
+        {
+          tag = "chainPlacementInvalid";
+          path = [
+            "filters"
+            "inbound"
+          ];
+        }
+        {
+          tag = "localZoneNotMatchable";
+          path = [
+            "filters"
+            "inbound"
+            "to"
+          ];
+        }
+        {
+          tag = "chainPlacementInvalid";
+          path = [
+            "filters"
+            "out"
+          ];
+        }
+        {
+          tag = "localZoneNotMatchable";
+          path = [
+            "filters"
+            "out"
+            "from"
+          ];
+        }
+      ];
+      warnings = [ ];
+    };
+  };
+
   # Loopback traffic never crosses a bridge, so a bridge table cannot
   # match the local zone as a source at input. The error stands
   # alone: `localToLocalShadowed` would only repeat it.

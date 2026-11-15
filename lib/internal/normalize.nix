@@ -503,8 +503,9 @@ let
 
   /*
     Reject placements the kernel will refuse, before they reach
-    `nft -f`. Each rule group dispatches into a `(hook, priority)`
-    pair; combined with `table.family`, the implied chain type
+    `nft -f`, and placements whose chain would see no packet. Each
+    rule group dispatches into a `(hook, priority)` pair; combined
+    with `table.family`, the implied chain type
     (via `compatibility.chainTypeFor`) is what the kernel sees. A
     srcnat or dstnat priority needs a `nat` chain, but
     `chainTypeFor` falls back to `filter` where nat can't attach,
@@ -512,7 +513,10 @@ let
     `nftypes.compatibility.validChainPlacement` rejects becomes an
     error naming the offending placement.
 
-    Catches three failure modes uncovered by the audit:
+    Catches four failure modes uncovered by audits:
+      - an `ingress` hook — an ingress chain sees only the traffic
+        of the devices it names, and the chain model binds no
+        device, so nft can load the chain but no packet reaches it.
       - `bridge` snat/dnat — bridge family doesn't support `nat`
         chains at all.
       - `bridge` sroute/droute — bridge has no `mangle` priority,
@@ -559,7 +563,13 @@ let
           ];
           requiredType = if isNatPriority then "nat" else chainType;
         in
-        if chainType == null then
+        if placement.hook == "ingress" then
+          [
+            (mkError group placement
+              "an ingress chain sees only the traffic of the devices it is bound to, and nftzones chains bind no device, so the chain would see no packet; use the prerouting hook instead"
+            )
+          ]
+        else if chainType == null then
           [
             (mkError group placement
               "priority symbol '${toString placement.priority}' has no value in family '${family}'"

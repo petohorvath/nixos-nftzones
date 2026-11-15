@@ -70,6 +70,7 @@ in
     chain-placement-bridge-droute = import ./rejections/chain-placement-bridge-droute.nix rejectionArgs;
     chain-placement-bridge-mixed = import ./rejections/chain-placement-bridge-mixed.nix rejectionArgs;
     chain-placement-bridge-sroute = import ./rejections/chain-placement-bridge-sroute.nix rejectionArgs;
+    chain-placement-ingress = import ./rejections/chain-placement-ingress.nix rejectionArgs;
     chain-placement = import ./rejections/chain-placement.nix rejectionArgs;
     cidr-overlap = import ./rejections/cidr-overlap.nix rejectionArgs;
     comment-injection = import ./rejections/comment-injection.nix rejectionArgs;
