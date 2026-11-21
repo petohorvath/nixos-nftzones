@@ -329,6 +329,6 @@ Key compilation choices:
 - **Sets for membership.** Interfaces and networks become named sets; zone matches become set lookups. Adding a member to a zone is an in-place set update, not a ruleset rebuild.
 - **Hook selection by direction.** The local zone as destination routes rules into `input`; as source into `output`; everything else into `forward`.
 - **Conntrack short-circuit.** `ct state established,related accept` runs before any zone-pair rule, providing automatic return traffic.
-- **Default drop.** Base chains use `policy drop`; an explicit zone-pair `accept` is required for traffic to pass.
+- **Default drop.** Filter base chains use `policy drop`; an explicit zone-pair `accept` is required for traffic to pass. The compiler emits a base chain only at a hook where some entry lands, so traffic to the host is default-deny only when some entry lands at input: its `to` names the local zone or the wildcard zone, or its `chain` override puts it there. Without one, nothing in the table filters input.
 
 The zone language stays declarative; the mapping to chains, hooks, and sets is a generation detail.

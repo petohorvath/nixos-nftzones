@@ -298,7 +298,9 @@ let
           filter base chain (`policy <X>;`). The absolute
           fallback when no rule and no zone-pair policy fires.
           Default `"drop"`. `"accept"` is occasionally useful for
-          debugging or specific permissive setups.
+          debugging or specific permissive setups. A hook gets a
+          filter base chain, and so this policy, only when some
+          entry lands there.
         '';
       };
 

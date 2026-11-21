@@ -204,7 +204,9 @@ The module carries a fixed `key`, so several modules can import it and NixOS dec
 
 ### Disable the stock firewall
 
-Set `networking.firewall.enable = false` when nftzones owns the input chain, as the example does. With both enabled, traffic reaches the host only when both firewalls accept it, so a port opened only in nftzones stays closed. The module warns at build time when both are enabled.
+Set `networking.firewall.enable = false` when nftzones owns the input chain, as the example does. With both enabled, traffic reaches the host only when both firewalls accept it, so a port opened only in nftzones stays closed. The module warns at build time when both are enabled and an nftzones table has a base chain at input, or at forward while `networking.firewall.filterForward` is on.
+
+The compiler emits a base chain, and with it the `chainPolicy` drop, only at a hook where some entry lands. An entry lands at input when its `to` names the local zone or the wildcard zone, or when its `chain` override puts it there; a table without one leaves input unfiltered. The module warns at build time when the stock firewall is disabled and no table filters input for both IPv4 and IPv6, with an `inet` chain or with both an `ip` and an `ip6` chain. The check reads hand-written tables and `networking.nftables.ruleset` lexically, line by line: it misses a chain declaration split across lines, counts any chain at input in the ruleset as covering both families, and does not read `networking.nftables.rulesetFile`.
 
 The stock firewall installs its own `inet nixos-fw` table, whose input chain shares the hook and priority of the nftzones base chain at input and drops everything it does not accept. nftables runs every base chain on a hook: an `accept` ends only the chain it is in, while a `drop` is final. The `nixos-fw` rpfilter chain narrows prerouting the same way unless `networking.firewall.checkReversePath = false`, and its forward chain narrows forward when `networking.firewall.filterForward` is on.
 

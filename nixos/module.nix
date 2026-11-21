@@ -36,19 +36,111 @@ let
 
   renderTable = if cfg.pretty then nftypes.toTextBlockPretty else nftypes.toTextBlock;
 
+  # Each table as nftypes data, before rendering, so the warnings can
+  # read which hooks it has base chains at.
+  compiledTables = lib.mapAttrs (_name: nftzones.internal.compile.mkTable) cfg.tables;
+
   # nixpkgs' `networking.nftables.tables` supplies the
   # `table <fam> <name> { ... }` wrapper; the block renderer writes
   # the table's `flags` and `comment` inside it.
-  compiledTables = lib.mapAttrs (
-    _name: tableValue:
+  renderedTables = lib.mapAttrs (_name: table: {
+    inherit (table) family;
+    content = renderTable table;
+  }) compiledTables;
+
+  /*
+    Best-effort lexical scans of nftables text read it line by line,
+    with each line's `#` comment removed, so they miss a statement
+    split across lines. `mentions pattern text` is whether some line
+    holds `pattern` with no identifier character on either side.
+  */
+  boundary = "[^a-z0-9_-]";
+  mentions =
+    pattern: text:
+    lib.any (line: builtins.match "(.*${boundary})?${pattern}(${boundary}.*)?" line != null) (
+      map (line: builtins.head (lib.splitString "#" line)) (lib.splitString "\n" text)
+    );
+
+  # The families that carry the host's own IP traffic, at the hooks the
+  # stock firewall's `inet nixos-fw` table also filters.
+  ipFamilies = [
+    "inet"
+    "ip"
+    "ip6"
+  ];
+
+  # Whether `families` filter both IPv4 and IPv6.
+  coversIp =
+    families:
+    builtins.elem "inet" families
+    || lib.all (family: builtins.elem family families) [
+      "ip"
+      "ip6"
+    ];
+
+  # The families of the nftzones tables with a filter base chain at
+  # `hook`.
+  nftzonesFamiliesAt =
+    hook:
+    lib.pipe compiledTables [
+      lib.attrValues
+      (builtins.filter (
+        table:
+        lib.any (chain: chain.type or null == "filter" && chain.hook or null == hook) (
+          lib.attrValues table.chains
+        )
+      ))
+      (map (table: table.family))
+    ];
+
+  /*
+    Whether some table filters input for both IPv4 and IPv6. Other
+    enabled tables are scanned lexically, so a non-filter chain at
+    input counts too. The scan of `networking.nftables.ruleset` cannot
+    tell which table a chain is in, so any input chain there counts as
+    covering both; `networking.nftables.rulesetFile` is not read.
+  */
+  inputFiltered =
     let
-      table = nftzones.internal.compile.mkTable tableValue;
+      hooksInput = mentions "hook[[:space:]]+input";
+      handWritten = lib.filterAttrs (
+        key: table: !(cfg.tables ? ${key}) && table.enable && hooksInput table.content
+      ) config.networking.nftables.tables;
     in
-    {
-      inherit (table) family;
-      content = renderTable table;
-    }
-  ) cfg.tables;
+    coversIp (nftzonesFamiliesAt "input" ++ lib.mapAttrsToList (_key: table: table.family) handWritten)
+    || hooksInput config.networking.nftables.ruleset;
+
+  # Whether an nftzones table shares a hook with a chain of the stock
+  # firewall that drops what it does not accept.
+  sharesFirewallHook =
+    let
+      atHook = hook: lib.any (family: builtins.elem family ipFamilies) (nftzonesFamiliesAt hook);
+    in
+    atHook "input" || (config.networking.firewall.filterForward && atHook "forward");
+
+  firewallCoexistenceWarning = ''
+    Both networking.firewall.enable and networking.nftzones.enable are
+    true, and an nftzones table has a base chain at a hook that the stock
+    `inet nixos-fw` table also filters. nftables runs every base chain on
+    a hook, so a packet passes only when both tables accept it. The
+    `nixos-fw` input chain drops every packet it does not accept:
+    a port opened only in nftzones stays closed. Its forward chain
+    narrows forward the same way while networking.firewall.filterForward
+    is on. Its rpfilter chain also narrows prerouting unless
+    networking.firewall.checkReversePath = false. Set
+    networking.firewall.enable = false when nftzones owns these hooks.
+  '';
+
+  inputUnfilteredWarning = ''
+    Nothing filters traffic to the host: networking.firewall.enable is
+    false, and neither networking.nftzones.tables nor any other table has
+    a base chain at input for both IPv4 and IPv6. nftzones emits a base
+    chain only at a hook where an entry lands. An entry lands at input
+    when its `to` names the local zone or the wildcard zone, or when its
+    `chain` override puts it there. Without one, the host accepts every
+    packet sent to it. Add one, such as a filter that accepts SSH from an
+    admin zone, or set networking.firewall.enable = true.
+  '';
 
   /*
     Checks that a compiled table reaches nft as the only body of its
@@ -59,10 +151,10 @@ let
     source could otherwise append rules to a compiled chain.
   */
   tableAssertions =
-    name: compiled:
+    name: rendered:
     let
       tables = config.networking.nftables.tables;
-      onWire = "table ${compiled.family} ${name}";
+      onWire = "table ${rendered.family} ${name}";
       collision = source: ''
         networking.nftzones.tables.${name} collides with ${source}.
         Declare each table in exactly one module.
@@ -79,7 +171,7 @@ let
       # under another key can render as this table.
       sameOnWire = lib.attrNames (
         lib.filterAttrs (
-          key: table: key != name && table.enable && table.name == name && table.family == compiled.family
+          key: table: key != name && table.enable && table.name == name && table.family == rendered.family
         ) tables
       );
 
@@ -95,31 +187,21 @@ let
           "is missing"
         else if !own.enable then
           "is disabled"
-        else if own.name != name || own.family != compiled.family then
+        else if own.name != name || own.family != rendered.family then
           "renders as `table ${own.family} ${own.name}`"
-        else if own.content != compiled.content then
+        else if own.content != rendered.content then
           "carries content other than the compiled table"
         else
           "";
 
-      /*
-        Best effort: a lexical scan of each line, comments removed, for
-        a statement naming the table. A family-less `table <name>`
-        means the `ip` family. It misses statements split across lines
-        and family-less statements other than `table`.
-      */
-      boundary = "[^a-z0-9_-]";
+      # Best effort: a lexical scan for a statement naming the table. A
+      # family-less `table <name>` means the `ip` family. It misses
+      # family-less statements other than `table`.
       statement = "(table|chain|rule|set|map|element|flowtable)";
-      # Whether `line` names the table right after `prefix`.
-      namesAfter =
-        prefix: line: builtins.match "(.*${boundary})?${prefix}${name}(${boundary}.*)?" line != null;
-      namesTable =
-        line:
-        namesAfter "${statement}[[:space:]]+${compiled.family}[[:space:]]+" line
-        || (compiled.family == "ip" && namesAfter "table[[:space:]]+" line);
-      rulesetNamesTable = lib.any (line: namesTable (builtins.head (lib.splitString "#" line))) (
-        lib.splitString "\n" config.networking.nftables.ruleset
-      );
+      inherit (config.networking.nftables) ruleset;
+      rulesetNamesTable =
+        mentions "${statement}[[:space:]]+${rendered.family}[[:space:]]+${name}" ruleset
+        || (rendered.family == "ip" && mentions "table[[:space:]]+${name}" ruleset);
     in
     [
       {
@@ -233,23 +315,18 @@ in
         '';
       }
     ]
-    ++ lib.concatLists (lib.mapAttrsToList tableAssertions compiledTables);
+    ++ lib.concatLists (lib.mapAttrsToList tableAssertions renderedTables);
 
-    networking.nftables.tables = compiledTables;
+    networking.nftables.tables = renderedTables;
 
-    # Warn (don't error): the stock firewall beside nftzones tables
-    # that handle only forwarding or NAT is a legitimate setup.
-    warnings = lib.optional config.networking.firewall.enable ''
-      Both networking.firewall.enable and networking.nftzones.enable are true.
-      networking.firewall installs its own `inet nixos-fw` table, whose
-      input chain drops every packet it does not accept. The nftzones base
-      chain at input shares that hook and priority, and nftables runs every
-      base chain on a hook, so a packet reaches the host only when both
-      tables accept it: a port opened only in nftzones stays closed. The
-      `nixos-fw` rpfilter chain narrows prerouting the same way unless
-      networking.firewall.checkReversePath = false, and its forward chain
-      narrows forward when networking.firewall.filterForward is on. Set
-      networking.firewall.enable = false when nftzones owns the input chain.
-    '';
+    # Warn (don't error) on both. The stock firewall beside nftzones
+    # tables that handle only NAT is a legitimate setup, and so is a
+    # host that deliberately accepts every packet sent to it.
+    warnings =
+      let
+        firewallEnabled = config.networking.firewall.enable;
+      in
+      lib.optional (firewallEnabled && sharesFirewallHook) firewallCoexistenceWarning
+      ++ lib.optional (!firewallEnabled && !inputFiltered) inputUnfilteredWarning;
   };
 }

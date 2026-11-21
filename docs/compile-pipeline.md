@@ -284,7 +284,7 @@ Each set carries the union of the zone's own interfaces/CIDRs **plus every desce
 
 ### 4.2 Base chains
 
-One base chain per dispatch tree in `ctx.dispatchTrees` (Phase 3). Default placements:
+One base chain per dispatch tree in `ctx.dispatchTrees` (Phase 3). A hook where no cell lands has no dispatch tree, so it gets no base chain and no chain policy: a table with no cell at input leaves input unfiltered. Default placements:
 
 - **Filter base chains** — `input`, `forward`, `output` at `priority filter`. Header: `type filter hook <name> priority filter; policy <chainPolicy>;`.
 - **NAT base chains** — `prerouting` (DNAT) at `dstnat`, `postrouting` (SNAT) at `srcnat`.
