@@ -342,6 +342,51 @@ in
     };
   };
 
+  # ===== module — the warnings read a table with no chains =====
+
+  testModuleWarningsForTableWithoutEntries = {
+    # A table with zones but no entries compiles to no `chains`.
+    expr =
+      let
+        warningsWith =
+          firewall:
+          nftzonesWarnings {
+            networking.firewall.enable = firewall;
+            networking.nftzones.tables.fw.zones.lan.interfaces = [ "lan0" ];
+          };
+      in
+      {
+        firewallOff = warnsInputUnfiltered (warningsWith false);
+        firewallOn = warningsWith true;
+      };
+    expected = {
+      firewallOff = true;
+      firewallOn = [ ];
+    };
+  };
+
+  # ===== module — a dormant table filters nothing =====
+
+  testModuleDormantTableFiltersNothing = {
+    # A dormant table's base chains are unregistered, so its input
+    # chain neither filters input nor shares the stock firewall's hook.
+    expr = lib.genAttrs [ "firewallOff" "firewallOn" ] (
+      state:
+      lib.length (nftzonesWarnings {
+        networking.firewall.enable = state == "firewallOn";
+        networking.nftzones.tables.fw = inputTable // {
+          flags = [ "dormant" ];
+        };
+      })
+    );
+    expected = {
+      # The unfiltered-input warning.
+      firewallOff = 1;
+      # No coexistence warning.
+      firewallOn = 0;
+    };
+  };
+
   # ===== module — a hand-written input chain filters input =====
 
   testModuleInputUnfilteredWarnBesideHandWrittenInput = {

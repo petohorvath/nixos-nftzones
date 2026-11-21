@@ -79,15 +79,17 @@ let
     ];
 
   # The families of the nftzones tables with a filter base chain at
-  # `hook`.
+  # `hook`. A table with no entries has no `chains`, and a dormant
+  # table's base chains are unregistered, so neither filters anything.
   nftzonesFamiliesAt =
     hook:
     lib.pipe compiledTables [
       lib.attrValues
       (builtins.filter (
         table:
-        lib.any (chain: chain.type or null == "filter" && chain.hook or null == hook) (
-          lib.attrValues table.chains
+        !(builtins.elem "dormant" (table.flags or [ ]))
+        && lib.any (chain: chain.type or null == "filter" && chain.hook or null == hook) (
+          lib.attrValues (table.chains or { })
         )
       ))
       (map (table: table.family))
