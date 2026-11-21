@@ -95,6 +95,48 @@ let
 
   # How many times `needle` occurs in `text`.
   occurrences = needle: text: builtins.length (lib.splitString needle text) - 1;
+
+  # A table whose only entry lands at input, which gives it an input
+  # base chain.
+  inputTable = {
+    zones.lan.interfaces = [ "lan0" ];
+    filters.lan-ssh = {
+      from = [ "lan" ];
+      to = [ "local" ];
+      rule = nftzones.snippets.accept.tcp 22;
+    };
+  };
+
+  # A table whose only entry lands at forward, which leaves it no
+  # input base chain.
+  forwardTable = {
+    zones = {
+      lan = {
+        interfaces = [ "lan0" ];
+        cidrs = [ "10.0.0.0/24" ];
+      };
+      wan.interfaces = [ "wan0" ];
+    };
+    filters.lan-out = {
+      from = [ "lan" ];
+      to = [ "wan" ];
+      rule = [ nftypes.dsl.accept ];
+    };
+  };
+
+  # The nftzones warnings of a system with the supplied settings.
+  nftzonesWarnings =
+    extraConfig:
+    lib.filter (lib.hasInfix "networking.nftzones")
+      (evalSystem (
+        lib.recursiveUpdate {
+          networking.nftables.enable = true;
+          networking.nftzones.enable = true;
+        } extraConfig
+      )).warnings;
+
+  # Whether the warnings include the one for unfiltered input.
+  warnsInputUnfiltered = lib.any (lib.hasInfix "Nothing filters traffic to the host");
 in
 {
   # ===== module — disabled produces no nftzones-managed table =====
@@ -155,22 +197,16 @@ in
     # only in nftzones stays closed.
     expr =
       let
-        nftzonesWarnings =
-          lib.filter (lib.hasInfix "networking.nftzones")
-            (evalSystem {
-              networking.nftables.enable = true;
-              networking.firewall.enable = true;
-              networking.nftzones = {
-                enable = true;
-                tables.fw.zones.lan.interfaces = [ "lan0" ];
-              };
-            }).warnings;
+        warnings = nftzonesWarnings {
+          networking.firewall.enable = true;
+          networking.nftzones.tables.fw = inputTable;
+        };
       in
       {
-        count = lib.length nftzonesWarnings;
-        mentionsFirewall = lib.any (lib.hasInfix "networking.firewall.enable") nftzonesWarnings;
-        namesStockTable = lib.any (lib.hasInfix "nixos-fw") nftzonesWarnings;
-        saysNftzonesOnlyPortStaysClosed = lib.any (lib.hasInfix "a port opened only in nftzones stays closed") nftzonesWarnings;
+        count = lib.length warnings;
+        mentionsFirewall = lib.any (lib.hasInfix "networking.firewall.enable") warnings;
+        namesStockTable = lib.any (lib.hasInfix "nixos-fw") warnings;
+        saysNftzonesOnlyPortStaysClosed = lib.any (lib.hasInfix "a port opened only in nftzones stays closed") warnings;
       };
     expected = {
       count = 1;
@@ -186,17 +222,216 @@ in
     # nixpkgs defaults `networking.firewall.enable` to true, so the
     # test must explicitly disable it to verify the warning DOESN'T
     # fire when firewall is off.
-    expr =
-      lib.filter (lib.hasInfix "networking.nftzones")
-        (evalSystem {
-          networking.nftables.enable = true;
-          networking.firewall.enable = false;
-          networking.nftzones = {
-            enable = true;
-            tables.fw.zones.lan.interfaces = [ "lan0" ];
-          };
-        }).warnings;
+    expr = nftzonesWarnings {
+      networking.firewall.enable = false;
+      networking.nftzones.tables.fw = inputTable;
+    };
     expected = [ ];
+  };
+
+  # ===== module — coexistence at forward depends on filterForward =====
+
+  testModuleFirewallCoexistenceAtForward = {
+    # A table that handles only forwarding shares a hook with the stock
+    # firewall only while the stock forward chain filters.
+    expr = lib.genAttrs [ "filtered" "unfiltered" ] (
+      state:
+      lib.length (nftzonesWarnings {
+        networking.firewall = {
+          enable = true;
+          filterForward = state == "filtered";
+        };
+        networking.nftzones.tables.fw = forwardTable;
+      })
+    );
+    expected = {
+      filtered = 1;
+      unfiltered = 0;
+    };
+  };
+
+  # ===== module — warns when input is unfiltered =====
+
+  testModuleWarnsInputUnfiltered = {
+    # With the stock firewall off and no entry that lands at input, no
+    # table hooks input, so the host accepts every packet sent to it.
+    expr =
+      let
+        warnings = nftzonesWarnings {
+          networking.firewall.enable = false;
+          networking.nftzones.tables.fw = forwardTable;
+        };
+      in
+      {
+        count = lib.length warnings;
+        warnsInputUnfiltered = warnsInputUnfiltered warnings;
+      };
+    expected = {
+      count = 1;
+      warnsInputUnfiltered = true;
+    };
+  };
+
+  # ===== module — each kind of entry at input filters input =====
+
+  testModuleInputUnfilteredWarnByEntry = {
+    # The local zone, the wildcard zone and a `chain` override each put
+    # an entry at input, which gives the table its input base chain.
+    expr =
+      lib.mapAttrs
+        (
+          _kind: placement:
+          warnsInputUnfiltered (nftzonesWarnings {
+            networking.firewall.enable = false;
+            networking.nftzones.tables.fw = forwardTable // {
+              filters.at-input = {
+                from = [ "lan" ];
+                rule = nftzones.snippets.accept.tcp 22;
+              }
+              // placement;
+            };
+          })
+        )
+        {
+          local.to = [ "local" ];
+          wildcard.to = [ "all" ];
+          override = {
+            # At input, a zone matches as a destination by its CIDRs.
+            to = [ "lan" ];
+            chain = {
+              hook = "input";
+              priority = "filter";
+            };
+          };
+        };
+    expected = {
+      local = false;
+      override = false;
+      wildcard = false;
+    };
+  };
+
+  # ===== module — input must be filtered for both IP families =====
+
+  testModuleInputUnfilteredWarnPerIpFamily = {
+    expr =
+      lib.mapAttrs
+        (
+          _families: tables:
+          warnsInputUnfiltered (nftzonesWarnings {
+            networking.firewall.enable = false;
+            networking.nftzones.tables = tables;
+          })
+        )
+        {
+          ip.fw = inputTable // {
+            family = "ip";
+          };
+          ipAndIp6 = {
+            fw = inputTable // {
+              family = "ip";
+            };
+            fw6 = inputTable // {
+              family = "ip6";
+            };
+          };
+        };
+    expected = {
+      ip = true;
+      ipAndIp6 = false;
+    };
+  };
+
+  # ===== module — the warnings read a table with no chains =====
+
+  testModuleWarningsForTableWithoutEntries = {
+    # A table with zones but no entries compiles to no `chains`.
+    expr =
+      let
+        warningsWith =
+          firewall:
+          nftzonesWarnings {
+            networking.firewall.enable = firewall;
+            networking.nftzones.tables.fw.zones.lan.interfaces = [ "lan0" ];
+          };
+      in
+      {
+        firewallOff = warnsInputUnfiltered (warningsWith false);
+        firewallOn = warningsWith true;
+      };
+    expected = {
+      firewallOff = true;
+      firewallOn = [ ];
+    };
+  };
+
+  # ===== module — a dormant table filters nothing =====
+
+  testModuleDormantTableFiltersNothing = {
+    # A dormant table's base chains are unregistered, so its input
+    # chain neither filters input nor shares the stock firewall's hook.
+    expr = lib.genAttrs [ "firewallOff" "firewallOn" ] (
+      state:
+      lib.length (nftzonesWarnings {
+        networking.firewall.enable = state == "firewallOn";
+        networking.nftzones.tables.fw = inputTable // {
+          flags = [ "dormant" ];
+        };
+      })
+    );
+    expected = {
+      # The unfiltered-input warning.
+      firewallOff = 1;
+      # No coexistence warning.
+      firewallOn = 0;
+    };
+  };
+
+  # ===== module — a hand-written input chain filters input =====
+
+  testModuleInputUnfilteredWarnBesideHandWrittenInput = {
+    # A bridge input chain sees only bridged frames, so it does not
+    # count.
+    expr =
+      let
+        chain = "chain input { type filter hook input priority 0; policy drop; }";
+        handWritten = family: {
+          tables.host = {
+            inherit family;
+            content = chain;
+          };
+        };
+      in
+      lib.mapAttrs
+        (
+          _source: nftables:
+          warnsInputUnfiltered (nftzonesWarnings {
+            networking.firewall.enable = false;
+            networking.nftzones.tables.fw = forwardTable;
+            networking.nftables = nftables;
+          })
+        )
+        {
+          bridgeTable = handWritten "bridge";
+          inetTable = handWritten "inet";
+          ruleset.ruleset = "table inet host { ${chain} }";
+        };
+    expected = {
+      bridgeTable = true;
+      inetTable = false;
+      ruleset = false;
+    };
+  };
+
+  # ===== module — a commented-out input chain does not count =====
+
+  testModuleInputUnfilteredWarnIgnoresComments = {
+    expr = warnsInputUnfiltered (nftzonesWarnings {
+      networking.firewall.enable = false;
+      networking.nftzones.tables.fw = forwardTable;
+      networking.nftables.ruleset = "# chain input { type filter hook input priority 0; }";
+    });
+    expected = true;
   };
 
   # ===== module — single table compiles to block-form content =====

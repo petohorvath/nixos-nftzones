@@ -26,7 +26,16 @@
 
   Everything unstated is dropped by the chain-policy default:
   `dmz → lan` (a compromised DMZ host can't pivot inward),
-  `lan → web-server` on non-service ports, `wan → anything`.
+  `lan → web-server` on non-service ports, `wan → anything`,
+  and every flow to the router except SSH from the LAN.
+
+  The chain policy applies only at a hook that has a base chain,
+  and nftzones emits one only where an entry lands. The
+  `lan-admin-ssh` filter is what gives the router an input
+  chain: without an entry at input, nothing in this table
+  filters traffic to the router itself. The router serves
+  nothing else to the LAN or the DMZ; grant DHCP, DNS or any
+  other router service with its own `to = [ "local" ]` filter.
 
   Wire it into a NixOS host:
 
@@ -115,6 +124,15 @@ in
       from = [ "lan" ];
       to = [ "wan" ];
       rule = [ accept ];
+    };
+
+    # The router accepts SSH from the LAN only. `to = [ "local" ]`
+    # lands in the router's input chain, so this entry also gives
+    # input its chain-policy drop for the WAN and the DMZ.
+    lan-admin-ssh = {
+      from = [ "lan" ];
+      to = [ "local" ];
+      rule = snippets.accept.tcp 22;
     };
   };
 
